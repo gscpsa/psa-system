@@ -1,0 +1,1 @@
+<form method='POST'>Order Code:<input name='order_code'><select name='status'><option>Received</option><option>Processing</option><option>Graded</option><option>Ready</option></select><button>Update</button></form><ul>{% for o in orders %}<li>{{ o[1] }} - {{ o[3] }}</li>{% endfor %}</ul>
