@@ -5,14 +5,17 @@ import os
 app = Flask(__name__)
 app.secret_key = "secret123"
 
-
 def get_db():
     url = os.environ.get("DATABASE_URL")
     return psycopg2.connect(url, sslmode="require")
 
+# -------------------------
+# STATUS STAGES
+# -------------------------
+STAGES = ["Received", "Grading", "Assembly", "QA Check", "Shipped"]
 
 # -------------------------
-# HTML TEMPLATES (INLINE)
+# HTML
 # -------------------------
 
 ADMIN_HTML = """
@@ -31,36 +34,59 @@ DASHBOARD_HTML = """
     <input name="customer_name" placeholder="Customer Name" required>
     <input name="email" placeholder="Email" required>
     <input name="order_code" placeholder="PSA Order #" required>
-    <input name="status" placeholder="Status (e.g. Received)" required>
+
+    <select name="status">
+        {% for s in stages %}
+            <option value="{{s}}">{{s}}</option>
+        {% endfor %}
+    </select>
+
     <button>Add Order</button>
 </form>
 
 <h3>All Orders</h3>
-<ul>
+<table border="1" cellpadding="5">
+<tr>
+<th>Order</th><th>Name</th><th>Status</th><th>Track</th>
+</tr>
+
 {% for o in orders %}
-    <li>
-        {{ o[3] }} | {{ o[2] }} |
-        <a href="/track/{{ o[1] }}">Track</a>
-    </li>
+<tr>
+<td>{{ o[1] }}</td>
+<td>{{ o[2] }}</td>
+<td>{{ o[4] }}</td>
+<td><a href="/track/{{ o[1] }}">View</a></td>
+</tr>
 {% endfor %}
-</ul>
+</table>
 """
 
 TRACK_HTML = """
 <h2>Order Tracking</h2>
 
 {% if order %}
-    <p><b>Order #:</b> {{ order[1] }}</p>
-    <p><b>Status:</b> {{ order[4] }}</p>
-    <p><b>Customer:</b> {{ order[2] }}</p>
+    <h3>Order #: {{ order[1] }}</h3>
+    <p>Customer: {{ order[2] }}</p>
+
+    <h3>Status Progress</h3>
+
+    {% for s in stages %}
+        {% if stages.index(s) < stages.index(order[4]) %}
+            <div style="color:green;">✔ {{ s }}</div>
+        {% elif s == order[4] %}
+            <div style="color:orange;">➡ {{ s }}</div>
+        {% else %}
+            <div style="color:gray;">⬜ {{ s }}</div>
+        {% endif %}
+    {% endfor %}
+
 {% else %}
     <p>Order not found</p>
 {% endif %}
 """
 
-
 # -------------------------
-# INIT DB
+# DB INIT
 # -------------------------
 
 def init_db():
@@ -80,7 +106,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-
 # -------------------------
 # ROUTES
 # -------------------------
@@ -89,7 +114,6 @@ def init_db():
 def home():
     return redirect("/admin")
 
-
 @app.route("/admin", methods=["GET", "POST"])
 def admin():
     if request.method == "POST":
@@ -97,7 +121,6 @@ def admin():
             session["admin"] = True
             return redirect("/dashboard")
     return render_template_string(ADMIN_HTML)
-
 
 @app.route("/dashboard", methods=["GET", "POST"])
 def dashboard():
@@ -123,11 +146,9 @@ def dashboard():
 
     c.execute("SELECT * FROM orders ORDER BY id DESC")
     orders = c.fetchall()
-
     conn.close()
 
-    return render_template_string(DASHBOARD_HTML, orders=orders)
-
+    return render_template_string(DASHBOARD_HTML, orders=orders, stages=STAGES)
 
 @app.route("/track/<order_code>")
 def track(order_code):
@@ -136,11 +157,9 @@ def track(order_code):
 
     c.execute("SELECT * FROM orders WHERE order_code=%s", (order_code,))
     order = c.fetchone()
-
     conn.close()
 
-    return render_template_string(TRACK_HTML, order=order)
-
+    return render_template_string(TRACK_HTML, order=order, stages=STAGES)
 
 # -------------------------
 # RUN
