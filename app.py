@@ -6,23 +6,29 @@ app = Flask(__name__)
 app.secret_key = "secret123"
 
 
-# -------------------------
-# DATABASE CONNECTION
-# -------------------------
 def get_db():
     url = os.environ.get("DATABASE_URL")
-    if not url:
-        raise Exception("DATABASE_URL is missing")
     return psycopg2.connect(url, sslmode="require")
 
 
-# -------------------------
-# CREATE TABLES ON START
-# -------------------------
-def init_db():
+@app.route("/admin", methods=["GET", "POST"])
+def admin():
+    if request.method == "POST":
+        if request.form.get("password") == "shopadmin":
+            session["admin"] = True
+            return redirect("/dashboard")
+    return render_template("admin.html")
+
+
+@app.route("/dashboard", methods=["GET", "POST"])
+def dashboard():
+    if not session.get("admin"):
+        return redirect("/admin")
+
     conn = get_db()
     c = conn.cursor()
 
+    # 🔥 CREATE TABLES RIGHT HERE (guaranteed)
     c.execute("""
     CREATE TABLE IF NOT EXISTS orders (
         id SERIAL PRIMARY KEY,
@@ -40,42 +46,9 @@ def init_db():
         status TEXT
     )
     """)
-
     conn.commit()
-    conn.close()
 
-
-# 🔥 RUN DB INIT IMMEDIATELY
-try:
-    init_db()
-except Exception as e:
-    print("DB INIT ERROR:", e)
-
-
-# -------------------------
-# ADMIN LOGIN
-# -------------------------
-@app.route("/admin", methods=["GET", "POST"])
-def admin():
-    if request.method == "POST":
-        if request.form.get("password") == "shopadmin":
-            session["admin"] = True
-            return redirect("/dashboard")
-    return render_template("admin.html")
-
-
-# -------------------------
-# DASHBOARD
-# -------------------------
-@app.route("/dashboard", methods=["GET", "POST"])
-def dashboard():
-    if not session.get("admin"):
-        return redirect("/admin")
-
-    conn = get_db()
-    c = conn.cursor()
-
-    # UPDATE STATUS
+    # UPDATE
     if request.method == "POST":
         code = request.form["order_code"]
         status = request.form["status"]
@@ -84,7 +57,7 @@ def dashboard():
         c.execute("UPDATE cards SET status=%s WHERE order_code=%s", (status, code))
         conn.commit()
 
-    # FETCH DATA
+    # FETCH
     c.execute("SELECT * FROM orders")
     orders = c.fetchall()
 
@@ -93,9 +66,6 @@ def dashboard():
     return render_template("dashboard.html", orders=orders)
 
 
-# -------------------------
-# RUN APP
-# -------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
