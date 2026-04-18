@@ -1,19 +1,13 @@
-<!DOCTYPE html>
-<html>
-<body>
-    <h2>Dashboard</h2>
+<h2>Dashboard</h2>
 
-    <form method="POST">
-        <input name="order_code" placeholder="Order Code">
-        <input name="status" placeholder="Status">
-        <button type="submit">Update</button>
-    </form>
+<form method="POST">
+    <input name="order_code" placeholder="Order Code">
+    <input name="status" placeholder="Status">
+    <button type="submit">Update</button>
+</form>
 
-    <h3>Orders</h3>
-    <ul>
-        {% for order in orders %}
-            <li>{{ order }}</li>
-        {% endfor %}
-    </ul>
-</body>
-</html>
+<ul>
+{% for order in orders %}
+    <li>{{ order }}</li>
+{% endfor %}
+</ul>
