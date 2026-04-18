@@ -1,4 +1,4 @@
-from flask import Flask, render_template_string, request, redirect, session
+from flask import Flask, request, redirect, session, render_template_string
 import psycopg2
 import os
 
@@ -8,37 +8,86 @@ app.secret_key = "secret123"
 
 def get_db():
     url = os.environ.get("DATABASE_URL")
-    if not url:
-        raise Exception("DATABASE_URL is missing")
     return psycopg2.connect(url, sslmode="require")
 
 
-# 🔥 SIMPLE BUILT-IN PAGES (NO TEMPLATE FILES NEEDED)
+# -------------------------
+# HTML TEMPLATES (INLINE)
+# -------------------------
 
 ADMIN_HTML = """
 <h2>Admin Login</h2>
 <form method="POST">
     <input type="password" name="password" placeholder="Password">
-    <button type="submit">Login</button>
+    <button>Login</button>
 </form>
 """
 
 DASHBOARD_HTML = """
-<h2>Dashboard</h2>
+<h2>Admin Dashboard</h2>
 
+<h3>Add PSA Order</h3>
 <form method="POST">
-    <input name="order_code" placeholder="Order Code">
-    <input name="status" placeholder="Status">
-    <button type="submit">Update</button>
+    <input name="customer_name" placeholder="Customer Name" required>
+    <input name="email" placeholder="Email" required>
+    <input name="order_code" placeholder="PSA Order #" required>
+    <input name="status" placeholder="Status (e.g. Received)" required>
+    <button>Add Order</button>
 </form>
 
-<h3>Orders</h3>
+<h3>All Orders</h3>
 <ul>
 {% for o in orders %}
-    <li>{{ o }}</li>
+    <li>
+        {{ o[3] }} | {{ o[2] }} |
+        <a href="/track/{{ o[1] }}">Track</a>
+    </li>
 {% endfor %}
 </ul>
 """
+
+TRACK_HTML = """
+<h2>Order Tracking</h2>
+
+{% if order %}
+    <p><b>Order #:</b> {{ order[1] }}</p>
+    <p><b>Status:</b> {{ order[4] }}</p>
+    <p><b>Customer:</b> {{ order[2] }}</p>
+{% else %}
+    <p>Order not found</p>
+{% endif %}
+"""
+
+
+# -------------------------
+# INIT DB
+# -------------------------
+
+def init_db():
+    conn = get_db()
+    c = conn.cursor()
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS orders (
+        id SERIAL PRIMARY KEY,
+        order_code TEXT,
+        customer_name TEXT,
+        email TEXT,
+        status TEXT
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+# -------------------------
+# ROUTES
+# -------------------------
+
+@app.route("/")
+def home():
+    return redirect("/admin")
 
 
 @app.route("/admin", methods=["GET", "POST"])
@@ -55,48 +104,47 @@ def dashboard():
     if not session.get("admin"):
         return redirect("/admin")
 
+    init_db()
+
     conn = get_db()
     c = conn.cursor()
 
-    # create tables if missing
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS orders (
-        id SERIAL PRIMARY KEY,
-        order_code TEXT,
-        email TEXT,
-        status TEXT
-    )
-    """)
-
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS cards (
-        id SERIAL PRIMARY KEY,
-        order_code TEXT,
-        name TEXT,
-        status TEXT
-    )
-    """)
-
-    conn.commit()
-
-    # update
     if request.method == "POST":
-        code = request.form.get("order_code")
-        status = request.form.get("status")
+        c.execute(
+            "INSERT INTO orders (order_code, customer_name, email, status) VALUES (%s,%s,%s,%s)",
+            (
+                request.form["order_code"],
+                request.form["customer_name"],
+                request.form["email"],
+                request.form["status"],
+            ),
+        )
+        conn.commit()
 
-        if code and status:
-            c.execute("UPDATE orders SET status=%s WHERE order_code=%s", (status, code))
-            c.execute("UPDATE cards SET status=%s WHERE order_code=%s", (status, code))
-            conn.commit()
-
-    # fetch
-    c.execute("SELECT * FROM orders")
+    c.execute("SELECT * FROM orders ORDER BY id DESC")
     orders = c.fetchall()
 
     conn.close()
 
     return render_template_string(DASHBOARD_HTML, orders=orders)
 
+
+@app.route("/track/<order_code>")
+def track(order_code):
+    conn = get_db()
+    c = conn.cursor()
+
+    c.execute("SELECT * FROM orders WHERE order_code=%s", (order_code,))
+    order = c.fetchone()
+
+    conn.close()
+
+    return render_template_string(TRACK_HTML, order=order)
+
+
+# -------------------------
+# RUN
+# -------------------------
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
