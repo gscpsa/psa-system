@@ -17,36 +17,39 @@ def get_db():
 
 
 # -------------------------
-# SAFE TABLE CREATION
+# CREATE TABLES ON START
 # -------------------------
-def safe_init_db():
-    try:
-        conn = get_db()
-        c = conn.cursor()
+def init_db():
+    conn = get_db()
+    c = conn.cursor()
 
-        c.execute("""
-        CREATE TABLE IF NOT EXISTS orders (
-            id SERIAL PRIMARY KEY,
-            order_code TEXT,
-            email TEXT,
-            status TEXT
-        )
-        """)
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS orders (
+        id SERIAL PRIMARY KEY,
+        order_code TEXT,
+        email TEXT,
+        status TEXT
+    )
+    """)
 
-        c.execute("""
-        CREATE TABLE IF NOT EXISTS cards (
-            id SERIAL PRIMARY KEY,
-            order_code TEXT,
-            name TEXT,
-            status TEXT
-        )
-        """)
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS cards (
+        id SERIAL PRIMARY KEY,
+        order_code TEXT,
+        name TEXT,
+        status TEXT
+    )
+    """)
 
-        conn.commit()
-        conn.close()
+    conn.commit()
+    conn.close()
 
-    except Exception as e:
-        print("SAFE INIT ERROR:", e)
+
+# 🔥 RUN DB INIT IMMEDIATELY
+try:
+    init_db()
+except Exception as e:
+    print("DB INIT ERROR:", e)
 
 
 # -------------------------
@@ -68,9 +71,6 @@ def admin():
 def dashboard():
     if not session.get("admin"):
         return redirect("/admin")
-
-    # 🔥 THIS CREATES TABLES AUTOMATICALLY
-    safe_init_db()
 
     conn = get_db()
     c = conn.cursor()
