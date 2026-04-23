@@ -5,21 +5,18 @@ import os
 import io
 
 app = Flask(__name__)
-
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 def get_conn():
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
-# ---------- HARD RESET SCHEMA ----------
-def setup_database():
+# ---------- SAFE TABLE SETUP (no drop) ----------
+def ensure_table():
     conn = get_conn()
     cur = conn.cursor()
 
-    cur.execute("DROP TABLE IF EXISTS submissions;")
-
     cur.execute("""
-    CREATE TABLE submissions (
+    CREATE TABLE IF NOT EXISTS submissions (
         id SERIAL PRIMARY KEY,
         submission_number TEXT UNIQUE,
         submission_date TEXT,
@@ -41,7 +38,7 @@ def setup_database():
     cur.close()
     conn.close()
 
-setup_database()
+ensure_table()
 
 # ---------- HELPERS ----------
 def clean(val):
@@ -55,9 +52,11 @@ def clean(val):
 def read_any(file_storage):
     filename = (file_storage.filename or "").lower()
 
+    # Excel
     if filename.endswith((".xlsx", ".xls")):
         return pd.read_excel(file_storage)
 
+    # CSV
     raw = file_storage.read()
     file_storage.seek(0)
 
@@ -78,7 +77,7 @@ def read_any(file_storage):
         except:
             continue
 
-    raise Exception("Unable to parse file")
+    raise Exception("Unable to parse CSV")
 
 def extract_row(row):
     data = {
@@ -211,6 +210,7 @@ def upload():
                     d["notes"]
                 ))
 
+                # psycopg2 rowcount is 1 for insert or update here; track both
                 inserted += 1
 
             except Exception as e:
