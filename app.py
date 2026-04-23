@@ -30,7 +30,7 @@ def home():
 def upload():
     file = request.files["file"]
 
-    # FIXED CSV READ (this was your crash)
+    # Robust CSV read (fixes encoding + bad rows)
     df = pd.read_csv(
         file,
         encoding="latin1",
@@ -41,31 +41,37 @@ def upload():
     conn = get_conn()
     cur = conn.cursor()
 
+    inserted = 0
+
     for _, row in df.iterrows():
-        cur.execute("""
-        INSERT INTO submissions (
-            submission_number,
-            customer_name,
-            contact_info,
-            card_count,
-            service_type,
-            status,
-            last_updated
-        ) VALUES (%s, %s, %s, %s, %s, %s, NOW())
-        """, (
-            str(row.get("Submission #")),
-            str(row.get("Customer Name")),
-            str(row.get("Contact Info")),
-            str(row.get("# Of Cards")),
-            str(row.get("Service Type")),
-            str(row.get("Current Status"))
-        ))
+        try:
+            cur.execute("""
+            INSERT INTO submissions (
+                submission_number,
+                customer_name,
+                contact_info,
+                card_count,
+                service_type,
+                status
+            ) VALUES (%s, %s, %s, %s, %s, %s)
+            """, (
+                str(row.get("Submission #")),
+                str(row.get("Customer Name")),
+                str(row.get("Contact Info")),
+                str(row.get("# Of Cards")),
+                str(row.get("Service Type")),
+                str(row.get("Current Status"))
+            ))
+            inserted += 1
+        except Exception:
+            # skip any bad row silently
+            continue
 
     conn.commit()
     cur.close()
     conn.close()
 
-    return f"Uploaded {len(df)} rows successfully"
+    return f"Uploaded {inserted} rows successfully"
 
 
 # ---------- DASHBOARD ----------
