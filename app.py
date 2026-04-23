@@ -10,11 +10,13 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 def get_conn():
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
+
 # ---------- SETUP ----------
 def setup_database():
     conn = get_conn()
     cur = conn.cursor()
 
+    # Create table
     cur.execute("""
     CREATE TABLE IF NOT EXISTS submissions (
         id SERIAL PRIMARY KEY,
@@ -34,19 +36,36 @@ def setup_database():
     );
     """)
 
+    # 🔥 CLEAN duplicates BEFORE constraint
+    cur.execute("""
+    DELETE FROM submissions a
+    USING submissions b
+    WHERE a.id < b.id
+    AND a.submission_number = b.submission_number;
+    """)
+
+    # 🔥 DROP broken constraint if exists
+    try:
+        cur.execute("ALTER TABLE submissions DROP CONSTRAINT unique_submission;")
+    except:
+        pass
+
+    # 🔥 ADD clean UNIQUE constraint
     try:
         cur.execute("""
         ALTER TABLE submissions
         ADD CONSTRAINT unique_submission UNIQUE (submission_number);
         """)
-    except:
-        pass
+        print("✅ UNIQUE constraint active")
+    except Exception as e:
+        print("Constraint note:", e)
 
     conn.commit()
     cur.close()
     conn.close()
 
 setup_database()
+
 
 # ---------- HELPERS ----------
 def clean(val):
@@ -63,6 +82,7 @@ def to_int(val):
     except:
         return 0
 
+
 # ---------- HOME ----------
 @app.route("/")
 def home():
@@ -76,6 +96,7 @@ def home():
     <a href="/dashboard">View Dashboard</a>
     """
 
+
 # ---------- UPLOAD ----------
 @app.route("/upload", methods=["POST"])
 def upload():
@@ -83,10 +104,16 @@ def upload():
 
     df = pd.read_excel(file)
 
+    # Clean headers
     df.columns = df.columns.astype(str).str.strip()
     df = df.loc[:, ~df.columns.str.contains("^Unnamed", na=False)]
 
-    submission_col = [c for c in df.columns if "submission" in c.lower()][0]
+    # Find submission column
+    submission_col = None
+    for col in df.columns:
+        if "submission" in col.lower():
+            submission_col = col
+            break
 
     conn = get_conn()
     cur = conn.cursor()
@@ -157,6 +184,7 @@ def upload():
 
     return f"<h2>Uploaded/Updated {inserted} rows | Errors: {errors}</h2><a href='/dashboard'>Dashboard</a>"
 
+
 # ---------- DASHBOARD ----------
 @app.route("/dashboard")
 def dashboard():
@@ -164,25 +192,56 @@ def dashboard():
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT submission_number, customer_name, current_status, last_updated
+        SELECT
+            submission_date,
+            submission_number,
+            customer_name,
+            contact_info,
+            card_count,
+            service_type,
+            est_cost,
+            prep_needed,
+            customer_paid,
+            current_status,
+            decalared_value,
+            notes,
+            last_updated
         FROM submissions
         ORDER BY last_updated DESC
     """)
 
     rows = cur.fetchall()
 
-    html = "<h2>Dashboard</h2><table border=1>"
-    html += "<tr><th>Submission</th><th>Name</th><th>Status</th><th>Updated</th></tr>"
+    html = "<h2>PSA Submissions</h2><table border=1 cellpadding=5 cellspacing=0>"
+
+    html += """
+    <tr>
+        <th>Date</th>
+        <th>Submission #</th>
+        <th>Name</th>
+        <th>Contact</th>
+        <th># Cards</th>
+        <th>Service</th>
+        <th>Est Cost</th>
+        <th>Prep</th>
+        <th>Paid</th>
+        <th>Status</th>
+        <th>Declared</th>
+        <th>Notes</th>
+        <th>Updated</th>
+    </tr>
+    """
 
     for r in rows:
         html += "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>"
 
-    html += "</table><br><a href='/'>Upload</a>"
+    html += "</table><br><a href='/'>Upload More</a>"
 
     cur.close()
     conn.close()
 
     return html
+
 
 # ---------- RUN ----------
 if __name__ == "__main__":
