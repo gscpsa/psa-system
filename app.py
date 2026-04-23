@@ -16,49 +16,17 @@ def setup_database():
     conn = get_conn()
     cur = conn.cursor()
 
-    # Create table
+    # Drop everything and start clean
+    cur.execute("DROP TABLE IF EXISTS submissions;")
+
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS submissions (
+    CREATE TABLE submissions (
         id SERIAL PRIMARY KEY,
-        submission_date TEXT,
         submission_number TEXT,
         customer_name TEXT,
-        contact_info TEXT,
-        card_count INTEGER,
-        service_type TEXT,
-        est_cost TEXT,
-        prep_needed TEXT,
-        customer_paid TEXT,
-        current_status TEXT,
-        decalared_value TEXT,
-        notes TEXT,
-        last_updated TIMESTAMP DEFAULT NOW()
+        current_status TEXT
     );
     """)
-
-    # 🔥 CLEAN duplicates BEFORE constraint
-    cur.execute("""
-    DELETE FROM submissions a
-    USING submissions b
-    WHERE a.id < b.id
-    AND a.submission_number = b.submission_number;
-    """)
-
-    # 🔥 DROP broken constraint if exists
-    try:
-        cur.execute("ALTER TABLE submissions DROP CONSTRAINT unique_submission;")
-    except:
-        pass
-
-    # 🔥 ADD clean UNIQUE constraint
-    try:
-        cur.execute("""
-        ALTER TABLE submissions
-        ADD CONSTRAINT unique_submission UNIQUE (submission_number);
-        """)
-        print("✅ UNIQUE constraint active")
-    except Exception as e:
-        print("Constraint note:", e)
 
     conn.commit()
     cur.close()
@@ -67,33 +35,17 @@ def setup_database():
 setup_database()
 
 
-# ---------- HELPERS ----------
-def clean(val):
-    try:
-        if pd.isna(val):
-            return ""
-    except:
-        pass
-    return str(val).strip()
-
-def to_int(val):
-    try:
-        return int(float(val))
-    except:
-        return 0
-
-
 # ---------- HOME ----------
 @app.route("/")
 def home():
     return """
-    <h2>Upload PSA Excel File</h2>
+    <h2>Upload Excel</h2>
     <form action="/upload" method="post" enctype="multipart/form-data">
-        <input type="file" name="file" accept=".xlsx,.xls">
+        <input type="file" name="file">
         <button type="submit">Upload</button>
     </form>
     <br>
-    <a href="/dashboard">View Dashboard</a>
+    <a href="/dashboard">Dashboard</a>
     """
 
 
@@ -104,11 +56,11 @@ def upload():
 
     df = pd.read_excel(file)
 
-    # Clean headers
     df.columns = df.columns.astype(str).str.strip()
-    df = df.loc[:, ~df.columns.str.contains("^Unnamed", na=False)]
 
-    # Find submission column
+    print("HEADERS:", df.columns.tolist())
+
+    # Find correct submission column
     submission_col = None
     for col in df.columns:
         if "submission" in col.lower():
@@ -123,66 +75,29 @@ def upload():
 
     for _, row in df.iterrows():
         try:
-            submission_number = clean(row.get(submission_col))
+            submission = str(row.get(submission_col, "")).strip()
+            name = str(row.get("Customer Name", "")).strip()
+            status = str(row.get("Current Status", "")).strip()
 
-            if not submission_number:
+            if not submission:
                 continue
 
             cur.execute("""
-                INSERT INTO submissions (
-                    submission_date,
-                    submission_number,
-                    customer_name,
-                    contact_info,
-                    card_count,
-                    service_type,
-                    est_cost,
-                    prep_needed,
-                    customer_paid,
-                    current_status,
-                    decalared_value,
-                    notes
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (submission_number)
-                DO UPDATE SET
-                    customer_name = EXCLUDED.customer_name,
-                    contact_info = EXCLUDED.contact_info,
-                    card_count = EXCLUDED.card_count,
-                    service_type = EXCLUDED.service_type,
-                    est_cost = EXCLUDED.est_cost,
-                    prep_needed = EXCLUDED.prep_needed,
-                    customer_paid = EXCLUDED.customer_paid,
-                    current_status = EXCLUDED.current_status,
-                    decalared_value = EXCLUDED.decalared_value,
-                    notes = EXCLUDED.notes,
-                    last_updated = NOW()
-            """, (
-                clean(row.get("s")),
-                submission_number,
-                clean(row.get("Customer Name")),
-                clean(row.get("Contact Info")),
-                to_int(row.get("# Of Cards")),
-                clean(row.get("Service Type")),
-                clean(row.get("Est Cost")),
-                clean(row.get("Prep Needed")),
-                clean(row.get("Customer Paid")),
-                clean(row.get("Current Status")),
-                clean(row.get("Decalared Value")),
-                clean(row.get("Notes")),
-            ))
+                INSERT INTO submissions (submission_number, customer_name, current_status)
+                VALUES (%s, %s, %s)
+            """, (submission, name, status))
 
             inserted += 1
 
         except Exception as e:
             print("ROW ERROR:", e)
             errors += 1
-            continue
 
     conn.commit()
     cur.close()
     conn.close()
 
-    return f"<h2>Uploaded/Updated {inserted} rows | Errors: {errors}</h2><a href='/dashboard'>Dashboard</a>"
+    return f"<h2>Inserted {inserted} rows | Errors: {errors}</h2><a href='/dashboard'>Dashboard</a>"
 
 
 # ---------- DASHBOARD ----------
@@ -191,51 +106,16 @@ def dashboard():
     conn = get_conn()
     cur = conn.cursor()
 
-    cur.execute("""
-        SELECT
-            submission_date,
-            submission_number,
-            customer_name,
-            contact_info,
-            card_count,
-            service_type,
-            est_cost,
-            prep_needed,
-            customer_paid,
-            current_status,
-            decalared_value,
-            notes,
-            last_updated
-        FROM submissions
-        ORDER BY last_updated DESC
-    """)
-
+    cur.execute("SELECT * FROM submissions ORDER BY id DESC")
     rows = cur.fetchall()
 
-    html = "<h2>PSA Submissions</h2><table border=1 cellpadding=5 cellspacing=0>"
-
-    html += """
-    <tr>
-        <th>Date</th>
-        <th>Submission #</th>
-        <th>Name</th>
-        <th>Contact</th>
-        <th># Cards</th>
-        <th>Service</th>
-        <th>Est Cost</th>
-        <th>Prep</th>
-        <th>Paid</th>
-        <th>Status</th>
-        <th>Declared</th>
-        <th>Notes</th>
-        <th>Updated</th>
-    </tr>
-    """
+    html = "<h2>Dashboard</h2><table border=1>"
+    html += "<tr><th>ID</th><th>Submission</th><th>Name</th><th>Status</th></tr>"
 
     for r in rows:
         html += "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>"
 
-    html += "</table><br><a href='/'>Upload More</a>"
+    html += "</table><br><a href='/'>Upload</a>"
 
     cur.close()
     conn.close()
