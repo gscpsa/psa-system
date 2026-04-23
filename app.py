@@ -15,32 +15,31 @@ def get_conn():
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
 # =========================
-# INIT TABLE
+# INIT TABLE (SAFE)
 # =========================
 def init_db():
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS submissions (
-        submission_number TEXT PRIMARY KEY,
-        status TEXT,
-        raw_data JSONB,
-        last_updated TIMESTAMP DEFAULT NOW()
-    )
-    """)
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-# run safely on first request
-@app.before_request
-def setup():
     try:
-        init_db()
+        conn = get_conn()
+        cur = conn.cursor()
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS submissions (
+            submission_number TEXT PRIMARY KEY,
+            status TEXT,
+            raw_data JSONB,
+            last_updated TIMESTAMP DEFAULT NOW()
+        )
+        """)
+
+        conn.commit()
+        cur.close()
+        conn.close()
     except Exception as e:
         print("INIT ERROR:", e)
+
+@app.before_request
+def setup():
+    init_db()
 
 # =========================
 # ERROR HANDLER
@@ -230,7 +229,7 @@ def upload():
     """
 
 # =========================
-# PDF UPLOAD (FIXED)
+# PDF UPLOAD (FINAL FIX)
 # =========================
 @app.route("/upload_psa", methods=["GET","POST"])
 def upload_psa():
@@ -240,15 +239,18 @@ def upload_psa():
         if not file:
             return "No file uploaded"
 
-        try:
-            import pdfplumber
-        except:
-            return "ERROR: pdfplumber not installed"
+        import pdfplumber
+
+        # 🔥 FIX: convert file → bytes → BytesIO
+        file_bytes = file.read()
+
+        if not file_bytes:
+            return "Empty file"
 
         text = ""
 
         try:
-            with pdfplumber.open(file) as pdf:
+            with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
                 for page in pdf.pages:
                     t = page.extract_text()
                     if t:
@@ -257,7 +259,7 @@ def upload_psa():
             return f"PDF ERROR: {e}"
 
         if not text.strip():
-            return "ERROR: No readable text in PDF"
+            return "No readable text in PDF"
 
         blocks = re.split(r"Sub\s*#", text)
 
@@ -267,40 +269,36 @@ def upload_psa():
         updated = 0
 
         for b in blocks:
-            try:
-                if not b.strip() or not b[0].isdigit():
-                    continue
+            if not b.strip() or not b[0].isdigit():
+                continue
 
-                match = re.match(r"(\d+)", b)
-                if not match:
-                    continue
+            match = re.match(r"(\d+)", b)
+            if not match:
+                continue
 
-                sub = match.group(1)
+            sub = match.group(1)
 
-                if "Complete" in b:
-                    status = "Complete"
-                elif "QA Checks" in b:
-                    status = "QA Checks"
-                elif "Research & ID" in b:
-                    status = "Research & ID"
-                elif "Grading" in b:
-                    status = "Grading"
-                elif "Order Arrived" in b:
-                    status = "Order Arrived"
-                else:
-                    continue
+            if "Complete" in b:
+                status = "Complete"
+            elif "QA Checks" in b:
+                status = "QA Checks"
+            elif "Research & ID" in b:
+                status = "Research & ID"
+            elif "Grading" in b:
+                status = "Grading"
+            elif "Order Arrived" in b:
+                status = "Order Arrived"
+            else:
+                continue
 
-                cur.execute("""
-                UPDATE submissions
-                SET status=%s, last_updated=NOW()
-                WHERE submission_number=%s
-                """, (status, sub))
+            cur.execute("""
+            UPDATE submissions
+            SET status=%s, last_updated=NOW()
+            WHERE submission_number=%s
+            """, (status, sub))
 
-                if cur.rowcount > 0:
-                    updated += 1
-
-            except Exception as e:
-                print("PDF BLOCK ERROR:", e)
+            if cur.rowcount > 0:
+                updated += 1
 
         conn.commit()
         cur.close()
