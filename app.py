@@ -40,7 +40,7 @@ def ensure_table():
 
 ensure_table()
 
-# ---------- READ ----------
+# ---------- FILE READ ----------
 def read_any(file):
     name = file.filename.lower()
 
@@ -59,16 +59,6 @@ def clean(v):
         pass
     return str(v).strip()
 
-# ---------- HOME ----------
-@app.route("/")
-def home():
-    return """
-    <h2>PSA System</h2>
-    <a href="/upload">Upload</a><br>
-    <a href="/dashboard">Dashboard</a><br>
-    <a href="/search">Search</a>
-    """
-
 # ---------- UPLOAD ----------
 @app.route("/upload", methods=["GET","POST"])
 def upload():
@@ -82,22 +72,24 @@ def upload():
         cur = conn.cursor()
 
         inserted = 0
+        updated = 0
         errors = 0
 
         for _, row in df.iterrows():
             try:
                 raw = {c: clean(row[c]) for c in df.columns}
 
-                submission = raw.get("Submission #", "")
+                # exact + fallback mapping
+                submission = raw.get("Submission #") or raw.get("Submission Number") or ""
                 date = raw.get("Submission Date", "")
                 name = raw.get("Customer Name", "")
-                contact = raw.get("Contact Info", "")
+                contact = raw.get("Contact Info") or raw.get("Email") or raw.get("Phone") or ""
                 cards = raw.get("# of Cards", "")
                 service = raw.get("Service Type", "")
                 cost = raw.get("Est Cost", "")
                 prep = raw.get("Prep Needed", "")
                 paid = raw.get("Customer Paid", "")
-                status = raw.get("Current Status", "")
+                status = raw.get("Current Status") or raw.get("Status") or ""
                 declared = raw.get("Declared Value", "")
                 notes = raw.get("Notes", "")
 
@@ -154,26 +146,27 @@ def upload():
     </form>
     """
 
-# ---------- DASHBOARD ----------
+# ---------- DASHBOARD (ALL COLUMNS) ----------
 @app.route("/dashboard")
 def dashboard():
     conn = get_conn()
     cur = conn.cursor()
 
-    cur.execute("""
-    SELECT submission_number, submission_date, customer_name, contact_info, status
-    FROM submissions
-    ORDER BY last_updated DESC
-    LIMIT 2000
-    """)
-
+    cur.execute("SELECT raw_data FROM submissions LIMIT 2000")
     rows = cur.fetchall()
 
+    # build full column list
+    keys = set()
+    for r in rows:
+        keys.update(r[0].keys())
+    keys = list(keys)
+
     html = "<h2>Dashboard</h2><table border=1>"
-    html += "<tr><th>Submission</th><th>Date</th><th>Name</th><th>Contact</th><th>Status</th></tr>"
+    html += "<tr>" + "".join(f"<th>{k}</th>" for k in keys) + "</tr>"
 
     for r in rows:
-        html += "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>"
+        data = r[0]
+        html += "<tr>" + "".join(f"<td>{data.get(k,'')}</td>" for k in keys) + "</tr>"
 
     html += "</table>"
     return html
@@ -190,14 +183,10 @@ def search():
         cur = conn.cursor()
 
         cur.execute("""
-        SELECT submission_number, customer_name, contact_info, status
-        FROM submissions
-        WHERE
-            LOWER(customer_name) LIKE LOWER(%s)
-            OR LOWER(contact_info) LIKE LOWER(%s)
-            OR LOWER(submission_number) LIKE LOWER(%s)
+        SELECT raw_data FROM submissions
+        WHERE LOWER(raw_data::text) LIKE LOWER(%s)
         LIMIT 200
-        """, (f"%{q}%", f"%{q}%", f"%{q}%"))
+        """, (f"%{q}%",))
 
         results = cur.fetchall()
 
@@ -211,7 +200,8 @@ def search():
     """
 
     for r in results:
-        html += "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>"
+        data = r[0]
+        html += "<tr>" + "".join(f"<td>{v}</td>" for v in data.values()) + "</tr>"
 
     html += "</table>"
     return html
