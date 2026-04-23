@@ -2,6 +2,7 @@ from flask import Flask, request, redirect, session, render_template_string
 import psycopg2
 import os
 import pandas as pd
+import json
 
 app = Flask(__name__)
 app.secret_key = "secret123"
@@ -14,9 +15,22 @@ def get_db():
     return psycopg2.connect(url, sslmode="require")
 
 # -------------------------
-# STATUS STAGES
+# INIT DB
 # -------------------------
-STAGES = ["Received", "Research & ID", "Grading", "Assembly", "QA Check", "Shipped"]
+def init_db():
+    conn = get_db()
+    c = conn.cursor()
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS raw_uploads (
+        id SERIAL PRIMARY KEY,
+        data JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    conn.commit()
+    conn.close()
 
 # -------------------------
 # HTML
@@ -39,97 +53,17 @@ DASHBOARD_HTML = """
     <button>Upload</button>
 </form>
 
-<h3>All Submissions</h3>
-<table border="1" cellpadding="5">
-<tr>
-<th>Submission</th><th>Name</th><th>Status</th><th>Date</th><th>Track</th>
-</tr>
+<p><a href="/debug">View Raw Data</a></p>
+"""
 
-{% for o in orders %}
-<tr>
-<td>{{ o[0] }}</td>
-<td>{{ o[1] }}</td>
-<td>{{ o[5] }}</td>
-<td>{{ o[6] }}</td>
-<td><a href="/track/{{ o[0] }}">View</a></td>
-</tr>
+DEBUG_HTML = """
+<h2>Raw Uploaded Data</h2>
+{% for row in rows %}
+<div style="margin-bottom:20px; border-bottom:1px solid #ccc;">
+<pre>{{ row }}</pre>
+</div>
 {% endfor %}
-</table>
 """
-
-TRACK_HTML = """
-<h2>Submission Tracking</h2>
-
-{% if order %}
-    <h3>Submission #: {{ order[0] }}</h3>
-    <p>Customer: {{ order[1] }}</p>
-    <p>Submitted: {{ order[6] }}</p>
-
-    <h3>Status Progress</h3>
-
-    {% for s in stages %}
-        {% if stages.index(s) < stages.index(order[5]) %}
-            <div style="color:green;">✔ {{ s }}</div>
-        {% elif s == order[5] %}
-            <div style="color:orange;">➡ {{ s }}</div>
-        {% else %}
-            <div style="color:gray;">⬜ {{ s }}</div>
-        {% endif %}
-    {% endfor %}
-
-{% else %}
-    <p>Submission not found</p>
-{% endif %}
-"""
-
-# -------------------------
-# DB INIT
-# -------------------------
-def init_db():
-    conn = get_db()
-    c = conn.cursor()
-
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS submissions (
-        submission_number TEXT PRIMARY KEY,
-        customer_name TEXT,
-        contact_info TEXT,
-        card_count INT,
-        service_type TEXT,
-        status TEXT,
-        submission_date TEXT,
-        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-
-    conn.commit()
-    conn.close()
-
-# -------------------------
-# HELPERS (ROBUST PARSING)
-# -------------------------
-def safe_int(value):
-    try:
-        # strip commas/spaces
-        return int(str(value).strip().replace(",", ""))
-    except:
-        return 0
-
-def pick(row, keys):
-    """Return first non-empty value for any of the given column names."""
-    for k in keys:
-        if k in row and pd.notna(row[k]):
-            v = str(row[k]).strip()
-            if v:
-                return v
-    return ""
-
-def normalize_columns(df):
-    # drop junk unnamed columns
-    df = df.loc[:, ~df.columns.str.contains("^Unnamed", na=False)]
-    # normalize whitespace in headers
-    df.columns = [str(c).strip() for c in df.columns]
-    return df
 
 # -------------------------
 # ROUTES
@@ -153,22 +87,10 @@ def dashboard():
         return redirect("/admin")
 
     init_db()
-
-    conn = get_db()
-    c = conn.cursor()
-
-    c.execute("""
-        SELECT submission_number, customer_name, contact_info, card_count, service_type, status, submission_date
-        FROM submissions
-        ORDER BY last_updated DESC
-    """)
-    orders = c.fetchall()
-    conn.close()
-
-    return render_template_string(DASHBOARD_HTML, orders=orders)
+    return render_template_string(DASHBOARD_HTML)
 
 # -------------------------
-# CSV/EXCEL UPLOAD (ROBUST)
+# UPLOAD (NO ASSUMPTIONS)
 # -------------------------
 
 @app.route("/upload-csv", methods=["POST"])
@@ -180,9 +102,8 @@ def upload_csv():
     if not file:
         return "No file", 400
 
-    # read excel
+    # Read ANY Excel format
     df = pd.read_excel(file)
-    df = normalize_columns(df)
 
     conn = get_db()
     c = conn.cursor()
@@ -190,69 +111,48 @@ def upload_csv():
     count = 0
 
     for _, row in df.iterrows():
-        # flexible column mapping
-        submission = pick(row, ["Submission #", "Submission", "Submission Number"])
-        if not submission:
-            continue
+        row_dict = {}
 
-        name = pick(row, ["Customer Name", "Name"])
-        contact = pick(row, ["Contact Info", "Email", "Phone"])
-        cards = safe_int(pick(row, ["# Of Cards", "Cards", "Card Count"]))
-        service = pick(row, ["Service Type", "Service"])
-        status = pick(row, ["Current Status", "Status"])
-
-        # 's' column is your submission date (per your note)
-        sub_date = pick(row, ["s", "Submission Date", "Date"])
+        # Convert row safely to JSON-safe dict
+        for col in df.columns:
+            val = row[col]
+            if pd.isna(val):
+                row_dict[col] = None
+            else:
+                row_dict[col] = str(val)
 
         c.execute("""
-        INSERT INTO submissions
-        (submission_number, customer_name, contact_info, card_count, service_type, status, submission_date)
-        VALUES (%s,%s,%s,%s,%s,%s,%s)
-        ON CONFLICT (submission_number)
-        DO UPDATE SET
-            customer_name = EXCLUDED.customer_name,
-            contact_info = EXCLUDED.contact_info,
-            card_count = EXCLUDED.card_count,
-            service_type = EXCLUDED.service_type,
-            status = EXCLUDED.status,
-            submission_date = EXCLUDED.submission_date,
-            last_updated = CURRENT_TIMESTAMP
-        """, (
-            submission,
-            name,
-            contact,
-            cards,
-            service,
-            status,
-            sub_date
-        ))
+        INSERT INTO raw_uploads (data)
+        VALUES (%s)
+        """, (json.dumps(row_dict),))
 
         count += 1
 
     conn.commit()
     conn.close()
 
-    return f"Uploaded {count} records"
+    return f"Uploaded {count} rows successfully"
 
 # -------------------------
-# TRACK PAGE
+# DEBUG VIEW (SEE REAL DATA)
 # -------------------------
 
-@app.route("/track/<submission_number>")
-def track(submission_number):
+@app.route("/debug")
+def debug():
+    if not session.get("admin"):
+        return redirect("/admin")
+
     conn = get_db()
     c = conn.cursor()
 
-    c.execute("""
-        SELECT submission_number, customer_name, contact_info, card_count, service_type, status, submission_date
-        FROM submissions
-        WHERE submission_number=%s
-    """, (submission_number,))
+    c.execute("SELECT data FROM raw_uploads ORDER BY id DESC LIMIT 50")
+    rows = c.fetchall()
 
-    order = c.fetchone()
     conn.close()
 
-    return render_template_string(TRACK_HTML, order=order, stages=STAGES)
+    formatted = [json.dumps(r[0], indent=2) for r in rows]
+
+    return render_template_string(DEBUG_HTML, rows=formatted)
 
 # -------------------------
 # RUN
