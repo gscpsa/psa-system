@@ -7,11 +7,55 @@ app = Flask(__name__)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
+
 def get_conn():
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
 
-# ---------- SAFE HELPERS ----------
+# ---------- SETUP (RUNS ON START) ----------
+def setup_database():
+    conn = get_conn()
+    cur = conn.cursor()
+
+    # Ensure table exists
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS submissions (
+        id SERIAL PRIMARY KEY,
+        submission_date TEXT,
+        submission_number TEXT,
+        customer_name TEXT,
+        contact_info TEXT,
+        card_count INTEGER,
+        service_type TEXT,
+        est_cost TEXT,
+        prep_needed TEXT,
+        customer_paid TEXT,
+        current_status TEXT,
+        decalared_value TEXT,
+        notes TEXT,
+        last_updated TIMESTAMP DEFAULT NOW()
+    );
+    """)
+
+    # Add UNIQUE constraint safely
+    try:
+        cur.execute("""
+        ALTER TABLE submissions
+        ADD CONSTRAINT unique_submission UNIQUE (submission_number);
+        """)
+        print("✅ UNIQUE constraint added")
+    except Exception as e:
+        print("Constraint exists or skipped:", e)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+setup_database()
+
+
+# ---------- HELPERS ----------
 def safe_text(val):
     try:
         if pd.isna(val):
@@ -51,10 +95,10 @@ def upload():
 
     df = pd.read_excel(file)
 
-    # clean headers
+    # Clean headers
     df.columns = df.columns.astype(str).str.strip()
 
-    # remove junk excel columns
+    # Remove junk columns
     df = df.loc[:, ~df.columns.str.contains("^Unnamed", na=False)]
 
     conn = get_conn()
