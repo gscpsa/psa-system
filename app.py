@@ -49,66 +49,58 @@ def clean(val):
         pass
     return str(val).strip()
 
-def read_any(file_storage):
-    filename = (file_storage.filename or "").lower()
+def read_any(file):
+    name = file.filename.lower()
 
-    if filename.endswith((".xlsx", ".xls")):
-        return pd.read_excel(file_storage)
+    if name.endswith(("xlsx","xls")):
+        return pd.read_excel(file)
 
-    raw = file_storage.read()
-    file_storage.seek(0)
+    raw = file.read()
+    file.seek(0)
 
-    text = None
-    for enc in ["utf-8", "latin1"]:
-        try:
-            text = raw.decode(enc)
-            break
-        except:
-            continue
+    text = raw.decode("latin1")
 
-    for sep in [",", ";", "\t"]:
-        try:
-            return pd.read_csv(io.StringIO(text), sep=sep)
-        except:
-            continue
+    return pd.read_csv(io.StringIO(text))
 
-    raise Exception("Cannot parse file")
-
+# ---------- STRONG COLUMN DETECTION ----------
 def extract_row(row):
-    data = {k: "" for k in [
-        "submission_number","submission_date","customer_name","contact_info",
-        "card_count","service_type","est_cost","prep_needed",
-        "customer_paid","status","declared_value","notes"
-    ]}
+
+    data = {
+        "submission_number": "",
+        "customer_name": "",
+        "contact_info": "",
+        "status": "",
+        "service_type": "",
+        "card_count": ""
+    }
 
     for key in row.keys():
-        k = str(key).lower()
+        k = str(key).strip().lower()
         v = clean(row.get(key))
 
-        if "submission" in k:
+        # --- submission (highest priority) ---
+        if any(x in k for x in ["submission", "#", "id"]) and not data["submission_number"]:
             data["submission_number"] = v
-        elif "date" in k or k == "s":
-            data["submission_date"] = v
-        elif "name" in k:
+
+        # --- name ---
+        elif "customer name" in k or (k == "name"):
             data["customer_name"] = v
-        elif "contact" in k or "phone" in k:
+
+        # --- contact ---
+        elif any(x in k for x in ["email","phone","contact"]):
             data["contact_info"] = v
-        elif "card" in k:
-            data["card_count"] = v
-        elif "service" in k:
-            data["service_type"] = v
-        elif "cost" in k:
-            data["est_cost"] = v
-        elif "prep" in k:
-            data["prep_needed"] = v
-        elif "paid" in k:
-            data["customer_paid"] = v
+
+        # --- status ---
         elif "status" in k:
             data["status"] = v
-        elif "declared" in k:
-            data["declared_value"] = v
-        elif "note" in k:
-            data["notes"] = v
+
+        # --- service ---
+        elif "service" in k:
+            data["service_type"] = v
+
+        # --- cards ---
+        elif "card" in k:
+            data["card_count"] = v
 
     return data
 
@@ -119,8 +111,7 @@ def home():
     <h2>PSA System</h2>
     <a href="/upload">Upload</a><br>
     <a href="/dashboard">Dashboard</a><br>
-    <a href="/staff">Staff Search</a><br>
-    <a href="/track">Customer Tracker</a>
+    <a href="/staff">Staff Search</a>
     """
 
 # ---------- UPLOAD ----------
@@ -130,6 +121,7 @@ def upload():
         file = request.files.get("file")
 
         df = read_any(file)
+        df.columns = [str(c).strip() for c in df.columns]
 
         conn = get_conn()
         cur = conn.cursor()
@@ -146,39 +138,36 @@ def upload():
                     continue
 
                 cur.execute("""
-                INSERT INTO submissions (
-                    submission_number, submission_date, customer_name,
-                    contact_info, card_count, service_type,
-                    est_cost, prep_needed, customer_paid,
-                    status, declared_value, notes
-                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                INSERT INTO submissions
+                (submission_number, customer_name, contact_info, card_count, service_type, status)
+                VALUES (%s,%s,%s,%s,%s,%s)
                 ON CONFLICT (submission_number)
                 DO UPDATE SET
-                    submission_date=EXCLUDED.submission_date,
                     customer_name=EXCLUDED.customer_name,
                     contact_info=EXCLUDED.contact_info,
                     card_count=EXCLUDED.card_count,
                     service_type=EXCLUDED.service_type,
-                    est_cost=EXCLUDED.est_cost,
-                    prep_needed=EXCLUDED.prep_needed,
-                    customer_paid=EXCLUDED.customer_paid,
-                    status=EXCLUDED.status,
-                    declared_value=EXCLUDED.declared_value,
-                    notes=EXCLUDED.notes,
-                    last_updated=NOW()
-                """, tuple(d.values()))
+                    status=EXCLUDED.status
+                """, (
+                    d["submission_number"],
+                    d["customer_name"],
+                    d["contact_info"],
+                    d["card_count"],
+                    d["service_type"],
+                    d["status"]
+                ))
 
                 inserted += 1
 
             except Exception as e:
-                print(e)
+                print("ROW ERROR:", e)
                 errors += 1
 
         conn.commit()
         cur.close()
         conn.close()
 
-        return f"Inserted/Updated: {inserted} | Errors: {errors}"
+        return f"Inserted: {inserted} | Errors: {errors}"
 
     return """
     <h3>Upload</h3>
@@ -188,66 +177,32 @@ def upload():
     </form>
     """
 
-# ---------- DASHBOARD + EDIT ----------
+# ---------- DASHBOARD ----------
 @app.route("/dashboard")
 def dashboard():
     conn = get_conn()
     cur = conn.cursor()
 
-    cur.execute("SELECT id, submission_number, customer_name, status FROM submissions ORDER BY id DESC LIMIT 200")
+    cur.execute("""
+    SELECT submission_number, customer_name, contact_info, status
+    FROM submissions
+    ORDER BY id DESC
+    LIMIT 2000
+    """)
+
     rows = cur.fetchall()
 
     html = "<h2>Dashboard</h2><table border=1>"
-    html += "<tr><th>Submission</th><th>Name</th><th>Status</th><th>Edit</th></tr>"
+    html += "<tr><th>Submission</th><th>Name</th><th>Contact</th><th>Status</th></tr>"
 
     for r in rows:
-        html += f"""
-        <tr>
-            <td>{r[1]}</td>
-            <td>{r[2]}</td>
-            <td>{r[3]}</td>
-            <td><a href="/edit/{r[0]}">Edit</a></td>
-        </tr>
-        """
+        html += "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>"
 
-    html += "</table><br><a href='/'>Back</a>"
+    html += "</table>"
 
-    cur.close()
-    conn.close()
     return html
 
-# ---------- EDIT ----------
-@app.route("/edit/<id>", methods=["GET","POST"])
-def edit(id):
-    conn = get_conn()
-    cur = conn.cursor()
-
-    if request.method == "POST":
-        status = request.form["status"]
-
-        cur.execute("UPDATE submissions SET status=%s WHERE id=%s", (status, id))
-        conn.commit()
-
-        cur.close()
-        conn.close()
-        return redirect("/dashboard")
-
-    cur.execute("SELECT submission_number, status FROM submissions WHERE id=%s", (id,))
-    row = cur.fetchone()
-
-    html = f"""
-    <h3>Edit {row[0]}</h3>
-    <form method="post">
-        <input name="status" value="{row[1]}">
-        <button>Save</button>
-    </form>
-    """
-
-    cur.close()
-    conn.close()
-    return html
-
-# ---------- STAFF SEARCH ----------
+# ---------- SEARCH ----------
 @app.route("/staff", methods=["GET","POST"])
 def staff():
     results = []
@@ -262,22 +217,19 @@ def staff():
         SELECT submission_number, customer_name, contact_info, status
         FROM submissions
         WHERE
-            LOWER(submission_number) LIKE LOWER(%s)
-            OR LOWER(customer_name) LIKE LOWER(%s)
+            LOWER(customer_name) LIKE LOWER(%s)
             OR LOWER(contact_info) LIKE LOWER(%s)
-        LIMIT 100
+            OR LOWER(submission_number) LIKE LOWER(%s)
+        LIMIT 200
         """, (f"%{q}%", f"%{q}%", f"%{q}%"))
 
         results = cur.fetchall()
 
-        cur.close()
-        conn.close()
-
     html = """
-    <h3>Staff Search</h3>
+    <h3>Search</h3>
     <form method="post">
-        <input name="q">
-        <button>Search</button>
+    <input name="q">
+    <button>Search</button>
     </form>
     <table border=1>
     """
@@ -286,41 +238,6 @@ def staff():
         html += "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>"
 
     html += "</table>"
-    return html
-
-# ---------- CUSTOMER TRACK ----------
-@app.route("/track", methods=["GET","POST"])
-def track():
-    result = None
-
-    if request.method == "POST":
-        sub = request.form["sub"]
-
-        conn = get_conn()
-        cur = conn.cursor()
-
-        cur.execute("""
-        SELECT submission_number, status
-        FROM submissions
-        WHERE submission_number=%s
-        """, (sub,))
-
-        result = cur.fetchone()
-
-        cur.close()
-        conn.close()
-
-    html = """
-    <h3>Track Submission</h3>
-    <form method="post">
-        <input name="sub">
-        <button>Check</button>
-    </form>
-    """
-
-    if result:
-        html += f"<p>Status: {result[1]}</p>"
-
     return html
 
 if __name__ == "__main__":
