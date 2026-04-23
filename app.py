@@ -10,7 +10,6 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 def get_conn():
     return psycopg2.connect(DATABASE_URL)
 
-
 # ---------- HOME ----------
 @app.route("/")
 def home():
@@ -24,13 +23,12 @@ def home():
     <a href="/dashboard">View Dashboard</a>
     """
 
-
 # ---------- UPLOAD ----------
 @app.route("/upload", methods=["POST"])
 def upload():
     file = request.files["file"]
 
-    # Robust CSV read (fixes encoding + bad rows)
+    # Robust CSV read
     df = pd.read_csv(
         file,
         encoding="latin1",
@@ -38,8 +36,25 @@ def upload():
         on_bad_lines="skip"
     )
 
-    # 🔥 CRITICAL: normalize column names (fixes your 0 rows issue)
+    # 🔥 Normalize headers
     df.columns = df.columns.str.strip()
+
+    # 🔥 DEBUG: print real headers (you will see in Railway logs)
+    print("CSV HEADERS:", df.columns.tolist())
+
+    # 🔥 Auto-map columns (no exact match needed)
+    def find_col(keyword):
+        for col in df.columns:
+            if keyword.lower() in col.lower():
+                return col
+        return None
+
+    col_submission = find_col("submission")
+    col_name = find_col("name")
+    col_contact = find_col("contact")
+    col_cards = find_col("card")
+    col_service = find_col("service")
+    col_status = find_col("status")
 
     conn = get_conn()
     cur = conn.cursor()
@@ -48,14 +63,13 @@ def upload():
 
     for _, row in df.iterrows():
         try:
-            submission = str(row.get("Submission #", "")).strip()
-            name = str(row.get("Customer Name", "")).strip()
-            contact = str(row.get("Contact Info", "")).strip()
-            cards = str(row.get("# Of Cards", "")).strip()
-            service = str(row.get("Service Type", "")).strip()
-            status = str(row.get("Current Status", "")).strip()
+            submission = str(row.get(col_submission, "")).strip()
+            name = str(row.get(col_name, "")).strip()
+            contact = str(row.get(col_contact, "")).strip()
+            cards = str(row.get(col_cards, "")).strip()
+            service = str(row.get(col_service, "")).strip()
+            status = str(row.get(col_status, "")).strip()
 
-            # Skip empty garbage rows
             if not submission and not name:
                 continue
 
@@ -73,7 +87,7 @@ def upload():
             inserted += 1
 
         except Exception as e:
-            print("Row skipped:", e)
+            print("ROW ERROR:", e)
             continue
 
     conn.commit()
@@ -81,7 +95,6 @@ def upload():
     conn.close()
 
     return f"<h2>Uploaded {inserted} rows successfully</h2><a href='/dashboard'>Go to dashboard</a>"
-
 
 # ---------- DASHBOARD ----------
 @app.route("/dashboard")
@@ -116,7 +129,6 @@ def dashboard():
     conn.close()
 
     return html
-
 
 # ---------- RUN ----------
 if __name__ == "__main__":
