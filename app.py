@@ -53,15 +53,15 @@ def clean(val):
 @app.route("/")
 def home():
     return """
-    <h2>Upload PSA Excel File</h2>
+    <h2>Staff Tools</h2>
     <form action="/upload" method="post" enctype="multipart/form-data">
-        <input type="file" name="file">
-        <button type="submit">Upload</button>
+        <input type="file" name="file" accept=".xlsx,.xls">
+        <button type="submit">Upload PSA Excel File</button>
     </form>
     <br>
     <a href="/dashboard">Dashboard</a>
-    <br><br>
-    <a href="/track">Track Submission</a>
+    <br>
+    <a href="/staff-search">Staff Search</a>
     """
 
 # ---------- UPLOAD ----------
@@ -92,51 +92,86 @@ def upload():
                 skipped += 1
                 continue
 
-            data = (
-                clean(row.get("s")),
-                submission,
-                clean(row.get("Customer Name")),
-                clean(row.get("Contact Info")),
-                clean(row.get("# Of Cards")),
-                clean(row.get("Service Type")),
-                clean(row.get("Est Cost")),
-                clean(row.get("Prep Needed")),
-                clean(row.get("Customer Paid")),
-                clean(row.get("Current Status")),
-                clean(row.get("Decalared Value")),
-                clean(row.get("Notes")),
-            )
+            submission_date = clean(row.get("s"))
+            customer_name = clean(row.get("Customer Name"))
+            contact_info = clean(row.get("Contact Info"))
+            card_count = clean(row.get("# Of Cards"))
+            service_type = clean(row.get("Service Type"))
+            est_cost = clean(row.get("Est Cost"))
+            prep_needed = clean(row.get("Prep Needed"))
+            customer_paid = clean(row.get("Customer Paid"))
+            current_status = clean(row.get("Current Status"))
+            declared_value = clean(row.get("Decalared Value"))
+            notes = clean(row.get("Notes"))
 
-            cur.execute("SELECT id FROM submissions WHERE submission_number=%s", (submission,))
+            cur.execute(
+                "SELECT id FROM submissions WHERE submission_number = %s LIMIT 1",
+                (submission,)
+            )
             exists = cur.fetchone()
 
             if exists:
                 cur.execute("""
-                    UPDATE submissions SET
-                        submission_date=%s,
-                        customer_name=%s,
-                        contact_info=%s,
-                        card_count=%s,
-                        service_type=%s,
-                        est_cost=%s,
-                        prep_needed=%s,
-                        customer_paid=%s,
-                        current_status=%s,
-                        declared_value=%s,
-                        notes=%s,
-                        last_updated=NOW()
-                    WHERE submission_number=%s
-                """, data[0:1] + data[2:] + (submission,))
+                    UPDATE submissions
+                    SET
+                        submission_date = %s,
+                        customer_name = %s,
+                        contact_info = %s,
+                        card_count = %s,
+                        service_type = %s,
+                        est_cost = %s,
+                        prep_needed = %s,
+                        customer_paid = %s,
+                        current_status = %s,
+                        declared_value = %s,
+                        notes = %s,
+                        last_updated = NOW()
+                    WHERE submission_number = %s
+                """, (
+                    submission_date,
+                    customer_name,
+                    contact_info,
+                    card_count,
+                    service_type,
+                    est_cost,
+                    prep_needed,
+                    customer_paid,
+                    current_status,
+                    declared_value,
+                    notes,
+                    submission
+                ))
                 updated += 1
             else:
                 cur.execute("""
                     INSERT INTO submissions (
-                        submission_date, submission_number, customer_name,
-                        contact_info, card_count, service_type,
-                        est_cost, prep_needed, customer_paid,
-                        current_status, declared_value, notes
+                        submission_date,
+                        submission_number,
+                        customer_name,
+                        contact_info,
+                        card_count,
+                        service_type,
+                        est_cost,
+                        prep_needed,
+                        customer_paid,
+                        current_status,
+                        declared_value,
+                        notes
                     ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                """, data)
+                """, (
+                    submission_date,
+                    submission,
+                    customer_name,
+                    contact_info,
+                    card_count,
+                    service_type,
+                    est_cost,
+                    prep_needed,
+                    customer_paid,
+                    current_status,
+                    declared_value,
+                    notes
+                ))
                 inserted += 1
 
         except Exception as e:
@@ -149,10 +184,11 @@ def upload():
 
     return f"""
     <h2>Upload Complete</h2>
-    Inserted: {inserted}<br>
-    Updated: {updated}<br>
-    Skipped: {skipped}<br>
-    <a href='/dashboard'>Dashboard</a>
+    <p>Inserted: {inserted}</p>
+    <p>Updated: {updated}</p>
+    <p>Skipped: {skipped}</p>
+    <a href='/dashboard'>Dashboard</a><br>
+    <a href='/staff-search'>Staff Search</a>
     """
 
 # ---------- DASHBOARD ----------
@@ -162,76 +198,176 @@ def dashboard():
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT submission_number, customer_name, current_status, last_updated
+        SELECT
+            submission_date,
+            submission_number,
+            customer_name,
+            contact_info,
+            card_count,
+            service_type,
+            est_cost,
+            prep_needed,
+            customer_paid,
+            current_status,
+            declared_value,
+            notes,
+            last_updated
         FROM submissions
         ORDER BY last_updated DESC
+        LIMIT 500
     """)
 
     rows = cur.fetchall()
 
-    html = "<h2>Dashboard</h2><table border=1>"
-    html += "<tr><th>Submission</th><th>Name</th><th>Status</th><th>Updated</th></tr>"
+    html = "<h2>Dashboard</h2><table border=1 cellpadding=5 cellspacing=0>"
+    html += """
+    <tr>
+        <th>Date</th>
+        <th>Submission</th>
+        <th>Name</th>
+        <th>Contact</th>
+        <th>Cards</th>
+        <th>Service</th>
+        <th>Cost</th>
+        <th>Prep</th>
+        <th>Paid</th>
+        <th>Status</th>
+        <th>Declared</th>
+        <th>Notes</th>
+        <th>Updated</th>
+    </tr>
+    """
 
     for r in rows:
         html += "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>"
 
-    html += "</table><br><a href='/'>Home</a>"
+    html += "</table><br><a href='/'>Home</a><br><a href='/staff-search'>Staff Search</a>"
 
     cur.close()
     conn.close()
 
     return html
 
-# ---------- TRACK SEARCH ----------
-@app.route("/track")
-def track_search():
+# ---------- STAFF SEARCH ----------
+@app.route("/staff-search")
+def staff_search():
     return """
-    <h2>Track Your Submission</h2>
-    <form action="/track_result">
-        <input name="submission" placeholder="Enter Submission #">
-        <button>Search</button>
+    <h2>Staff Search</h2>
+    <form action="/staff-results" method="get">
+        <p>
+            <label>Submission #</label><br>
+            <input name="submission" placeholder="e.g. 14550985">
+        </p>
+        <p>
+            <label>Name</label><br>
+            <input name="name" placeholder="e.g. Jerry Warren">
+        </p>
+        <p>
+            <label>Phone / Contact</label><br>
+            <input name="contact" placeholder="e.g. 770-401-9701">
+        </p>
+        <p>
+            <label>Status</label><br>
+            <input name="status" placeholder="e.g. Submitted">
+        </p>
+        <p>
+            <label>Service Type</label><br>
+            <input name="service" placeholder="e.g. Value">
+        </p>
+        <button type="submit">Search</button>
     </form>
+    <br>
+    <a href="/">Home</a>
     """
 
-# ---------- TRACK RESULT ----------
-@app.route("/track_result")
-def track_result():
-    submission = request.args.get("submission")
+# ---------- STAFF RESULTS ----------
+@app.route("/staff-results")
+def staff_results():
+    submission = clean(request.args.get("submission"))
+    name = clean(request.args.get("name"))
+    contact = clean(request.args.get("contact"))
+    status = clean(request.args.get("status"))
+    service = clean(request.args.get("service"))
 
     conn = get_conn()
     cur = conn.cursor()
 
-    cur.execute("""
+    query = """
         SELECT
+            submission_date,
             submission_number,
             customer_name,
+            contact_info,
             card_count,
             service_type,
+            est_cost,
+            prep_needed,
+            customer_paid,
             current_status,
+            declared_value,
+            notes,
             last_updated
         FROM submissions
-        WHERE submission_number=%s
-    """, (submission,))
+        WHERE 1=1
+    """
+    params = []
 
-    row = cur.fetchone()
+    if submission:
+        query += " AND submission_number ILIKE %s"
+        params.append(f"%{submission}%")
+
+    if name:
+        query += " AND customer_name ILIKE %s"
+        params.append(f"%{name}%")
+
+    if contact:
+        query += " AND contact_info ILIKE %s"
+        params.append(f"%{contact}%")
+
+    if status:
+        query += " AND current_status ILIKE %s"
+        params.append(f"%{status}%")
+
+    if service:
+        query += " AND service_type ILIKE %s"
+        params.append(f"%{service}%")
+
+    query += " ORDER BY last_updated DESC LIMIT 500"
+
+    cur.execute(query, params)
+    rows = cur.fetchall()
+
+    html = "<h2>Staff Search Results</h2>"
+    html += f"<p>Matches: {len(rows)}</p>"
+
+    html += "<table border=1 cellpadding=5 cellspacing=0>"
+    html += """
+    <tr>
+        <th>Date</th>
+        <th>Submission</th>
+        <th>Name</th>
+        <th>Contact</th>
+        <th>Cards</th>
+        <th>Service</th>
+        <th>Cost</th>
+        <th>Prep</th>
+        <th>Paid</th>
+        <th>Status</th>
+        <th>Declared</th>
+        <th>Notes</th>
+        <th>Updated</th>
+    </tr>
+    """
+
+    for r in rows:
+        html += "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>"
+
+    html += "</table><br><a href='/staff-search'>Back to Search</a><br><a href='/'>Home</a>"
 
     cur.close()
     conn.close()
 
-    if not row:
-        return "<h3>Submission not found</h3><a href='/track'>Try Again</a>"
-
-    return f"""
-    <h2>Tracking Result</h2>
-    <p><b>Submission:</b> {row[0]}</p>
-    <p><b>Name:</b> {row[1]}</p>
-    <p><b>Cards:</b> {row[2]}</p>
-    <p><b>Service:</b> {row[3]}</p>
-    <p><b>Status:</b> {row[4]}</p>
-    <p><b>Last Updated:</b> {row[5]}</p>
-    <br>
-    <a href='/track'>Search Again</a>
-    """
+    return html
 
 # ---------- RUN ----------
 if __name__ == "__main__":
