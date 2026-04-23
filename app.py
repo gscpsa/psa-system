@@ -4,49 +4,50 @@ import psycopg2
 import os, io, json, re, traceback
 
 app = Flask(__name__)
-
-# =========================
-# DB CONNECTION (SAFE)
-# =========================
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+# =========================
+# SAFE DB CONNECT
+# =========================
 def get_conn():
     if not DATABASE_URL:
-        raise Exception("DATABASE_URL is not set in environment")
+        raise Exception("DATABASE_URL not set")
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
 # =========================
-# INIT TABLE
+# INIT TABLE (LAZY, SAFE)
 # =========================
 def init_db():
-    conn = get_conn()
-    cur = conn.cursor()
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS submissions (
-        submission_number TEXT PRIMARY KEY,
-        status TEXT,
-        raw_data JSONB,
-        last_updated TIMESTAMP DEFAULT NOW()
-    )
-    """)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS submissions (
+            submission_number TEXT PRIMARY KEY,
+            status TEXT,
+            raw_data JSONB,
+            last_updated TIMESTAMP DEFAULT NOW()
+        )
+        """)
 
-    conn.commit()
-    cur.close()
-    conn.close()
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print("DB INIT ERROR:", e)
 
-init_db()
+# Run once per request safely
+@app.before_request
+def setup():
+    init_db()
 
 # =========================
 # GLOBAL ERROR HANDLER
 # =========================
 @app.errorhandler(Exception)
 def handle_error(e):
-    return f"""
-    <h3>APP ERROR</h3>
-    <pre>{str(e)}</pre>
-    <pre>{traceback.format_exc()}</pre>
-    """
+    return f"<pre>{str(e)}\n\n{traceback.format_exc()}</pre>"
 
 # =========================
 # HELPERS
@@ -60,7 +61,7 @@ def clean(v):
     return str(v).strip()
 
 def read_file(file):
-    name = file.filename.lower()
+    name = (file.filename or "").lower()
 
     if name.endswith(("xlsx","xls")):
         return pd.read_excel(file)
@@ -91,7 +92,7 @@ def save_row(submission, raw):
     conn.close()
 
 # =========================
-# DASHBOARD
+# DASHBOARD (CLEAN VIEW)
 # =========================
 @app.route("/")
 def dashboard():
@@ -147,7 +148,7 @@ def dashboard():
     return html
 
 # =========================
-# SEARCH
+# SEARCH (ALL FIELDS)
 # =========================
 @app.route("/search")
 def search():
@@ -186,7 +187,7 @@ def search():
     return html
 
 # =========================
-# EXCEL UPLOAD
+# EXCEL / CSV UPLOAD
 # =========================
 @app.route("/upload", methods=["GET","POST"])
 def upload():
@@ -194,7 +195,7 @@ def upload():
         file = request.files.get("file")
 
         if not file:
-            return "No file"
+            return "No file uploaded"
 
         df = read_file(file)
         df.columns = [str(c).strip() for c in df.columns]
@@ -214,8 +215,8 @@ def upload():
                 inserted += 1
 
             except Exception as e:
-                errors += 1
                 print("ROW ERROR:", e)
+                errors += 1
 
         return f"Inserted/Updated: {inserted} | Errors: {errors}"
 
@@ -235,6 +236,9 @@ def upload():
 def upload_psa():
     if request.method == "POST":
         file = request.files.get("file")
+
+        if not file:
+            return "No file uploaded"
 
         try:
             import pdfplumber
@@ -273,12 +277,12 @@ def upload_psa():
 
                 sub = sub_match.group(1)
 
-                if "Order Arrived" in b:
-                    status = "Order Arrived"
+                if "Complete" in b:
+                    status = "Complete"
                 elif "Grading" in b:
                     status = "Grading"
-                elif "Complete" in b:
-                    status = "Complete"
+                elif "Order Arrived" in b:
+                    status = "Order Arrived"
                 elif "QA Checks" in b:
                     status = "QA Checks"
                 else:
