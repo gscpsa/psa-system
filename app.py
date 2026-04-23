@@ -49,13 +49,21 @@ def setup_database():
 setup_database()
 
 # ---------- HELPERS ----------
-def clean(val):
+def safe_text(val):
     try:
         if pd.isna(val):
             return ""
     except:
         pass
     return str(val).strip()
+
+def safe_int(val):
+    try:
+        if pd.isna(val):
+            return 0
+        return int(float(val))
+    except:
+        return 0
 
 # ---------- HOME ----------
 @app.route("/")
@@ -77,28 +85,23 @@ def upload():
 
     df = pd.read_excel(file)
 
-    # Normalize headers HARD
+    # Clean headers
     df.columns = (
-        df.columns
-        .astype(str)
+        df.columns.astype(str)
         .str.replace("\n", " ")
         .str.replace("\r", " ")
         .str.strip()
     )
 
-    # Remove junk
+    # Remove junk Excel columns
     df = df.loc[:, ~df.columns.str.contains("^Unnamed", na=False)]
 
-    print("HEADERS:", df.columns.tolist())
-
-    # 🔥 AUTO-FIND submission column (critical fix)
+    # Auto-find Submission column (handles hidden spaces)
     submission_col = None
     for col in df.columns:
         if "submission" in col.lower():
             submission_col = col
             break
-
-    print("USING SUBMISSION COLUMN:", submission_col)
 
     conn = get_conn()
     cur = conn.cursor()
@@ -107,10 +110,9 @@ def upload():
 
     for _, row in df.iterrows():
         try:
-            submission_number = clean(row.get(submission_col))
+            submission_number = safe_text(row.get(submission_col))
 
-            # 🔥 DO NOT skip valid rows
-            if submission_number == "":
+            if not submission_number:
                 continue
 
             cur.execute("""
@@ -130,22 +132,30 @@ def upload():
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (submission_number)
                 DO UPDATE SET
-                    current_status = EXCLUDED.current_status,
+                    customer_name = EXCLUDED.customer_name,
+                    contact_info = EXCLUDED.contact_info,
                     card_count = EXCLUDED.card_count,
+                    service_type = EXCLUDED.service_type,
+                    est_cost = EXCLUDED.est_cost,
+                    prep_needed = EXCLUDED.prep_needed,
+                    customer_paid = EXCLUDED.customer_paid,
+                    current_status = EXCLUDED.current_status,
+                    decalared_value = EXCLUDED.decalared_value,
+                    notes = EXCLUDED.notes,
                     last_updated = NOW()
             """, (
-                clean(row.get("s")),
+                safe_text(row.get("s")),
                 submission_number,
-                clean(row.get("Customer Name")),
-                clean(row.get("Contact Info")),
-                int(float(row.get("# Of Cards", 0))) if str(row.get("# Of Cards")).strip() else 0,
-                clean(row.get("Service Type")),
-                clean(row.get("Est Cost")),
-                clean(row.get("Prep Needed")),
-                clean(row.get("Customer Paid")),
-                clean(row.get("Current Status")),
-                clean(row.get("Decalared Value")),
-                clean(row.get("Notes")),
+                safe_text(row.get("Customer Name")),
+                safe_text(row.get("Contact Info")),
+                safe_int(row.get("# Of Cards")),
+                safe_text(row.get("Service Type")),
+                safe_text(row.get("Est Cost")),
+                safe_text(row.get("Prep Needed")),
+                safe_text(row.get("Customer Paid")),
+                safe_text(row.get("Current Status")),
+                safe_text(row.get("Decalared Value")),
+                safe_text(row.get("Notes")),
             ))
 
             inserted += 1
@@ -160,22 +170,52 @@ def upload():
 
     return f"<h2>Uploaded / Updated {inserted} rows</h2><a href='/dashboard'>Go to dashboard</a>"
 
-# ---------- DASHBOARD ----------
+# ---------- FULL DASHBOARD ----------
 @app.route("/dashboard")
 def dashboard():
     conn = get_conn()
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT submission_number, customer_name, current_status, last_updated
+        SELECT
+            submission_date,
+            submission_number,
+            customer_name,
+            contact_info,
+            card_count,
+            service_type,
+            est_cost,
+            prep_needed,
+            customer_paid,
+            current_status,
+            decalared_value,
+            notes,
+            last_updated
         FROM submissions
         ORDER BY last_updated DESC
     """)
 
     rows = cur.fetchall()
 
-    html = "<h2>Dashboard</h2><table border=1>"
-    html += "<tr><th>Submission</th><th>Name</th><th>Status</th><th>Updated</th></tr>"
+    html = "<h2>PSA Submissions</h2><table border=1 cellpadding=5 cellspacing=0>"
+
+    html += """
+    <tr>
+        <th>Date</th>
+        <th>Submission #</th>
+        <th>Name</th>
+        <th>Contact</th>
+        <th># Cards</th>
+        <th>Service</th>
+        <th>Est Cost</th>
+        <th>Prep</th>
+        <th>Paid</th>
+        <th>Status</th>
+        <th>Declared</th>
+        <th>Notes</th>
+        <th>Updated</th>
+    </tr>
+    """
 
     for r in rows:
         html += "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>"
