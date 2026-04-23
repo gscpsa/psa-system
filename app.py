@@ -11,12 +11,15 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 def get_conn():
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
-def ensure_table():
+# ---------- HARD RESET SCHEMA ----------
+def setup_database():
     conn = get_conn()
     cur = conn.cursor()
 
+    cur.execute("DROP TABLE IF EXISTS submissions;")
+
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS submissions (
+    CREATE TABLE submissions (
         id SERIAL PRIMARY KEY,
         submission_number TEXT UNIQUE,
         submission_date TEXT,
@@ -38,8 +41,9 @@ def ensure_table():
     cur.close()
     conn.close()
 
-ensure_table()
+setup_database()
 
+# ---------- HELPERS ----------
 def clean(val):
     try:
         if pd.isna(val):
@@ -123,6 +127,7 @@ def extract_row(row):
 
     return data
 
+# ---------- HOME ----------
 @app.route("/")
 def home():
     return """
@@ -132,6 +137,7 @@ def home():
     <a href="/staff-search">Staff Search</a>
     """
 
+# ---------- UPLOAD ----------
 @app.route("/upload", methods=["GET", "POST"])
 def upload():
     if request.method == "POST":
@@ -205,7 +211,6 @@ def upload():
                     d["notes"]
                 ))
 
-                # PostgreSQL rowcount is 1 for insert or update here, so track as updated if already existed
                 inserted += 1
 
             except Exception as e:
@@ -233,6 +238,7 @@ def upload():
     <br><a href="/">Back</a>
     """
 
+# ---------- DASHBOARD ----------
 @app.route("/dashboard")
 def dashboard():
     conn = get_conn()
@@ -241,17 +247,17 @@ def dashboard():
     cur.execute("""
         SELECT
             submission_number,
+            submission_date,
             customer_name,
             contact_info,
             card_count,
             service_type,
-            status,
             est_cost,
             prep_needed,
             customer_paid,
+            status,
             declared_value,
             notes,
-            submission_date,
             last_updated
         FROM submissions
         ORDER BY last_updated DESC
@@ -267,17 +273,17 @@ def dashboard():
     <table border="1" cellpadding="5" cellspacing="0">
         <tr>
             <th>Submission</th>
+            <th>Date</th>
             <th>Name</th>
             <th>Contact</th>
             <th>Cards</th>
             <th>Service</th>
-            <th>Status</th>
             <th>Cost</th>
             <th>Prep</th>
             <th>Paid</th>
+            <th>Status</th>
             <th>Declared</th>
             <th>Notes</th>
-            <th>Date</th>
             <th>Updated</th>
         </tr>
     """
@@ -288,6 +294,7 @@ def dashboard():
     html += "</table><br><a href='/'>Back</a><br><a href='/staff-search'>Staff Search</a>"
     return html
 
+# ---------- STAFF SEARCH ----------
 @app.route("/staff-search", methods=["GET", "POST"])
 def staff_search():
     results = []
@@ -301,17 +308,17 @@ def staff_search():
         cur.execute("""
             SELECT
                 submission_number,
+                submission_date,
                 customer_name,
                 contact_info,
                 card_count,
                 service_type,
-                status,
                 est_cost,
                 prep_needed,
                 customer_paid,
+                status,
                 declared_value,
                 notes,
-                submission_date,
                 last_updated
             FROM submissions
             WHERE
@@ -344,17 +351,17 @@ def staff_search():
     <table border="1" cellpadding="5" cellspacing="0">
         <tr>
             <th>Submission</th>
+            <th>Date</th>
             <th>Name</th>
             <th>Contact</th>
             <th>Cards</th>
             <th>Service</th>
-            <th>Status</th>
             <th>Cost</th>
             <th>Prep</th>
             <th>Paid</th>
+            <th>Status</th>
             <th>Declared</th>
             <th>Notes</th>
-            <th>Date</th>
             <th>Updated</th>
         </tr>
     """
