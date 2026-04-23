@@ -10,13 +10,11 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 def get_conn():
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
-
 # ---------- SETUP ----------
 def setup_database():
     conn = get_conn()
     cur = conn.cursor()
 
-    # Drop everything and start clean
     cur.execute("DROP TABLE IF EXISTS submissions;")
 
     cur.execute("""
@@ -24,6 +22,9 @@ def setup_database():
         id SERIAL PRIMARY KEY,
         submission_number TEXT,
         customer_name TEXT,
+        contact_info TEXT,
+        card_count TEXT,
+        service_type TEXT,
         current_status TEXT
     );
     """)
@@ -33,7 +34,6 @@ def setup_database():
     conn.close()
 
 setup_database()
-
 
 # ---------- HOME ----------
 @app.route("/")
@@ -48,19 +48,15 @@ def home():
     <a href="/dashboard">Dashboard</a>
     """
 
-
 # ---------- UPLOAD ----------
 @app.route("/upload", methods=["POST"])
 def upload():
     file = request.files["file"]
 
     df = pd.read_excel(file)
-
     df.columns = df.columns.astype(str).str.strip()
 
-    print("HEADERS:", df.columns.tolist())
-
-    # Find correct submission column
+    # find submission column
     submission_col = None
     for col in df.columns:
         if "submission" in col.lower():
@@ -71,34 +67,41 @@ def upload():
     cur = conn.cursor()
 
     inserted = 0
-    errors = 0
 
     for _, row in df.iterrows():
         try:
             submission = str(row.get(submission_col, "")).strip()
-            name = str(row.get("Customer Name", "")).strip()
-            status = str(row.get("Current Status", "")).strip()
-
             if not submission:
                 continue
 
             cur.execute("""
-                INSERT INTO submissions (submission_number, customer_name, current_status)
-                VALUES (%s, %s, %s)
-            """, (submission, name, status))
+                INSERT INTO submissions (
+                    submission_number,
+                    customer_name,
+                    contact_info,
+                    card_count,
+                    service_type,
+                    current_status
+                ) VALUES (%s,%s,%s,%s,%s,%s)
+            """, (
+                submission,
+                str(row.get("Customer Name", "")).strip(),
+                str(row.get("Contact Info", "")).strip(),
+                str(row.get("# Of Cards", "")).strip(),
+                str(row.get("Service Type", "")).strip(),
+                str(row.get("Current Status", "")).strip()
+            ))
 
             inserted += 1
 
         except Exception as e:
             print("ROW ERROR:", e)
-            errors += 1
 
     conn.commit()
     cur.close()
     conn.close()
 
-    return f"<h2>Inserted {inserted} rows | Errors: {errors}</h2><a href='/dashboard'>Dashboard</a>"
-
+    return f"<h2>Inserted {inserted} rows</h2><a href='/dashboard'>Dashboard</a>"
 
 # ---------- DASHBOARD ----------
 @app.route("/dashboard")
@@ -110,7 +113,17 @@ def dashboard():
     rows = cur.fetchall()
 
     html = "<h2>Dashboard</h2><table border=1>"
-    html += "<tr><th>ID</th><th>Submission</th><th>Name</th><th>Status</th></tr>"
+    html += """
+    <tr>
+        <th>ID</th>
+        <th>Submission</th>
+        <th>Name</th>
+        <th>Contact</th>
+        <th>Cards</th>
+        <th>Service</th>
+        <th>Status</th>
+    </tr>
+    """
 
     for r in rows:
         html += "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>"
@@ -121,7 +134,6 @@ def dashboard():
     conn.close()
 
     return html
-
 
 # ---------- RUN ----------
 if __name__ == "__main__":
