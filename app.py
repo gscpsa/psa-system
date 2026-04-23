@@ -2,14 +2,10 @@ from flask import Flask, request, redirect, session, render_template_string
 import psycopg2
 import os
 import pandas as pd
-import json
 
 app = Flask(__name__)
 app.secret_key = "secret123"
 
-# -------------------------
-# DATABASE
-# -------------------------
 def get_db():
     url = os.environ.get("DATABASE_URL")
     return psycopg2.connect(url, sslmode="require")
@@ -22,10 +18,19 @@ def init_db():
     c = conn.cursor()
 
     c.execute("""
-    CREATE TABLE IF NOT EXISTS raw_uploads (
-        id SERIAL PRIMARY KEY,
-        data JSONB,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    CREATE TABLE IF NOT EXISTS submissions (
+        submission_number TEXT PRIMARY KEY,
+        customer_name TEXT,
+        contact_info TEXT,
+        service_type TEXT,
+        card_count INT,
+        status TEXT,
+        est_cost TEXT,
+        prep_needed TEXT,
+        customer_paid TEXT,
+        declared_value TEXT,
+        submission_date TEXT,
+        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
 
@@ -53,16 +58,26 @@ DASHBOARD_HTML = """
     <button>Upload</button>
 </form>
 
-<p><a href="/debug">View Raw Data</a></p>
-"""
+<h3>Submissions</h3>
+<table border="1" cellpadding="5">
+<tr>
+<th>Submission</th>
+<th>Name</th>
+<th>Status</th>
+<th>Cards</th>
+<th>Date</th>
+</tr>
 
-DEBUG_HTML = """
-<h2>Raw Uploaded Data</h2>
-{% for row in rows %}
-<div style="margin-bottom:20px; border-bottom:1px solid #ccc;">
-<pre>{{ row }}</pre>
-</div>
+{% for o in orders %}
+<tr>
+<td>{{ o[0] }}</td>
+<td>{{ o[1] }}</td>
+<td>{{ o[5] }}</td>
+<td>{{ o[4] }}</td>
+<td>{{ o[10] }}</td>
+</tr>
 {% endfor %}
+</table>
 """
 
 # -------------------------
@@ -87,10 +102,18 @@ def dashboard():
         return redirect("/admin")
 
     init_db()
-    return render_template_string(DASHBOARD_HTML)
+
+    conn = get_db()
+    c = conn.cursor()
+
+    c.execute("SELECT * FROM submissions ORDER BY last_updated DESC")
+    orders = c.fetchall()
+    conn.close()
+
+    return render_template_string(DASHBOARD_HTML, orders=orders)
 
 # -------------------------
-# UPLOAD (NO ASSUMPTIONS)
+# UPLOAD (REAL MAPPING)
 # -------------------------
 
 @app.route("/upload-csv", methods=["POST"])
@@ -102,8 +125,10 @@ def upload_csv():
     if not file:
         return "No file", 400
 
-    # Read ANY Excel format
     df = pd.read_excel(file)
+
+    # remove junk columns
+    df = df.loc[:, ~df.columns.str.contains("^Unnamed", na=False)]
 
     conn = get_db()
     c = conn.cursor()
@@ -111,48 +136,54 @@ def upload_csv():
     count = 0
 
     for _, row in df.iterrows():
-        row_dict = {}
+        try:
+            submission = str(row.get("Submission #", "")).strip()
+            if not submission:
+                continue
 
-        # Convert row safely to JSON-safe dict
-        for col in df.columns:
-            val = row[col]
-            if pd.isna(val):
-                row_dict[col] = None
-            else:
-                row_dict[col] = str(val)
+            c.execute("""
+            INSERT INTO submissions (
+                submission_number,
+                customer_name,
+                contact_info,
+                service_type,
+                card_count,
+                status,
+                est_cost,
+                prep_needed,
+                customer_paid,
+                declared_value,
+                submission_date
+            )
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (submission_number)
+            DO UPDATE SET
+                status = EXCLUDED.status,
+                card_count = EXCLUDED.card_count,
+                last_updated = CURRENT_TIMESTAMP
+            """, (
+                submission,
+                str(row.get("Customer Name", "")),
+                str(row.get("Contact Info", "")),
+                str(row.get("Service Type", "")),
+                int(row.get("# Of Cards", 0)) if str(row.get("# Of Cards", "")).isdigit() else 0,
+                str(row.get("Current Status", "")),
+                str(row.get("Est Cost", "")),
+                str(row.get("Prep Needed", "")),
+                str(row.get("Customer Paid", "")),
+                str(row.get("Declared Value", "")),
+                str(row.get("s", "")),
+            ))
 
-        c.execute("""
-        INSERT INTO raw_uploads (data)
-        VALUES (%s)
-        """, (json.dumps(row_dict),))
+            count += 1
 
-        count += 1
+        except:
+            continue
 
     conn.commit()
     conn.close()
 
-    return f"Uploaded {count} rows successfully"
-
-# -------------------------
-# DEBUG VIEW (SEE REAL DATA)
-# -------------------------
-
-@app.route("/debug")
-def debug():
-    if not session.get("admin"):
-        return redirect("/admin")
-
-    conn = get_db()
-    c = conn.cursor()
-
-    c.execute("SELECT data FROM raw_uploads ORDER BY id DESC LIMIT 50")
-    rows = c.fetchall()
-
-    conn.close()
-
-    formatted = [json.dumps(r[0], indent=2) for r in rows]
-
-    return render_template_string(DEBUG_HTML, rows=formatted)
+    return f"Uploaded {count} structured rows"
 
 # -------------------------
 # RUN
