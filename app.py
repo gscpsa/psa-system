@@ -1,17 +1,16 @@
 from flask import Flask, request
 import pandas as pd
 import psycopg2
-import os, io, json, re, pdfplumber
+import os, io, json, re
 
 app = Flask(__name__)
-
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 def get_conn():
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
 # =========================
-# INIT TABLE
+# INIT TABLE (SAFE)
 # =========================
 def ensure_table():
     conn = get_conn()
@@ -66,13 +65,21 @@ def upload():
     if request.method == "POST":
         file = request.files.get("file")
 
-        df = read_file(file)
+        if not file:
+            return "No file uploaded"
+
+        try:
+            df = read_file(file)
+        except Exception as e:
+            return f"READ ERROR: {e}"
+
         df.columns = [str(c).strip() for c in df.columns]
 
         conn = get_conn()
         cur = conn.cursor()
 
-        inserted = errors = 0
+        inserted = 0
+        errors = 0
 
         for _, row in df.iterrows():
             try:
@@ -95,7 +102,8 @@ def upload():
 
                 inserted += 1
 
-            except:
+            except Exception as e:
+                print("ROW ERROR:", e)
                 errors += 1
 
         conn.commit()
@@ -114,20 +122,39 @@ def upload():
     """
 
 # =========================
-# PSA PDF UPLOAD
+# PSA PDF UPLOAD (SAFE)
 # =========================
 @app.route("/upload_psa", methods=["GET","POST"])
 def upload_psa():
     if request.method == "POST":
         file = request.files.get("file")
 
+        if not file:
+            return "No file uploaded"
+
+        try:
+            import pdfplumber
+        except:
+            return "ERROR: pdfplumber not installed"
+
         text = ""
 
-        with pdfplumber.open(file) as pdf:
-            for p in pdf.pages:
-                text += p.extract_text() + "\n"
+        try:
+            with pdfplumber.open(file) as pdf:
+                for page in pdf.pages:
+                    t = page.extract_text()
+                    if t:
+                        text += t + "\n"
+        except Exception as e:
+            return f"PDF ERROR: {e}"
+
+        if not text:
+            return "ERROR: No readable text in PDF"
 
         subs = re.findall(r"Sub\s*#(\d+)", text)
+
+        if not subs:
+            return "ERROR: No submission numbers found"
 
         statuses = [
             "Order Arrived",
@@ -143,28 +170,33 @@ def upload_psa():
         updated = 0
 
         for sub in subs:
-            block = re.search(rf"Sub\s*#{sub}(.{{0,200}})", text)
+            try:
+                block = re.search(rf"Sub\s*#{sub}(.{{0,200}})", text)
 
-            if not block:
+                if not block:
+                    continue
+
+                found = None
+                for s in statuses:
+                    if s in block.group(1):
+                        found = s
+                        break
+
+                if not found:
+                    continue
+
+                cur.execute("""
+                    UPDATE submissions
+                    SET status=%s, last_updated=NOW()
+                    WHERE submission_number=%s
+                """, (found, sub))
+
+                if cur.rowcount > 0:
+                    updated += 1
+
+            except Exception as e:
+                print("PSA ROW ERROR:", e)
                 continue
-
-            found = None
-            for s in statuses:
-                if s in block.group(1):
-                    found = s
-                    break
-
-            if not found:
-                continue
-
-            cur.execute("""
-                UPDATE submissions
-                SET status=%s, last_updated=NOW()
-                WHERE submission_number=%s
-            """, (found, sub))
-
-            if cur.rowcount > 0:
-                updated += 1
 
         conn.commit()
         cur.close()
@@ -182,7 +214,7 @@ def upload_psa():
     """
 
 # =========================
-# DASHBOARD (CLEAN + TOP NAV)
+# DASHBOARD (CLEAN)
 # =========================
 @app.route("/")
 def dashboard():
@@ -233,7 +265,7 @@ def dashboard():
     ordered += [k for k in keys if k not in ordered]
 
     html = """
-    <div style="position:sticky;top:0;background:white;padding:10px;border-bottom:2px solid black;z-index:1000;">
+    <div style="position:sticky;top:0;background:white;padding:10px;border-bottom:2px solid black;">
         <strong>PSA System</strong> |
         <a href="/upload">Upload Excel</a> |
         <a href="/upload_psa">Upload PSA PDF</a> |
@@ -269,7 +301,7 @@ def search():
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT raw_data, status FROM submissions
+        SELECT raw_data FROM submissions
         WHERE raw_data::text ILIKE %s
         LIMIT 50
     """, (f"%{q}%",))
