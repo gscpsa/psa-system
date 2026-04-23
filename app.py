@@ -3,6 +3,7 @@ import psycopg2
 import pandas as pd
 import os
 import io
+import json
 
 app = Flask(__name__)
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -18,12 +19,11 @@ def ensure_table():
     cur.execute("""
     CREATE TABLE IF NOT EXISTS submissions (
         id SERIAL PRIMARY KEY,
-        submission_number TEXT UNIQUE,
+        submission_number TEXT,
         customer_name TEXT,
         contact_info TEXT,
-        card_count TEXT,
-        service_type TEXT,
-        status TEXT
+        status TEXT,
+        raw_data JSONB
     );
     """)
 
@@ -33,7 +33,7 @@ def ensure_table():
 
 ensure_table()
 
-# ---------- FILE READER ----------
+# ---------- READ FILE ----------
 def read_any(file):
     name = file.filename.lower()
 
@@ -45,20 +45,17 @@ def read_any(file):
     text = raw.decode("latin1")
     return pd.read_csv(io.StringIO(text))
 
-# ---------- HOME ----------
-@app.route("/")
-def home():
-    return """
-    <h2>PSA System</h2>
-    <a href="/upload">Upload</a><br>
-    <a href="/dashboard">Dashboard</a><br>
-    <a href="/search">Search</a>
-    """
+def clean(v):
+    try:
+        if pd.isna(v):
+            return ""
+    except:
+        pass
+    return str(v).strip()
 
 # ---------- UPLOAD ----------
 @app.route("/upload", methods=["GET","POST"])
 def upload():
-
     if request.method == "POST":
         file = request.files.get("file")
 
@@ -69,49 +66,32 @@ def upload():
         cur = conn.cursor()
 
         inserted = 0
-        errors = 0
 
         for _, row in df.iterrows():
-            try:
-                # 🔥 EXACT COLUMN MAPPING (NO GUESSING)
-                submission = str(row.get("Submission #", "")).strip()
-                name = str(row.get("Customer Name", "")).strip()
-                contact = str(row.get("Contact Info", "")).strip()
-                cards = str(row.get("# of Cards", "")).strip()
-                service = str(row.get("Service Type", "")).strip()
-                status = str(row.get("Current Status", "")).strip()
+            raw = {c: clean(row[c]) for c in df.columns}
 
-                if not submission:
-                    errors += 1
-                    continue
+            submission = raw.get("Submission #") or raw.get("Submission Number") or ""
+            name = raw.get("Customer Name") or ""
+            contact = raw.get("Contact Info") or raw.get("Phone") or raw.get("Email") or ""
+            status = raw.get("Current Status") or raw.get("Status") or ""
 
-                cur.execute("""
-                INSERT INTO submissions
-                (submission_number, customer_name, contact_info, card_count, service_type, status)
-                VALUES (%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (submission_number)
-                DO UPDATE SET
-                    customer_name=EXCLUDED.customer_name,
-                    contact_info=EXCLUDED.contact_info,
-                    card_count=EXCLUDED.card_count,
-                    service_type=EXCLUDED.service_type,
-                    status=EXCLUDED.status
-                """, (submission, name, contact, cards, service, status))
+            if not submission:
+                continue
 
-                inserted += 1
+            cur.execute("""
+            INSERT INTO submissions (submission_number, customer_name, contact_info, status, raw_data)
+            VALUES (%s,%s,%s,%s,%s)
+            """, (submission, name, contact, status, json.dumps(raw)))
 
-            except Exception as e:
-                print("ROW ERROR:", e)
-                errors += 1
+            inserted += 1
 
         conn.commit()
         cur.close()
         conn.close()
 
-        return f"Inserted: {inserted} | Errors: {errors}"
+        return f"Inserted: {inserted}"
 
     return """
-    <h3>Upload</h3>
     <form method="post" enctype="multipart/form-data">
     <input type="file" name="file">
     <button>Upload</button>
@@ -124,20 +104,23 @@ def dashboard():
     conn = get_conn()
     cur = conn.cursor()
 
-    cur.execute("""
-    SELECT submission_number, customer_name, contact_info, status
-    FROM submissions
-    ORDER BY id DESC
-    LIMIT 2000
-    """)
-
+    cur.execute("SELECT raw_data FROM submissions LIMIT 2000")
     rows = cur.fetchall()
 
     html = "<h2>Dashboard</h2><table border=1>"
-    html += "<tr><th>Submission</th><th>Name</th><th>Contact</th><th>Status</th></tr>"
+
+    # get all keys
+    keys = set()
+    for r in rows:
+        keys.update(r[0].keys())
+
+    keys = list(keys)
+
+    html += "<tr>" + "".join(f"<th>{k}</th>" for k in keys) + "</tr>"
 
     for r in rows:
-        html += "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>"
+        data = r[0]
+        html += "<tr>" + "".join(f"<td>{data.get(k,'')}</td>" for k in keys) + "</tr>"
 
     html += "</table>"
     return html
@@ -154,14 +137,11 @@ def search():
         cur = conn.cursor()
 
         cur.execute("""
-        SELECT submission_number, customer_name, contact_info, status
-        FROM submissions
+        SELECT raw_data FROM submissions
         WHERE
-            LOWER(customer_name) LIKE LOWER(%s)
-            OR LOWER(contact_info) LIKE LOWER(%s)
-            OR LOWER(submission_number) LIKE LOWER(%s)
+            LOWER(raw_data::text) LIKE LOWER(%s)
         LIMIT 200
-        """, (f"%{q}%", f"%{q}%", f"%{q}%"))
+        """, (f"%{q}%",))
 
         results = cur.fetchall()
 
@@ -175,7 +155,8 @@ def search():
     """
 
     for r in results:
-        html += "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>"
+        row = r[0]
+        html += "<tr>" + "".join(f"<td>{v}</td>" for v in row.values()) + "</tr>"
 
     html += "</table>"
     return html
