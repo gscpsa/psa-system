@@ -1,271 +1,89 @@
-from flask import Flask, request, redirect
-import psycopg2
+from flask import Flask, request, redirect, url_for, render_template_string
 import pandas as pd
+import psycopg2
 import os
 import io
-import json
+import pdfplumber
+import re
 
 app = Flask(__name__)
-DATABASE_URL = os.getenv("DATABASE_URL")
 
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def get_conn():
-    return psycopg2.connect(DATABASE_URL, sslmode="require")
+    return psycopg2.connect(DATABASE_URL)
 
-
-# ---------- DATABASE SETUP (SAFE, NO DROPS) ----------
-def ensure_table():
+# =========================
+# INIT DB (DYNAMIC COLUMNS)
+# =========================
+def ensure_base_table():
     conn = get_conn()
     cur = conn.cursor()
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS submissions (
             id SERIAL PRIMARY KEY,
-            submission_number TEXT,
-            submission_date TEXT,
-            customer_name TEXT,
-            contact_info TEXT,
-            card_count TEXT,
-            service_type TEXT,
-            est_cost TEXT,
-            prep_needed TEXT,
-            customer_paid TEXT,
+            submission_number TEXT UNIQUE,
             status TEXT,
-            declared_value TEXT,
-            notes TEXT,
-            raw_data JSONB,
             last_updated TIMESTAMP DEFAULT NOW()
-        );
-    """)
-
-    # Add any missing columns for older versions of the table
-    needed_columns = {
-        "submission_number": "TEXT",
-        "submission_date": "TEXT",
-        "customer_name": "TEXT",
-        "contact_info": "TEXT",
-        "card_count": "TEXT",
-        "service_type": "TEXT",
-        "est_cost": "TEXT",
-        "prep_needed": "TEXT",
-        "customer_paid": "TEXT",
-        "status": "TEXT",
-        "declared_value": "TEXT",
-        "notes": "TEXT",
-        "raw_data": "JSONB",
-        "last_updated": "TIMESTAMP DEFAULT NOW()",
-    }
-
-    cur.execute("""
-        SELECT column_name
-        FROM information_schema.columns
-        WHERE table_name = 'submissions'
-    """)
-    existing = {row[0] for row in cur.fetchall()}
-
-    for col, col_type in needed_columns.items():
-        if col not in existing:
-            cur.execute(f"ALTER TABLE submissions ADD COLUMN {col} {col_type};")
-
-    # Helpful indexes, safe to run repeatedly
-    cur.execute("""
-        CREATE INDEX IF NOT EXISTS idx_submissions_submission_number
-        ON submissions (submission_number);
-    """)
-    cur.execute("""
-        CREATE INDEX IF NOT EXISTS idx_submissions_customer_name
-        ON submissions (customer_name);
-    """)
-    cur.execute("""
-        CREATE INDEX IF NOT EXISTS idx_submissions_contact_info
-        ON submissions (contact_info);
-    """)
-    cur.execute("""
-        CREATE INDEX IF NOT EXISTS idx_submissions_status
-        ON submissions (status);
+        )
     """)
 
     conn.commit()
     cur.close()
     conn.close()
 
+ensure_base_table()
 
-ensure_table()
+# =========================
+# ADD MISSING COLUMNS
+# =========================
+def add_missing_columns(df):
+    conn = get_conn()
+    cur = conn.cursor()
 
+    cur.execute("""
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name='submissions'
+    """)
+    existing = [r[0] for r in cur.fetchall()]
 
-# ---------- HELPERS ----------
-def clean(value):
-    try:
-        if pd.isna(value):
-            return ""
-    except Exception:
-        pass
-    return str(value).strip()
+    for col in df.columns:
+        col_clean = col.strip().lower().replace(" ", "_")
+        if col_clean not in existing:
+            cur.execute(f'ALTER TABLE submissions ADD COLUMN "{col_clean}" TEXT')
 
+    conn.commit()
+    cur.close()
+    conn.close()
 
-def read_any(file_storage):
-    filename = (file_storage.filename or "").lower()
-
-    if filename.endswith((".xlsx", ".xls")):
-        return pd.read_excel(file_storage)
-
-    raw = file_storage.read()
-    file_storage.seek(0)
-
-    text = None
-    for enc in ("utf-8", "latin1"):
-        try:
-            text = raw.decode(enc)
-            break
-        except Exception:
-            continue
-
-    if text is None:
-        raise Exception("Unable to decode file")
-
-    for sep in (",", ";", "\t"):
-        try:
-            return pd.read_csv(io.StringIO(text), sep=sep)
-        except Exception:
-            continue
-
-    raise Exception("Unable to parse CSV")
-
-
-def get_value_by_alias(raw_row, aliases):
-    """
-    Case-insensitive exact alias match against original file headers.
-    """
-    lowered = {str(k).strip().lower(): k for k in raw_row.keys()}
-    for alias in aliases:
-        key = lowered.get(alias.strip().lower())
-        if key is not None:
-            return clean(raw_row.get(key))
-    return ""
-
-
-def extract_row(raw_row):
-    """
-    Locked mapping for your file structure, with safe fallbacks.
-    """
-    return {
-        "submission_number": get_value_by_alias(
-            raw_row,
-            ["Submission #", "Submission Number", "Submission No", "Submission"]
-        ),
-        "submission_date": get_value_by_alias(
-            raw_row,
-            ["S", "Submission Date", "Date"]
-        ),
-        "customer_name": get_value_by_alias(
-            raw_row,
-            ["Customer Name", "Name"]
-        ),
-        "contact_info": get_value_by_alias(
-            raw_row,
-            ["Contact Info", "Phone", "Email", "Contact"]
-        ),
-        "card_count": get_value_by_alias(
-            raw_row,
-            ["# Of Cards", "# of Cards", "Card Count", "Cards"]
-        ),
-        "service_type": get_value_by_alias(
-            raw_row,
-            ["Service Type", "Service"]
-        ),
-        "est_cost": get_value_by_alias(
-            raw_row,
-            ["Est Cost", "Estimated Cost", "Cost"]
-        ),
-        "prep_needed": get_value_by_alias(
-            raw_row,
-            ["Prep Needed", "Prep"]
-        ),
-        "customer_paid": get_value_by_alias(
-            raw_row,
-            ["Customer Paid", "Paid"]
-        ),
-        "status": get_value_by_alias(
-            raw_row,
-            ["Current Status", "Status"]
-        ),
-        "declared_value": get_value_by_alias(
-            raw_row,
-            ["Declared Value", "Decalared Value"]
-        ),
-        "notes": get_value_by_alias(
-            raw_row,
-            ["Notes", "Note"]
-        ),
-    }
-
-
-def get_union_keys(rows):
-    keys = []
-    seen = set()
-    preferred = [
-        "S",
-        "Submission Date",
-        "Submission #",
-        "Customer Name",
-        "Contact Info",
-        "# Of Cards",
-        "Service Type",
-        "Est Cost",
-        "Prep Needed",
-        "Customer Paid",
-        "Current Status",
-        "Declared Value",
-        "Decalared Value",
-        "Notes",
-    ]
-
-    # add preferred keys first if they exist in any row
-    for pref in preferred:
-        for row in rows:
-            if isinstance(row, dict) and pref in row and pref not in seen:
-                keys.append(pref)
-                seen.add(pref)
-                break
-
-    # then add everything else
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        for key in row.keys():
-            if key not in seen:
-                keys.append(key)
-                seen.add(key)
-
-    return keys
-
-
-# ---------- HOME ----------
-@app.route("/")
-def home():
-    return """
-    <h2>PSA Staff System</h2>
-    <a href="/upload">Upload File</a><br><br>
-    <a href="/dashboard">Dashboard</a><br><br>
-    <a href="/staff">Staff Search</a><br><br>
-    <a href="/track">Customer Tracker</a>
-    """
-
-
-# ---------- UPLOAD ----------
+# =========================
+# UPLOAD CSV / EXCEL
+# =========================
 @app.route("/upload", methods=["GET", "POST"])
 def upload():
     if request.method == "POST":
         file = request.files.get("file")
         if not file:
-            return "No file uploaded"
+            return "No file"
 
         try:
-            df = read_any(file)
-        except Exception as e:
-            return f"FILE READ ERROR: {e}"
+            if file.filename.endswith(".csv"):
+                df = pd.read_csv(file, encoding="utf-8", on_bad_lines="skip")
+            else:
+                df = pd.read_excel(file)
+        except:
+            try:
+                df = pd.read_csv(file, encoding="latin1", on_bad_lines="skip")
+            except Exception as e:
+                return f"READ ERROR: {e}"
 
-        df.columns = [str(c).strip() for c in df.columns]
+        df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
+
+        if "submission_number" not in df.columns:
+            return "Missing submission_number column"
+
+        add_missing_columns(df)
 
         conn = get_conn()
         cur = conn.cursor()
@@ -276,339 +94,205 @@ def upload():
 
         for _, row in df.iterrows():
             try:
-                raw = {str(c).strip(): clean(row[c]) for c in df.columns}
-                d = extract_row(raw)
+                sub = str(row.get("submission_number")).strip()
 
-                if not d["submission_number"]:
-                    errors += 1
-                    continue
+                cur.execute("""
+                    INSERT INTO submissions (submission_number)
+                    VALUES (%s)
+                    ON CONFLICT (submission_number) DO NOTHING
+                """, (sub,))
 
-                cur.execute(
-                    "SELECT id FROM submissions WHERE submission_number = %s LIMIT 1",
-                    (d["submission_number"],)
-                )
-                existing = cur.fetchone()
+                cols = []
+                vals = []
 
-                if existing:
-                    cur.execute("""
+                for col in df.columns:
+                    if col == "submission_number":
+                        continue
+                    cols.append(f'"{col}"=%s')
+                    vals.append(str(row[col]))
+
+                if cols:
+                    query = f"""
                         UPDATE submissions
-                        SET
-                            submission_date = %s,
-                            customer_name = %s,
-                            contact_info = %s,
-                            card_count = %s,
-                            service_type = %s,
-                            est_cost = %s,
-                            prep_needed = %s,
-                            customer_paid = %s,
-                            status = %s,
-                            declared_value = %s,
-                            notes = %s,
-                            raw_data = %s,
-                            last_updated = NOW()
-                        WHERE submission_number = %s
-                    """, (
-                        d["submission_date"],
-                        d["customer_name"],
-                        d["contact_info"],
-                        d["card_count"],
-                        d["service_type"],
-                        d["est_cost"],
-                        d["prep_needed"],
-                        d["customer_paid"],
-                        d["status"],
-                        d["declared_value"],
-                        d["notes"],
-                        json.dumps(raw),
-                        d["submission_number"],
-                    ))
+                        SET {",".join(cols)}, last_updated=NOW()
+                        WHERE submission_number=%s
+                    """
+                    cur.execute(query, vals + [sub])
+
+                if cur.rowcount > 0:
                     updated += 1
                 else:
-                    cur.execute("""
-                        INSERT INTO submissions (
-                            submission_number,
-                            submission_date,
-                            customer_name,
-                            contact_info,
-                            card_count,
-                            service_type,
-                            est_cost,
-                            prep_needed,
-                            customer_paid,
-                            status,
-                            declared_value,
-                            notes,
-                            raw_data
-                        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                    """, (
-                        d["submission_number"],
-                        d["submission_date"],
-                        d["customer_name"],
-                        d["contact_info"],
-                        d["card_count"],
-                        d["service_type"],
-                        d["est_cost"],
-                        d["prep_needed"],
-                        d["customer_paid"],
-                        d["status"],
-                        d["declared_value"],
-                        d["notes"],
-                        json.dumps(raw),
-                    ))
                     inserted += 1
 
-            except Exception as e:
-                print("ROW ERROR:", e)
+            except:
                 errors += 1
 
         conn.commit()
         cur.close()
         conn.close()
 
-        return f"""
-        <h3>Upload Results</h3>
-        Inserted: {inserted}<br>
-        Updated: {updated}<br>
-        Errors: {errors}<br><br>
-        <a href="/dashboard">Dashboard</a><br>
-        <a href="/staff">Staff Search</a>
-        """
+        return f"Inserted: {inserted} | Updated: {updated} | Errors: {errors}"
 
-    return """
-    <h3>Upload CSV or Excel</h3>
+    return '''
+    <h2>Upload Excel/CSV</h2>
     <form method="post" enctype="multipart/form-data">
         <input type="file" name="file">
-        <button type="submit">Upload</button>
+        <button>Upload</button>
     </form>
     <br><a href="/">Back</a>
-    """
+    '''
 
-
-# ---------- DASHBOARD ----------
-@app.route("/dashboard")
-def dashboard():
-    sort = request.args.get("sort", "last_updated")
-    status_filter = clean(request.args.get("status", ""))
-
-    allowed_sort = {
-        "last_updated": "last_updated",
-        "submission_number": "submission_number",
-        "customer_name": "customer_name",
-        "status": "status",
-        "service_type": "service_type",
-        "submission_date": "submission_date",
-    }
-    sort_sql = allowed_sort.get(sort, "last_updated")
-
-    conn = get_conn()
-    cur = conn.cursor()
-
-    if status_filter:
-        cur.execute(f"""
-            SELECT id, submission_number, customer_name, contact_info, status, service_type, submission_date, raw_data
-            FROM submissions
-            WHERE status = %s
-            ORDER BY {sort_sql} DESC NULLS LAST
-            LIMIT 500
-        """, (status_filter,))
-    else:
-        cur.execute(f"""
-            SELECT id, submission_number, customer_name, contact_info, status, service_type, submission_date, raw_data
-            FROM submissions
-            ORDER BY {sort_sql} DESC NULLS LAST
-            LIMIT 500
-        """)
-
-    rows = cur.fetchall()
-    raw_rows = [r[7] if isinstance(r[7], dict) else {} for r in rows]
-    keys = get_union_keys(raw_rows)
-
-    html = """
-    <h2>Dashboard</h2>
-    <form method="get">
-        Sort:
-        <select name="sort">
-            <option value="last_updated">Last Updated</option>
-            <option value="submission_number">Submission</option>
-            <option value="customer_name">Name</option>
-            <option value="status">Status</option>
-            <option value="service_type">Service</option>
-            <option value="submission_date">Submission Date</option>
-        </select>
-        Status:
-        <input name="status" placeholder="Filter exact status">
-        <button type="submit">Apply</button>
-    </form>
-    <br>
-    <table border="1" cellpadding="5" cellspacing="0">
-        <tr>
-            <th>Edit</th>
-    """
-    html += "".join(f"<th>{k}</th>" for k in keys)
-    html += "</tr>"
-
-    for row in rows:
-        row_id = row[0]
-        raw = row[7] if isinstance(row[7], dict) else {}
-        html += f"<tr><td><a href='/edit/{row_id}'>Edit</a></td>"
-        html += "".join(f"<td>{raw.get(k, '')}</td>" for k in keys)
-        html += "</tr>"
-
-    html += "</table><br><a href='/'>Back</a>"
-    cur.close()
-    conn.close()
-    return html
-
-
-# ---------- EDIT ----------
-@app.route("/edit/<int:row_id>", methods=["GET", "POST"])
-def edit(row_id):
-    conn = get_conn()
-    cur = conn.cursor()
-
+# =========================
+# PSA PDF UPLOAD
+# =========================
+@app.route("/upload_psa", methods=["GET", "POST"])
+def upload_psa():
     if request.method == "POST":
-        status = clean(request.form.get("status", ""))
-        cur.execute("""
-            UPDATE submissions
-            SET status = %s, last_updated = NOW()
-            WHERE id = %s
-        """, (status, row_id))
+        file = request.files.get("file")
+        if not file:
+            return "No file"
+
+        text = ""
+
+        try:
+            with pdfplumber.open(file) as pdf:
+                for page in pdf.pages:
+                    text += page.extract_text() + "\n"
+        except Exception as e:
+            return f"PDF ERROR: {e}"
+
+        matches = re.findall(r"Sub\s*#(\d+)", text)
+
+        statuses = [
+            "Order Arrived",
+            "Grading",
+            "QA Checks",
+            "Research & ID",
+            "Complete"
+        ]
+
+        conn = get_conn()
+        cur = conn.cursor()
+
+        updated = 0
+
+        for sub in matches:
+            block = re.search(rf"Sub\s*#{sub}(.{{0,200}})", text)
+            if not block:
+                continue
+
+            found = None
+            for s in statuses:
+                if s in block.group(1):
+                    found = s
+                    break
+
+            if not found:
+                continue
+
+            cur.execute("""
+                UPDATE submissions
+                SET status=%s, last_updated=NOW()
+                WHERE submission_number=%s
+            """, (found, sub))
+
+            if cur.rowcount > 0:
+                updated += 1
+
         conn.commit()
         cur.close()
         conn.close()
-        return redirect("/dashboard")
+
+        return f"PSA Updated: {updated}"
+
+    return '''
+    <h2>Upload PSA PDF</h2>
+    <form method="post" enctype="multipart/form-data">
+        <input type="file" name="file">
+        <button>Upload</button>
+    </form>
+    <br><a href="/">Back</a>
+    '''
+
+# =========================
+# SEARCH (ALL FIELDS)
+# =========================
+@app.route("/search", methods=["GET"])
+def search():
+    q = request.args.get("q", "")
+
+    conn = get_conn()
+    cur = conn.cursor()
 
     cur.execute("""
-        SELECT submission_number, status, customer_name
-        FROM submissions
-        WHERE id = %s
-    """, (row_id,))
-    row = cur.fetchone()
+        SELECT * FROM submissions
+        WHERE submission_number ILIKE %s
+        OR status ILIKE %s
+        OR CAST(submission_number AS TEXT) ILIKE %s
+        LIMIT 50
+    """, (f"%{q}%", f"%{q}%", f"%{q}%"))
+
+    rows = cur.fetchall()
+    cols = [desc[0] for desc in cur.description]
 
     cur.close()
     conn.close()
 
-    if not row:
-        return "Row not found"
+    table = "<table border=1><tr>"
+    for c in cols:
+        table += f"<th>{c}</th>"
+    table += "</tr>"
 
-    return f"""
-    <h3>Edit Submission {row[0]}</h3>
-    <p>Name: {row[2]}</p>
-    <form method="post">
-        Status: <input name="status" value="{row[1] or ''}">
-        <button type="submit">Save</button>
+    for r in rows:
+        table += "<tr>"
+        for v in r:
+            table += f"<td>{v}</td>"
+        table += "</tr>"
+
+    table += "</table>"
+
+    return f'''
+    <form>
+        <input name="q" value="{q}">
+        <button>Search</button>
     </form>
-    <br><a href="/dashboard">Back</a>
-    """
+    {table}
+    <br><a href="/">Back</a>
+    '''
 
+# =========================
+# DASHBOARD
+# =========================
+@app.route("/")
+def dashboard():
+    conn = get_conn()
+    cur = conn.cursor()
 
-# ---------- STAFF SEARCH ----------
-@app.route("/staff", methods=["GET", "POST"])
-def staff():
-    results = []
+    cur.execute("SELECT * FROM submissions ORDER BY id DESC LIMIT 50")
+    rows = cur.fetchall()
+    cols = [desc[0] for desc in cur.description]
 
-    if request.method == "POST":
-        q = clean(request.form.get("q", ""))
+    cur.close()
+    conn.close()
 
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT submission_number, customer_name, contact_info, status, service_type, submission_date
-            FROM submissions
-            WHERE
-                LOWER(COALESCE(submission_number, '')) LIKE LOWER(%s)
-                OR LOWER(COALESCE(customer_name, '')) LIKE LOWER(%s)
-                OR LOWER(COALESCE(contact_info, '')) LIKE LOWER(%s)
-                OR LOWER(COALESCE(status, '')) LIKE LOWER(%s)
-                OR LOWER(COALESCE(service_type, '')) LIKE LOWER(%s)
-            ORDER BY last_updated DESC
-            LIMIT 200
-        """, (
-            f"%{q}%",
-            f"%{q}%",
-            f"%{q}%",
-            f"%{q}%",
-            f"%{q}%",
-        ))
-        results = cur.fetchall()
-        cur.close()
-        conn.close()
+    table = "<table border=1><tr>"
+    for c in cols:
+        table += f"<th>{c}</th>"
+    table += "</tr>"
 
-    html = """
-    <h3>Staff Search</h3>
-    <form method="post">
-        <input name="q" placeholder="Search by submission, name, phone, email, status, service">
-        <button type="submit">Search</button>
-    </form>
-    <br>
-    <table border="1" cellpadding="5" cellspacing="0">
-        <tr>
-            <th>Submission</th>
-            <th>Date</th>
-            <th>Name</th>
-            <th>Contact</th>
-            <th>Status</th>
-            <th>Service</th>
-        </tr>
-    """
+    for r in rows:
+        table += "<tr>"
+        for v in r:
+            table += f"<td>{v}</td>"
+        table += "</tr>"
 
-    for r in results:
-        html += (
-            f"<tr>"
-            f"<td>{r[0] or ''}</td>"
-            f"<td>{r[5] or ''}</td>"
-            f"<td>{r[1] or ''}</td>"
-            f"<td>{r[2] or ''}</td>"
-            f"<td>{r[3] or ''}</td>"
-            f"<td>{r[4] or ''}</td>"
-            f"</tr>"
-        )
+    table += "</table>"
 
-    html += "</table><br><a href='/'>Back</a>"
-    return html
-
-
-# ---------- CUSTOMER TRACK ----------
-@app.route("/track", methods=["GET", "POST"])
-def track():
-    result = None
-
-    if request.method == "POST":
-        sub = clean(request.form.get("sub", ""))
-
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT submission_number, status, customer_name, submission_date, service_type
-            FROM submissions
-            WHERE submission_number = %s
-            LIMIT 1
-        """, (sub,))
-        result = cur.fetchone()
-        cur.close()
-        conn.close()
-
-    html = """
-    <h3>Track Submission</h3>
-    <form method="post">
-        <input name="sub" placeholder="Enter submission number">
-        <button type="submit">Check</button>
-    </form>
-    """
-
-    if result:
-        html += f"""
-        <br>
-        <p><b>Submission:</b> {result[0] or ''}</p>
-        <p><b>Name:</b> {result[2] or ''}</p>
-        <p><b>Date:</b> {result[3] or ''}</p>
-        <p><b>Service:</b> {result[4] or ''}</p>
-        <p><b>Status:</b> {result[1] or ''}</p>
-        """
-
-    html += "<br><a href='/'>Back</a>"
-    return html
-
-
-if __name__ == "__main__":
-    app.run()
+    return f'''
+    <h2>Dashboard</h2>
+    <a href="/upload">Upload Excel</a> |
+    <a href="/upload_psa">Upload PSA PDF</a> |
+    <a href="/search">Search</a>
+    <br><br>
+    {table}
+    '''
