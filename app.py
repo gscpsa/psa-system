@@ -42,7 +42,7 @@ DASHBOARD_HTML = """
 <h3>All Submissions</h3>
 <table border="1" cellpadding="5">
 <tr>
-<th>Submission</th><th>Name</th><th>Status</th><th>Track</th>
+<th>Submission</th><th>Name</th><th>Status</th><th>Date</th><th>Track</th>
 </tr>
 
 {% for o in orders %}
@@ -50,6 +50,7 @@ DASHBOARD_HTML = """
 <td>{{ o[0] }}</td>
 <td>{{ o[1] }}</td>
 <td>{{ o[5] }}</td>
+<td>{{ o[6] }}</td>
 <td><a href="/track/{{ o[0] }}">View</a></td>
 </tr>
 {% endfor %}
@@ -62,6 +63,7 @@ TRACK_HTML = """
 {% if order %}
     <h3>Submission #: {{ order[0] }}</h3>
     <p>Customer: {{ order[1] }}</p>
+    <p>Submitted: {{ order[6] }}</p>
 
     <h3>Status Progress</h3>
 
@@ -95,12 +97,39 @@ def init_db():
         card_count INT,
         service_type TEXT,
         status TEXT,
+        submission_date TEXT,
         last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
 
     conn.commit()
     conn.close()
+
+# -------------------------
+# HELPERS (ROBUST PARSING)
+# -------------------------
+def safe_int(value):
+    try:
+        # strip commas/spaces
+        return int(str(value).strip().replace(",", ""))
+    except:
+        return 0
+
+def pick(row, keys):
+    """Return first non-empty value for any of the given column names."""
+    for k in keys:
+        if k in row and pd.notna(row[k]):
+            v = str(row[k]).strip()
+            if v:
+                return v
+    return ""
+
+def normalize_columns(df):
+    # drop junk unnamed columns
+    df = df.loc[:, ~df.columns.str.contains("^Unnamed", na=False)]
+    # normalize whitespace in headers
+    df.columns = [str(c).strip() for c in df.columns]
+    return df
 
 # -------------------------
 # ROUTES
@@ -118,7 +147,7 @@ def admin():
             return redirect("/dashboard")
     return render_template_string(ADMIN_HTML)
 
-@app.route("/dashboard", methods=["GET"])
+@app.route("/dashboard")
 def dashboard():
     if not session.get("admin"):
         return redirect("/admin")
@@ -129,7 +158,7 @@ def dashboard():
     c = conn.cursor()
 
     c.execute("""
-        SELECT submission_number, customer_name, contact_info, card_count, service_type, status
+        SELECT submission_number, customer_name, contact_info, card_count, service_type, status, submission_date
         FROM submissions
         ORDER BY last_updated DESC
     """)
@@ -139,7 +168,7 @@ def dashboard():
     return render_template_string(DASHBOARD_HTML, orders=orders)
 
 # -------------------------
-# CSV UPLOAD
+# CSV/EXCEL UPLOAD (ROBUST)
 # -------------------------
 
 @app.route("/upload-csv", methods=["POST"])
@@ -151,7 +180,9 @@ def upload_csv():
     if not file:
         return "No file", 400
 
+    # read excel
     df = pd.read_excel(file)
+    df = normalize_columns(df)
 
     conn = get_db()
     c = conn.cursor()
@@ -159,14 +190,24 @@ def upload_csv():
     count = 0
 
     for _, row in df.iterrows():
-        submission = str(row.get("Submission #", "")).strip()
+        # flexible column mapping
+        submission = pick(row, ["Submission #", "Submission", "Submission Number"])
         if not submission:
             continue
 
+        name = pick(row, ["Customer Name", "Name"])
+        contact = pick(row, ["Contact Info", "Email", "Phone"])
+        cards = safe_int(pick(row, ["# Of Cards", "Cards", "Card Count"]))
+        service = pick(row, ["Service Type", "Service"])
+        status = pick(row, ["Current Status", "Status"])
+
+        # 's' column is your submission date (per your note)
+        sub_date = pick(row, ["s", "Submission Date", "Date"])
+
         c.execute("""
         INSERT INTO submissions
-        (submission_number, customer_name, contact_info, card_count, service_type, status)
-        VALUES (%s,%s,%s,%s,%s,%s)
+        (submission_number, customer_name, contact_info, card_count, service_type, status, submission_date)
+        VALUES (%s,%s,%s,%s,%s,%s,%s)
         ON CONFLICT (submission_number)
         DO UPDATE SET
             customer_name = EXCLUDED.customer_name,
@@ -174,14 +215,16 @@ def upload_csv():
             card_count = EXCLUDED.card_count,
             service_type = EXCLUDED.service_type,
             status = EXCLUDED.status,
+            submission_date = EXCLUDED.submission_date,
             last_updated = CURRENT_TIMESTAMP
         """, (
             submission,
-            row.get("Customer Name", ""),
-            row.get("Contact Info", ""),
-            int(row.get("# Of Cards", 0)),
-            row.get("Service Type", ""),
-            row.get("Current Status", "")
+            name,
+            contact,
+            cards,
+            service,
+            status,
+            sub_date
         ))
 
         count += 1
@@ -201,7 +244,7 @@ def track(submission_number):
     c = conn.cursor()
 
     c.execute("""
-        SELECT submission_number, customer_name, contact_info, card_count, service_type, status
+        SELECT submission_number, customer_name, contact_info, card_count, service_type, status, submission_date
         FROM submissions
         WHERE submission_number=%s
     """, (submission_number,))
