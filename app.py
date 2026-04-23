@@ -15,10 +15,8 @@ def setup_database():
     conn = get_conn()
     cur = conn.cursor()
 
-    cur.execute("DROP TABLE IF EXISTS submissions;")
-
     cur.execute("""
-    CREATE TABLE submissions (
+    CREATE TABLE IF NOT EXISTS submissions (
         id SERIAL PRIMARY KEY,
         submission_date TEXT,
         submission_number TEXT,
@@ -64,16 +62,14 @@ def home():
     <a href="/dashboard">Dashboard</a>
     """
 
-# ---------- UPLOAD ----------
+# ---------- UPLOAD WITH DUPLICATE PROTECTION ----------
 @app.route("/upload", methods=["POST"])
 def upload():
     file = request.files["file"]
 
     df = pd.read_excel(file)
-
     df.columns = df.columns.astype(str).str.strip()
 
-    # auto-detect submission column
     submission_col = None
     for col in df.columns:
         if "submission" in col.lower():
@@ -84,17 +80,86 @@ def upload():
     cur = conn.cursor()
 
     inserted = 0
+    updated = 0
+    skipped = 0
 
     for _, row in df.iterrows():
         try:
             submission = clean(row.get(submission_col))
             if not submission:
+                skipped += 1
                 continue
 
-            cur.execute("""
-                INSERT INTO submissions (
+            submission_date = clean(row.get("s"))
+            customer_name = clean(row.get("Customer Name"))
+            contact_info = clean(row.get("Contact Info"))
+            card_count = clean(row.get("# Of Cards"))
+            service_type = clean(row.get("Service Type"))
+            est_cost = clean(row.get("Est Cost"))
+            prep_needed = clean(row.get("Prep Needed"))
+            customer_paid = clean(row.get("Customer Paid"))
+            current_status = clean(row.get("Current Status"))
+            declared_value = clean(row.get("Decalared Value"))
+            notes = clean(row.get("Notes"))
+
+            # Check if submission already exists
+            cur.execute(
+                "SELECT id FROM submissions WHERE submission_number = %s LIMIT 1",
+                (submission,)
+            )
+            existing = cur.fetchone()
+
+            if existing:
+                cur.execute("""
+                    UPDATE submissions
+                    SET
+                        submission_date = %s,
+                        customer_name = %s,
+                        contact_info = %s,
+                        card_count = %s,
+                        service_type = %s,
+                        est_cost = %s,
+                        prep_needed = %s,
+                        customer_paid = %s,
+                        current_status = %s,
+                        declared_value = %s,
+                        notes = %s,
+                        last_updated = NOW()
+                    WHERE submission_number = %s
+                """, (
                     submission_date,
-                    submission_number,
+                    customer_name,
+                    contact_info,
+                    card_count,
+                    service_type,
+                    est_cost,
+                    prep_needed,
+                    customer_paid,
+                    current_status,
+                    declared_value,
+                    notes,
+                    submission
+                ))
+                updated += 1
+            else:
+                cur.execute("""
+                    INSERT INTO submissions (
+                        submission_date,
+                        submission_number,
+                        customer_name,
+                        contact_info,
+                        card_count,
+                        service_type,
+                        est_cost,
+                        prep_needed,
+                        customer_paid,
+                        current_status,
+                        declared_value,
+                        notes
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (
+                    submission_date,
+                    submission,
                     customer_name,
                     contact_info,
                     card_count,
@@ -105,32 +170,24 @@ def upload():
                     current_status,
                     declared_value,
                     notes
-                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """, (
-                clean(row.get("s")),
-                submission,
-                clean(row.get("Customer Name")),
-                clean(row.get("Contact Info")),
-                clean(row.get("# Of Cards")),
-                clean(row.get("Service Type")),
-                clean(row.get("Est Cost")),
-                clean(row.get("Prep Needed")),
-                clean(row.get("Customer Paid")),
-                clean(row.get("Current Status")),
-                clean(row.get("Decalared Value")),
-                clean(row.get("Notes"))
-            ))
-
-            inserted += 1
+                ))
+                inserted += 1
 
         except Exception as e:
             print("ROW ERROR:", e)
+            skipped += 1
 
     conn.commit()
     cur.close()
     conn.close()
 
-    return f"<h2>Inserted {inserted} rows</h2><a href='/dashboard'>Dashboard</a>"
+    return f"""
+    <h2>Upload Complete</h2>
+    <p>Inserted: {inserted}</p>
+    <p>Updated: {updated}</p>
+    <p>Skipped: {skipped}</p>
+    <a href='/dashboard'>Dashboard</a>
+    """
 
 # ---------- FULL DASHBOARD ----------
 @app.route("/dashboard")
@@ -154,13 +211,12 @@ def dashboard():
             notes,
             last_updated
         FROM submissions
-        ORDER BY id DESC
+        ORDER BY last_updated DESC
     """)
 
     rows = cur.fetchall()
 
     html = "<h2>PSA Submissions</h2><table border=1 cellpadding=5 cellspacing=0>"
-
     html += """
     <tr>
         <th>Date</th>
