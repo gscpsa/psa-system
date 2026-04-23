@@ -11,19 +11,15 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 def get_conn():
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
-# -------- Helpers --------
-
+# ---------- FILE READER ----------
 def read_any(file_storage):
-    """
-    Reads CSV or Excel with fallback for encoding and delimiter.
-    """
     filename = (file_storage.filename or "").lower()
 
     # Excel
     if filename.endswith((".xlsx", ".xls")):
         return pd.read_excel(file_storage)
 
-    # CSV (unknown encoding / delimiter)
+    # CSV (unknown encoding + delimiter)
     raw = file_storage.read()
     file_storage.seek(0)
 
@@ -42,35 +38,9 @@ def read_any(file_storage):
         except:
             continue
 
-    raise Exception("Unable to parse CSV (delimiter issue)")
+    raise Exception("Unable to parse CSV")
 
-def normalize_columns(df):
-    """
-    Maps messy column names to expected DB fields.
-    """
-    mapping = {
-        "submission number": "submission_number",
-        "submission": "submission_number",
-        "customer name": "customer_name",
-        "name": "customer_name",
-        "contact info": "contact_info",
-        "phone": "contact_info",
-        "card count": "card_count",
-        "service type": "service_type",
-        "current status": "status",
-        "status": "status"
-    }
-
-    df.columns = [c.strip().lower() for c in df.columns]
-
-    rename = {}
-    for col in df.columns:
-        if col in mapping:
-            rename[col] = mapping[col]
-
-    df = df.rename(columns=rename)
-    return df
-
+# ---------- CLEAN ----------
 def clean(val):
     try:
         if pd.isna(val):
@@ -79,8 +49,7 @@ def clean(val):
         pass
     return str(val).strip()
 
-# -------- Routes --------
-
+# ---------- HOME ----------
 @app.route("/")
 def home():
     return """
@@ -89,6 +58,7 @@ def home():
     <a href="/search">Staff Search</a>
     """
 
+# ---------- UPLOAD ----------
 @app.route("/upload", methods=["GET", "POST"])
 def upload():
     if request.method == "POST":
@@ -99,7 +69,6 @@ def upload():
 
         try:
             df = read_any(file)
-            df = normalize_columns(df)
         except Exception as e:
             return f"FILE READ ERROR: {str(e)}"
 
@@ -112,16 +81,38 @@ def upload():
 
         for _, row in df.iterrows():
             try:
-                submission = clean(row.get("submission_number"))
+                # 🔥 DYNAMIC SUBMISSION COLUMN DETECTION
+                submission = ""
+                for key in row.keys():
+                    k = str(key).lower()
+                    if "submission" in k:
+                        submission = clean(row.get(key))
+                        break
+
                 if not submission:
                     errors += 1
                     continue
 
-                name = clean(row.get("customer_name"))
-                contact = clean(row.get("contact_info"))
-                count = row.get("card_count")
-                service = clean(row.get("service_type"))
-                status = clean(row.get("status"))
+                # Other fields (safe)
+                name = ""
+                contact = ""
+                status = ""
+                service = ""
+                count = None
+
+                for key in row.keys():
+                    k = str(key).lower()
+
+                    if "name" in k:
+                        name = clean(row.get(key))
+                    elif "contact" in k or "phone" in k:
+                        contact = clean(row.get(key))
+                    elif "status" in k:
+                        status = clean(row.get(key))
+                    elif "service" in k:
+                        service = clean(row.get(key))
+                    elif "card" in k:
+                        count = row.get(key)
 
                 cur.execute("""
                     INSERT INTO submissions
@@ -141,14 +132,21 @@ def upload():
                 else:
                     updated += 1
 
-            except:
+            except Exception as e:
+                print("ROW ERROR:", e)
                 errors += 1
 
         conn.commit()
         cur.close()
         conn.close()
 
-        return f"Inserted: {inserted}<br>Updated: {updated}<br>Errors: {errors}"
+        return f"""
+        <h3>Upload Results</h3>
+        Inserted: {inserted}<br>
+        Updated: {updated}<br>
+        Errors: {errors}<br>
+        <a href="/">Back</a>
+        """
 
     return """
     <h2>Upload CSV or Excel</h2>
@@ -159,6 +157,7 @@ def upload():
     <br><a href="/">Back</a>
     """
 
+# ---------- SEARCH ----------
 @app.route("/search", methods=["GET", "POST"])
 def search():
     results = []
@@ -176,7 +175,7 @@ def search():
                 submission_number ILIKE %s OR
                 customer_name ILIKE %s OR
                 contact_info ILIKE %s
-            LIMIT 50
+            LIMIT 100
         """, (f"%{query}%", f"%{query}%", f"%{query}%"))
 
         results = cur.fetchall()
