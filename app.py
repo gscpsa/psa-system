@@ -11,7 +11,7 @@ def get_conn():
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
 # =========================
-# INIT TABLE (SAFE)
+# INIT TABLE
 # =========================
 def ensure_table():
     conn = get_conn()
@@ -72,17 +72,13 @@ def upload():
         conn = get_conn()
         cur = conn.cursor()
 
-        inserted = updated = errors = 0
+        inserted = errors = 0
 
         for _, row in df.iterrows():
             try:
                 raw = {c: clean(row[c]) for c in df.columns}
 
-                submission = (
-                    raw.get("Submission #") or
-                    raw.get("Submission Number") or
-                    ""
-                )
+                submission = raw.get("Submission #") or raw.get("Submission Number") or ""
 
                 if not submission:
                     errors += 1
@@ -118,7 +114,7 @@ def upload():
     """
 
 # =========================
-# UPLOAD PSA PDF
+# PSA PDF UPLOAD
 # =========================
 @app.route("/upload_psa", methods=["GET","POST"])
 def upload_psa():
@@ -186,7 +182,7 @@ def upload_psa():
     """
 
 # =========================
-# DASHBOARD (FIXED DISPLAY)
+# DASHBOARD (CLEAN + TOP NAV)
 # =========================
 @app.route("/")
 def dashboard():
@@ -199,7 +195,6 @@ def dashboard():
     cur.close()
     conn.close()
 
-    # Collect keys
     keys = set()
     data_rows = []
 
@@ -211,7 +206,6 @@ def dashboard():
             if not str(k).lower().startswith("unnamed")
         }
 
-        # attach PSA status
         if r[1]:
             clean_row["PSA Status"] = r[1]
 
@@ -238,7 +232,17 @@ def dashboard():
     ordered = [k for k in preferred if k in keys]
     ordered += [k for k in keys if k not in ordered]
 
-    html = "<h2>Dashboard</h2><table border=1><tr>"
+    html = """
+    <div style="position:sticky;top:0;background:white;padding:10px;border-bottom:2px solid black;z-index:1000;">
+        <strong>PSA System</strong> |
+        <a href="/upload">Upload Excel</a> |
+        <a href="/upload_psa">Upload PSA PDF</a> |
+        <a href="/search">Search</a>
+    </div>
+    <br>
+    """
+
+    html += "<table border=1><tr>"
 
     for k in ordered:
         html += f"<th>{k}</th>"
@@ -252,19 +256,12 @@ def dashboard():
 
     html += "</table>"
 
-    html += """
-    <br><br>
-    <a href="/upload">Upload Excel</a> |
-    <a href="/upload_psa">Upload PSA PDF</a> |
-    <a href="/search">Search</a>
-    """
-
     return html
 
 # =========================
 # SEARCH
 # =========================
-@app.route("/search", methods=["GET"])
+@app.route("/search")
 def search():
     q = request.args.get("q","")
 
