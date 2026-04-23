@@ -9,7 +9,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 def get_conn():
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
-# ---------- STABLE TABLE (NO DROP) ----------
+# ---------- TABLE ----------
 def ensure_table():
     conn = get_conn()
     cur = conn.cursor()
@@ -18,10 +18,17 @@ def ensure_table():
     CREATE TABLE IF NOT EXISTS submissions (
         id SERIAL PRIMARY KEY,
         submission_number TEXT UNIQUE,
+        submission_date TEXT,
         customer_name TEXT,
         contact_info TEXT,
-        status TEXT,
+        card_count TEXT,
         service_type TEXT,
+        est_cost TEXT,
+        prep_needed TEXT,
+        customer_paid TEXT,
+        status TEXT,
+        declared_value TEXT,
+        notes TEXT,
         raw_data JSONB,
         last_updated TIMESTAMP DEFAULT NOW()
     );
@@ -33,15 +40,7 @@ def ensure_table():
 
 ensure_table()
 
-# ---------- HELPERS ----------
-def clean(v):
-    try:
-        if pd.isna(v):
-            return ""
-    except:
-        pass
-    return str(v).strip()
-
+# ---------- READ ----------
 def read_any(file):
     name = file.filename.lower()
 
@@ -50,36 +49,19 @@ def read_any(file):
 
     raw = file.read()
     file.seek(0)
-    text = raw.decode("latin1")
-    return pd.read_csv(io.StringIO(text))
+    return pd.read_csv(io.StringIO(raw.decode("latin1")))
 
-# ---------- EXACT FIELD EXTRACTION ----------
-def extract(row):
-    r = {k: clean(row[k]) for k in row.keys()}
+def clean(v):
+    try:
+        if pd.isna(v):
+            return ""
+    except:
+        pass
+    return str(v).strip()
 
-    return {
-        "submission": r.get("Submission #") or r.get("Submission Number") or "",
-        "name": r.get("Customer Name") or "",
-        "contact": r.get("Contact Info") or r.get("Phone") or r.get("Email") or "",
-        "status": r.get("Current Status") or r.get("Status") or "",
-        "service": r.get("Service Type") or "",
-        "raw": r
-    }
-
-# ---------- HOME ----------
-@app.route("/")
-def home():
-    return """
-    <h2>PSA SYSTEM</h2>
-    <a href="/upload">Upload</a><br>
-    <a href="/dashboard">Dashboard</a><br>
-    <a href="/search">Search</a><br>
-    """
-
-# ---------- UPLOAD (DUPLICATE PROTECTED) ----------
+# ---------- UPLOAD ----------
 @app.route("/upload", methods=["GET","POST"])
 def upload():
-
     if request.method == "POST":
         file = request.files.get("file")
 
@@ -95,37 +77,56 @@ def upload():
 
         for _, row in df.iterrows():
             try:
-                d = extract(row)
+                raw = {c: clean(row[c]) for c in df.columns}
 
-                if not d["submission"]:
+                # 🔥 EXACT COLUMN MATCHING
+                submission = raw.get("Submission #", "")
+                date = raw.get("Submission Date", "")
+                name = raw.get("Customer Name", "")
+                contact = raw.get("Contact Info", "")
+                cards = raw.get("# of Cards", "")
+                service = raw.get("Service Type", "")
+                cost = raw.get("Est Cost", "")
+                prep = raw.get("Prep Needed", "")
+                paid = raw.get("Customer Paid", "")
+                status = raw.get("Current Status", "")
+                declared = raw.get("Declared Value", "")
+                notes = raw.get("Notes", "")
+
+                if not submission:
                     errors += 1
                     continue
 
                 cur.execute("""
-                INSERT INTO submissions
-                (submission_number, customer_name, contact_info, status, service_type, raw_data)
-                VALUES (%s,%s,%s,%s,%s,%s)
+                INSERT INTO submissions (
+                    submission_number, submission_date, customer_name,
+                    contact_info, card_count, service_type,
+                    est_cost, prep_needed, customer_paid,
+                    status, declared_value, notes, raw_data
+                )
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT (submission_number)
                 DO UPDATE SET
-                    customer_name = EXCLUDED.customer_name,
-                    contact_info = EXCLUDED.contact_info,
-                    status = EXCLUDED.status,
-                    service_type = EXCLUDED.service_type,
-                    raw_data = EXCLUDED.raw_data,
-                    last_updated = NOW()
+                    submission_date=EXCLUDED.submission_date,
+                    customer_name=EXCLUDED.customer_name,
+                    contact_info=EXCLUDED.contact_info,
+                    card_count=EXCLUDED.card_count,
+                    service_type=EXCLUDED.service_type,
+                    est_cost=EXCLUDED.est_cost,
+                    prep_needed=EXCLUDED.prep_needed,
+                    customer_paid=EXCLUDED.customer_paid,
+                    status=EXCLUDED.status,
+                    declared_value=EXCLUDED.declared_value,
+                    notes=EXCLUDED.notes,
+                    raw_data=EXCLUDED.raw_data,
+                    last_updated=NOW()
                 """, (
-                    d["submission"],
-                    d["name"],
-                    d["contact"],
-                    d["status"],
-                    d["service"],
-                    json.dumps(d["raw"])
+                    submission, date, name, contact, cards, service,
+                    cost, prep, paid, status, declared, notes,
+                    json.dumps(raw)
                 ))
 
-                if cur.rowcount == 1:
-                    inserted += 1
-                else:
-                    updated += 1
+                inserted += 1
 
             except Exception as e:
                 print("ROW ERROR:", e)
@@ -138,100 +139,45 @@ def upload():
         return f"Inserted: {inserted} | Updated: {updated} | Errors: {errors}"
 
     return """
-    <h3>Upload File</h3>
+    <h3>Upload</h3>
     <form method="post" enctype="multipart/form-data">
         <input type="file" name="file">
         <button>Upload</button>
     </form>
     """
 
-# ---------- DASHBOARD (SORT + FILTER) ----------
-@app.route("/dashboard", methods=["GET"])
+# ---------- DASHBOARD ----------
+@app.route("/dashboard")
 def dashboard():
-
-    sort = request.args.get("sort", "last_updated")
-    status_filter = request.args.get("status", "")
-
     conn = get_conn()
     cur = conn.cursor()
 
-    query = "SELECT id, submission_number, customer_name, contact_info, status, service_type FROM submissions"
-
-    if status_filter:
-        query += " WHERE status = %s"
-        cur.execute(query + f" ORDER BY {sort} DESC LIMIT 500", (status_filter,))
-    else:
-        cur.execute(query + f" ORDER BY {sort} DESC LIMIT 500")
+    cur.execute("""
+    SELECT
+        submission_number,
+        submission_date,
+        customer_name,
+        contact_info,
+        card_count,
+        service_type,
+        status,
+        est_cost,
+        customer_paid
+    FROM submissions
+    ORDER BY last_updated DESC
+    LIMIT 2000
+    """)
 
     rows = cur.fetchall()
 
-    html = """
-    <h2>Dashboard</h2>
-
-    <form method="get">
-        Sort:
-        <select name="sort">
-            <option value="last_updated">Last Updated</option>
-            <option value="submission_number">Submission</option>
-            <option value="customer_name">Name</option>
-        </select>
-
-        Status:
-        <input name="status" placeholder="Filter status">
-
-        <button>Apply</button>
-    </form>
-
-    <table border=1>
-    <tr>
-        <th>Submission</th>
-        <th>Name</th>
-        <th>Contact</th>
-        <th>Status</th>
-        <th>Service</th>
-        <th>Edit</th>
-    </tr>
-    """
+    html = "<h2>Dashboard</h2><table border=1>"
+    html += "<tr><th>Submission</th><th>Date</th><th>Name</th><th>Contact</th><th>Cards</th><th>Service</th><th>Status</th><th>Cost</th><th>Paid</th></tr>"
 
     for r in rows:
-        html += f"""
-        <tr>
-            <td>{r[1]}</td>
-            <td>{r[2]}</td>
-            <td>{r[3]}</td>
-            <td>{r[4]}</td>
-            <td>{r[5]}</td>
-            <td><a href="/edit/{r[0]}">Edit</a></td>
-        </tr>
-        """
+        html += "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>
 
     html += "</table>"
     return html
-
-# ---------- EDIT ----------
-@app.route("/edit/<id>", methods=["GET","POST"])
-def edit(id):
-    conn = get_conn()
-    cur = conn.cursor()
-
-    if request.method == "POST":
-        status = request.form["status"]
-
-        cur.execute("UPDATE submissions SET status=%s WHERE id=%s", (status, id))
-        conn.commit()
-
-        return redirect("/dashboard")
-
-    cur.execute("SELECT submission_number, status FROM submissions WHERE id=%s", (id,))
-    row = cur.fetchone()
-
-    return f"""
-    <h3>Edit {row[0]}</h3>
-    <form method="post">
-        Status: <input name="status" value="{row[1]}">
-        <button>Save</button>
-    </form>
-    """
 
 # ---------- SEARCH ----------
 @app.route("/search", methods=["GET","POST"])
