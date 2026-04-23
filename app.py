@@ -4,6 +4,7 @@ import psycopg2
 import os
 
 app = Flask(__name__)
+
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def get_conn():
@@ -13,7 +14,7 @@ def get_conn():
 @app.route("/")
 def home():
     return """
-    <h2>Upload CSV</h2>
+    <h2>Upload File</h2>
     <form action="/upload" method="post" enctype="multipart/form-data">
         <input type="file" name="file">
         <button type="submit">Submit</button>
@@ -26,51 +27,24 @@ def home():
 @app.route("/upload", methods=["POST"])
 def upload():
     file = request.files["file"]
+    filename = file.filename.lower()
 
-    # Try CSV first; if it fails, try Excel
-    try:
-        df = pd.read_csv(file, encoding="latin1", engine="python", on_bad_lines="skip")
-        source = "csv"
-    except Exception:
-        file.stream.seek(0)
+    # 🔥 AUTO DETECT FILE TYPE
+    if filename.endswith(".xlsx") or filename.endswith(".xls"):
         df = pd.read_excel(file)
-        source = "excel"
+    else:
+        df = pd.read_csv(
+            file,
+            encoding="latin1",
+            engine="python",
+            on_bad_lines="skip"
+        )
 
-    # Normalize headers aggressively
-    df.columns = (
-        df.columns
-        .astype(str)
-        .str.strip()
-        .str.replace("\n", " ", regex=False)
-        .str.replace("\r", " ", regex=False)
-    )
+    # 🔥 CLEAN HEADERS
+    df.columns = df.columns.astype(str).str.strip()
 
-    # DEBUG: show exactly what we got
-    print("SOURCE:", source)
-    print("CSV HEADERS:", df.columns.tolist())
-    print("SHAPE:", df.shape)
+    print("HEADERS:", df.columns.tolist())
 
-    # Auto-detect columns by keywords (robust)
-    def find_col(keywords):
-        kws = [k.lower() for k in keywords]
-        for col in df.columns:
-            c = col.lower()
-            if any(k in c for k in kws):
-                return col
-        return None
-
-    col_submission = find_col(["submission"])
-    col_name       = find_col(["customer name","name"])
-    col_contact    = find_col(["contact","phone","email"])
-    col_cards      = find_col(["# of cards","cards","card count"])
-    col_service    = find_col(["service"])
-    col_status     = find_col(["current status","status"])
-
-    print("MAPPING:",
-          col_submission, col_name, col_contact,
-          col_cards, col_service, col_status)
-
-    # If we can’t find a submission column, force insert anyway (to prove pipeline)
     conn = get_conn()
     cur = conn.cursor()
 
@@ -78,29 +52,38 @@ def upload():
 
     for _, row in df.iterrows():
         try:
-            submission = str(row.get(col_submission, "")).strip() if col_submission else ""
-            name       = str(row.get(col_name, "")).strip() if col_name else ""
-            contact    = str(row.get(col_contact, "")).strip() if col_contact else ""
-            cards      = str(row.get(col_cards, "")).strip() if col_cards else ""
-            service    = str(row.get(col_service, "")).strip() if col_service else ""
-            status     = str(row.get(col_status, "")).strip() if col_status else ""
+            submission = str(row.get("Submission #", "")).strip()
+            name = str(row.get("Customer Name", "")).strip()
+            contact = str(row.get("Contact Info", "")).strip()
+            cards = str(row.get("# Of Cards", "")).strip()
+            service = str(row.get("Service Type", "")).strip()
+            status = str(row.get("Current Status", "")).strip()
 
-            # Do NOT skip unless truly empty row
-            if not any([submission, name, contact, cards, service, status]):
-                continue
+            # 🔥 THIS WAS YOUR MISSING PIECE
+            submission_date = str(row.get("s", "")).strip()
 
-            cur.execute("""
-            INSERT INTO submissions (
-                submission_number,
-                customer_name,
-                contact_info,
-                card_count,
-                service_type,
-                status
-            ) VALUES (%s, %s, %s, %s, %s, %s)
-            """, (submission, name, contact, cards, service, status))
+            # DO NOT SKIP VALID ROWS
+            if submission or name:
+                cur.execute("""
+                INSERT INTO submissions (
+                    submission_number,
+                    customer_name,
+                    contact_info,
+                    card_count,
+                    service_type,
+                    status,
+                    last_updated
+                ) VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                """, (
+                    submission,
+                    name,
+                    contact,
+                    cards,
+                    service,
+                    status
+                ))
 
-            inserted += 1
+                inserted += 1
 
         except Exception as e:
             print("ROW ERROR:", e)
@@ -110,7 +93,7 @@ def upload():
     cur.close()
     conn.close()
 
-    return f"<h2>Uploaded {inserted} rows successfully</h2><a href='/dashboard'>Go to dashboard</a>"
+    return f"<h2>Uploaded {inserted} rows successfully</h2><a href='/dashboard'>Dashboard</a>"
 
 # ---------- DASHBOARD ----------
 @app.route("/dashboard")
@@ -119,17 +102,12 @@ def dashboard():
     cur = conn.cursor()
 
     cur.execute("""
-    SELECT
-        submission_number,
-        customer_name,
-        contact_info,
-        card_count,
-        service_type,
-        status,
-        last_updated
+    SELECT submission_number, customer_name, contact_info,
+           card_count, service_type, status, last_updated
     FROM submissions
     ORDER BY last_updated DESC
     """)
+
     rows = cur.fetchall()
 
     html = "<h2>Dashboard</h2><table border=1>"
@@ -138,10 +116,11 @@ def dashboard():
     for r in rows:
         html += "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>"
 
-    html += "</table><br><a href='/'>Upload More</a>"
+    html += "</table><br><a href='/'>Upload</a>"
 
     cur.close()
     conn.close()
+
     return html
 
 # ---------- RUN ----------
