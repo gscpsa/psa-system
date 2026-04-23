@@ -1,335 +1,259 @@
-from flask import Flask, request
+from flask import Flask, request, render_template_string
 import pandas as pd
-import psycopg2
-import os, io, json, re
+import sqlite3
+import re
+from datetime import datetime
 
 app = Flask(__name__)
-DATABASE_URL = os.getenv("DATABASE_URL")
+DB = "data.db"
 
-def get_conn():
-    return psycopg2.connect(DATABASE_URL, sslmode="require")
+# -----------------------
+# DATABASE INIT
+# -----------------------
+def init_db():
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
 
-# =========================
-# INIT TABLE (SAFE)
-# =========================
-def ensure_table():
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS submissions (
-            id SERIAL PRIMARY KEY,
-            submission_number TEXT UNIQUE,
-            status TEXT,
-            raw_data JSONB,
-            last_updated TIMESTAMP DEFAULT NOW()
-        )
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS submissions (
+        submission_number TEXT PRIMARY KEY,
+        customer_name TEXT,
+        email TEXT,
+        phone TEXT,
+        status TEXT,
+        service_level TEXT,
+        cards INTEGER,
+        date_arrived TEXT,
+        est_date TEXT,
+        last_updated TEXT
+    )
     """)
 
     conn.commit()
-    cur.close()
     conn.close()
 
-ensure_table()
+init_db()
 
-# =========================
-# HELPERS
-# =========================
-def clean(v):
-    try:
-        if pd.isna(v):
-            return ""
-    except:
-        pass
-    return str(v).strip()
+# -----------------------
+# SAVE / UPDATE (UPSERT)
+# -----------------------
+def save_row(row):
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
 
-def read_file(file):
-    name = file.filename.lower()
+    c.execute("""
+    INSERT INTO submissions (
+        submission_number, customer_name, email, phone,
+        status, service_level, cards, date_arrived,
+        est_date, last_updated
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(submission_number) DO UPDATE SET
+        customer_name=excluded.customer_name,
+        email=excluded.email,
+        phone=excluded.phone,
+        status=excluded.status,
+        service_level=excluded.service_level,
+        cards=excluded.cards,
+        date_arrived=excluded.date_arrived,
+        est_date=excluded.est_date,
+        last_updated=excluded.last_updated
+    """, (
+        row.get("submission_number"),
+        row.get("customer_name"),
+        row.get("email"),
+        row.get("phone"),
+        row.get("status"),
+        row.get("service_level"),
+        row.get("cards"),
+        row.get("date_arrived"),
+        row.get("est_date"),
+        datetime.now().isoformat()
+    ))
 
-    if name.endswith(("xlsx","xls")):
-        return pd.read_excel(file)
+    conn.commit()
+    conn.close()
 
-    raw = file.read()
-    file.seek(0)
+# -----------------------
+# HOME / DASHBOARD
+# -----------------------
+@app.route("/")
+def home():
+    conn = sqlite3.connect(DB)
+    df = pd.read_sql("SELECT * FROM submissions ORDER BY last_updated DESC LIMIT 100", conn)
+    conn.close()
 
-    try:
-        return pd.read_csv(io.StringIO(raw.decode("utf-8")), on_bad_lines="skip")
-    except:
-        return pd.read_csv(io.StringIO(raw.decode("latin1")), on_bad_lines="skip")
+    return render_template_string("""
+    <h1>PSA Dashboard</h1>
 
-# =========================
-# UPLOAD EXCEL
-# =========================
-@app.route("/upload", methods=["GET","POST"])
-def upload():
+    <a href="/upload">Upload Excel/CSV</a><br>
+    <a href="/upload_psa">Upload PSA PDF</a><br>
+    <a href="/search">Search</a><br><br>
+
+    {{ table|safe }}
+    """, table=df.to_html(index=False))
+
+# -----------------------
+# SEARCH
+# -----------------------
+@app.route("/search", methods=["GET", "POST"])
+def search():
+    results = ""
+
     if request.method == "POST":
-        file = request.files.get("file")
+        q = request.form.get("q")
 
-        if not file:
-            return "No file uploaded"
-
-        try:
-            df = read_file(file)
-        except Exception as e:
-            return f"READ ERROR: {e}"
-
-        df.columns = [str(c).strip() for c in df.columns]
-
-        conn = get_conn()
-        cur = conn.cursor()
-
-        inserted = 0
-        errors = 0
-
-        for _, row in df.iterrows():
-            try:
-                raw = {c: clean(row[c]) for c in df.columns}
-
-                submission = raw.get("Submission #") or raw.get("Submission Number") or ""
-
-                if not submission:
-                    errors += 1
-                    continue
-
-                cur.execute("""
-                    INSERT INTO submissions (submission_number, raw_data)
-                    VALUES (%s,%s)
-                    ON CONFLICT (submission_number)
-                    DO UPDATE SET
-                        raw_data = EXCLUDED.raw_data,
-                        last_updated = NOW()
-                """, (submission, json.dumps(raw)))
-
-                inserted += 1
-
-            except Exception as e:
-                print("ROW ERROR:", e)
-                errors += 1
-
-        conn.commit()
-        cur.close()
+        conn = sqlite3.connect(DB)
+        df = pd.read_sql("""
+            SELECT * FROM submissions
+            WHERE submission_number LIKE ?
+            OR customer_name LIKE ?
+            OR email LIKE ?
+            OR phone LIKE ?
+        """, conn, params=[f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"])
         conn.close()
 
-        return f"Inserted/Updated: {inserted} | Errors: {errors}"
+        results = df.to_html(index=False)
 
     return """
-    <h3>Upload Excel/CSV</h3>
+    <h2>Search</h2>
+    <form method="post">
+        <input name="q">
+        <button>Search</button>
+    </form>
+    """ + results
+
+# -----------------------
+# CSV / EXCEL UPLOAD
+# -----------------------
+@app.route("/upload", methods=["GET", "POST"])
+def upload():
+    if request.method == "POST":
+        file = request.files["file"]
+
+        try:
+            df = pd.read_excel(file)
+        except:
+            file.seek(0)
+            df = pd.read_csv(file, encoding="utf-8", errors="ignore")
+
+        df.columns = df.columns.str.strip()
+
+        for _, row in df.iterrows():
+            save_row({
+                "submission_number": str(row.get("Submission #") or row.get("submission_number")),
+                "customer_name": row.get("Customer Name"),
+                "email": row.get("Email"),
+                "phone": row.get("Phone"),
+                "status": row.get("Status"),
+                "service_level": row.get("Service Type"),
+                "cards": row.get("# Of Cards"),
+                "date_arrived": row.get("Date"),
+                "est_date": None
+            })
+
+        return "Upload complete"
+
+    return """
+    <h2>Upload CSV/Excel</h2>
     <form method="post" enctype="multipart/form-data">
         <input type="file" name="file">
         <button>Upload</button>
     </form>
-    <br><a href="/">Dashboard</a>
     """
 
-# =========================
-# PSA PDF UPLOAD (SAFE)
-# =========================
-@app.route("/upload_psa", methods=["GET","POST"])
+# -----------------------
+# PSA PDF PARSER (FIXED)
+# -----------------------
+@app.route("/upload_psa", methods=["GET", "POST"])
 def upload_psa():
     if request.method == "POST":
-        file = request.files.get("file")
+        file = request.files["file"]
 
-        if not file:
-            return "No file uploaded"
-
-        try:
-            import pdfplumber
-        except:
-            return "ERROR: pdfplumber not installed"
+        import pdfplumber
 
         text = ""
+        with pdfplumber.open(file) as pdf:
+            for page in pdf.pages:
+                t = page.extract_text()
+                if t:
+                    text += t + "\n"
 
-        try:
-            with pdfplumber.open(file) as pdf:
-                for page in pdf.pages:
-                    t = page.extract_text()
-                    if t:
-                        text += t + "\n"
-        except Exception as e:
-            return f"PDF ERROR: {e}"
-
-        if not text:
-            return "ERROR: No readable text in PDF"
-
-        subs = re.findall(r"Sub\s*#(\d+)", text)
-
-        if not subs:
-            return "ERROR: No submission numbers found"
-
-        statuses = [
-            "Order Arrived",
-            "Grading",
-            "QA Checks",
-            "Research & ID",
-            "Complete"
-        ]
-
-        conn = get_conn()
-        cur = conn.cursor()
+        # split by submissions
+        blocks = re.split(r"Sub\s*#", text)
 
         updated = 0
 
-        for sub in subs:
-            try:
-                block = re.search(rf"Sub\s*#{sub}(.{{0,200}})", text)
-
-                if not block:
-                    continue
-
-                found = None
-                for s in statuses:
-                    if s in block.group(1):
-                        found = s
-                        break
-
-                if not found:
-                    continue
-
-                cur.execute("""
-                    UPDATE submissions
-                    SET status=%s, last_updated=NOW()
-                    WHERE submission_number=%s
-                """, (found, sub))
-
-                if cur.rowcount > 0:
-                    updated += 1
-
-            except Exception as e:
-                print("PSA ROW ERROR:", e)
+        for block in blocks:
+            block = block.strip()
+            if not block or not block[0].isdigit():
                 continue
 
-        conn.commit()
-        cur.close()
-        conn.close()
+            sub_match = re.match(r"(\d+)", block)
+            if not sub_match:
+                continue
 
-        return f"PSA Updated: {updated}"
+            sub_number = sub_match.group(1)
+
+            # STATUS TYPES
+            if "Order Arrived" in block:
+                status = "Order Arrived"
+            elif "Grading" in block:
+                status = "Grading"
+            elif "Complete" in block:
+                status = "Complete"
+            elif "QA Checks" in block:
+                status = "QA Checks"
+            elif "Research & ID" in block:
+                status = "Research & ID"
+            else:
+                status = "Processing"
+
+            # cards
+            cards_match = re.search(r"(\d+)\s+Cards?", block)
+            cards = int(cards_match.group(1)) if cards_match else None
+
+            # date arrived
+            date_match = re.search(r"(Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+\d{4}", block)
+            date_arrived = date_match.group(0) if date_match else None
+
+            # est date
+            est_match = re.search(r"Est\. by\s+(.*?\d{4})", block)
+            est_date = est_match.group(1) if est_match else None
+
+            # service level
+            if "Value" in block:
+                service = "Value"
+            elif "Express" in block:
+                service = "Express"
+            elif "Regular" in block:
+                service = "Regular"
+            else:
+                service = None
+
+            save_row({
+                "submission_number": sub_number,
+                "status": status,
+                "cards": cards,
+                "date_arrived": date_arrived,
+                "est_date": est_date,
+                "service_level": service
+            })
+
+            updated += 1
+
+        return f"PSA updated: {updated}"
 
     return """
-    <h3>Upload PSA PDF</h3>
+    <h2>Upload PSA PDF</h2>
     <form method="post" enctype="multipart/form-data">
         <input type="file" name="file">
         <button>Upload</button>
     </form>
-    <br><a href="/">Dashboard</a>
     """
 
-# =========================
-# DASHBOARD (CLEAN)
-# =========================
-@app.route("/")
-def dashboard():
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("SELECT raw_data, status FROM submissions ORDER BY id DESC LIMIT 200")
-    rows = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    keys = set()
-    data_rows = []
-
-    for r in rows:
-        data = r[0] or {}
-
-        clean_row = {
-            k: v for k, v in data.items()
-            if not str(k).lower().startswith("unnamed")
-        }
-
-        if r[1]:
-            clean_row["PSA Status"] = r[1]
-
-        data_rows.append(clean_row)
-        keys.update(clean_row.keys())
-
-    preferred = [
-        "Submission #",
-        "S",
-        "Submission Date",
-        "Customer Name",
-        "Contact Info",
-        "# Of Cards",
-        "Service Type",
-        "Est Cost",
-        "Prep Needed",
-        "Customer Paid",
-        "Current Status",
-        "PSA Status",
-        "Declared Value",
-        "Notes"
-    ]
-
-    ordered = [k for k in preferred if k in keys]
-    ordered += [k for k in keys if k not in ordered]
-
-    html = """
-    <div style="position:sticky;top:0;background:white;padding:10px;border-bottom:2px solid black;">
-        <strong>PSA System</strong> |
-        <a href="/upload">Upload Excel</a> |
-        <a href="/upload_psa">Upload PSA PDF</a> |
-        <a href="/search">Search</a>
-    </div>
-    <br>
-    """
-
-    html += "<table border=1><tr>"
-
-    for k in ordered:
-        html += f"<th>{k}</th>"
-    html += "</tr>"
-
-    for row in data_rows:
-        html += "<tr>"
-        for k in ordered:
-            html += f"<td>{row.get(k,'')}</td>"
-        html += "</tr>"
-
-    html += "</table>"
-
-    return html
-
-# =========================
-# SEARCH
-# =========================
-@app.route("/search")
-def search():
-    q = request.args.get("q","")
-
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT raw_data FROM submissions
-        WHERE raw_data::text ILIKE %s
-        LIMIT 50
-    """, (f"%{q}%",))
-
-    rows = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    html = f"""
-    <form>
-        <input name="q" value="{q}">
-        <button>Search</button>
-    </form>
-    <table border=1>
-    """
-
-    for r in rows:
-        data = r[0] or {}
-        html += "<tr>"
-        for v in data.values():
-            html += f"<td>{v}</td>"
-        html += "</tr>"
-
-    html += "</table><br><a href='/'>Back</a>"
-
-    return html
-
-# =========================
+# -----------------------
+# RUN
+# -----------------------
 if __name__ == "__main__":
-    app.run()
+    app.run(debug=True)
