@@ -1,16 +1,22 @@
 from flask import Flask, request
 import pandas as pd
 import psycopg2
-import os, io, json, re
+import os, io, json, re, traceback
 
 app = Flask(__name__)
+
+# =========================
+# DB CONNECTION (SAFE)
+# =========================
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 def get_conn():
+    if not DATABASE_URL:
+        raise Exception("DATABASE_URL is not set in environment")
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
 # =========================
-# INIT TABLE (DYNAMIC SAFE)
+# INIT TABLE
 # =========================
 def init_db():
     conn = get_conn()
@@ -30,6 +36,17 @@ def init_db():
     conn.close()
 
 init_db()
+
+# =========================
+# GLOBAL ERROR HANDLER
+# =========================
+@app.errorhandler(Exception)
+def handle_error(e):
+    return f"""
+    <h3>APP ERROR</h3>
+    <pre>{str(e)}</pre>
+    <pre>{traceback.format_exc()}</pre>
+    """
 
 # =========================
 # HELPERS
@@ -56,9 +73,6 @@ def read_file(file):
     except:
         return pd.read_csv(io.StringIO(raw.decode("latin1")), on_bad_lines="skip")
 
-# =========================
-# UPSERT (NO DATA LOSS)
-# =========================
 def save_row(submission, raw):
     conn = get_conn()
     cur = conn.cursor()
@@ -66,7 +80,8 @@ def save_row(submission, raw):
     cur.execute("""
     INSERT INTO submissions (submission_number, raw_data)
     VALUES (%s,%s)
-    ON CONFLICT (submission_number) DO UPDATE SET
+    ON CONFLICT (submission_number)
+    DO UPDATE SET
         raw_data = EXCLUDED.raw_data,
         last_updated = NOW()
     """, (submission, json.dumps(raw)))
@@ -76,7 +91,7 @@ def save_row(submission, raw):
     conn.close()
 
 # =========================
-# DASHBOARD (CLEAN VIEW)
+# DASHBOARD
 # =========================
 @app.route("/")
 def dashboard():
@@ -95,7 +110,6 @@ def dashboard():
     for r in rows:
         data = r[0] or {}
 
-        # remove junk columns
         row = {
             k: v for k, v in data.items()
             if not str(k).lower().startswith("unnamed")
@@ -133,9 +147,9 @@ def dashboard():
     return html
 
 # =========================
-# SEARCH (ALL FIELDS)
+# SEARCH
 # =========================
-@app.route("/search", methods=["GET"])
+@app.route("/search")
 def search():
     q = request.args.get("q","")
 
@@ -172,7 +186,7 @@ def search():
     return html
 
 # =========================
-# EXCEL / CSV UPLOAD
+# EXCEL UPLOAD
 # =========================
 @app.route("/upload", methods=["GET","POST"])
 def upload():
@@ -190,7 +204,6 @@ def upload():
         for _, row in df.iterrows():
             try:
                 raw = {c: clean(row[c]) for c in df.columns}
-
                 submission = raw.get("Submission #") or raw.get("Submission Number")
 
                 if not submission:
@@ -200,8 +213,9 @@ def upload():
                 save_row(submission, raw)
                 inserted += 1
 
-            except:
+            except Exception as e:
                 errors += 1
+                print("ROW ERROR:", e)
 
         return f"Inserted/Updated: {inserted} | Errors: {errors}"
 
@@ -215,22 +229,31 @@ def upload():
     """
 
 # =========================
-# PSA PDF UPLOAD (WORKING)
+# PSA PDF UPLOAD (SAFE)
 # =========================
 @app.route("/upload_psa", methods=["GET","POST"])
 def upload_psa():
     if request.method == "POST":
         file = request.files.get("file")
 
-        import pdfplumber
+        try:
+            import pdfplumber
+        except:
+            return "ERROR: pdfplumber not installed"
 
         text = ""
 
-        with pdfplumber.open(file) as pdf:
-            for page in pdf.pages:
-                t = page.extract_text()
-                if t:
-                    text += t + "\n"
+        try:
+            with pdfplumber.open(file) as pdf:
+                for page in pdf.pages:
+                    t = page.extract_text()
+                    if t:
+                        text += t + "\n"
+        except Exception as e:
+            return f"PDF ERROR: {e}"
+
+        if not text:
+            return "ERROR: No readable text in PDF"
 
         blocks = re.split(r"Sub\s*#", text)
 
@@ -240,34 +263,38 @@ def upload_psa():
         updated = 0
 
         for b in blocks:
-            if not b.strip() or not b[0].isdigit():
-                continue
+            try:
+                if not b.strip() or not b[0].isdigit():
+                    continue
 
-            sub_match = re.match(r"(\d+)", b)
-            if not sub_match:
-                continue
+                sub_match = re.match(r"(\d+)", b)
+                if not sub_match:
+                    continue
 
-            sub = sub_match.group(1)
+                sub = sub_match.group(1)
 
-            if "Order Arrived" in b:
-                status = "Order Arrived"
-            elif "Grading" in b:
-                status = "Grading"
-            elif "Complete" in b:
-                status = "Complete"
-            elif "QA Checks" in b:
-                status = "QA Checks"
-            else:
-                status = "Processing"
+                if "Order Arrived" in b:
+                    status = "Order Arrived"
+                elif "Grading" in b:
+                    status = "Grading"
+                elif "Complete" in b:
+                    status = "Complete"
+                elif "QA Checks" in b:
+                    status = "QA Checks"
+                else:
+                    status = "Processing"
 
-            cur.execute("""
-            UPDATE submissions
-            SET status=%s, last_updated=NOW()
-            WHERE submission_number=%s
-            """, (status, sub))
+                cur.execute("""
+                UPDATE submissions
+                SET status=%s, last_updated=NOW()
+                WHERE submission_number=%s
+                """, (status, sub))
 
-            if cur.rowcount > 0:
-                updated += 1
+                if cur.rowcount > 0:
+                    updated += 1
+
+            except Exception as e:
+                print("PDF ROW ERROR:", e)
 
         conn.commit()
         cur.close()
