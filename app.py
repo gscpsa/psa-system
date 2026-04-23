@@ -11,36 +11,34 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 def get_conn():
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
-# ---------- FILE READER ----------
-def read_any(file_storage):
-    filename = (file_storage.filename or "").lower()
+# ---------- ONE-TIME SETUP (resets table to match code) ----------
+def setup_database():
+    conn = get_conn()
+    cur = conn.cursor()
 
-    # Excel
-    if filename.endswith((".xlsx", ".xls")):
-        return pd.read_excel(file_storage)
+    # ⚠️ This will DROP existing data (safe if your source is your file)
+    cur.execute("DROP TABLE IF EXISTS submissions;")
 
-    # CSV (unknown encoding + delimiter)
-    raw = file_storage.read()
-    file_storage.seek(0)
+    cur.execute("""
+    CREATE TABLE submissions (
+        id SERIAL PRIMARY KEY,
+        submission_number TEXT UNIQUE,
+        customer_name TEXT,
+        contact_info TEXT,
+        card_count TEXT,
+        service_type TEXT,
+        status TEXT
+    );
+    """)
 
-    for enc in ["utf-8", "latin1"]:
-        try:
-            text = raw.decode(enc)
-            break
-        except:
-            continue
-    else:
-        raise Exception("Unable to decode file")
+    conn.commit()
+    cur.close()
+    conn.close()
 
-    for sep in [",", ";", "\t"]:
-        try:
-            return pd.read_csv(io.StringIO(text), sep=sep)
-        except:
-            continue
+# Run once at startup
+setup_database()
 
-    raise Exception("Unable to parse CSV")
-
-# ---------- CLEAN ----------
+# ---------- HELPERS ----------
 def clean(val):
     try:
         if pd.isna(val):
@@ -49,7 +47,70 @@ def clean(val):
         pass
     return str(val).strip()
 
-# ---------- HOME ----------
+def read_any(file_storage):
+    """
+    Read CSV or Excel with encoding + delimiter fallback.
+    """
+    filename = (file_storage.filename or "").lower()
+
+    # Excel
+    if filename.endswith((".xlsx", ".xls")):
+        return pd.read_excel(file_storage)
+
+    # CSV
+    raw = file_storage.read()
+    file_storage.seek(0)
+
+    # encoding fallback
+    text = None
+    for enc in ("utf-8", "latin1"):
+        try:
+            text = raw.decode(enc)
+            break
+        except:
+            continue
+    if text is None:
+        raise Exception("Unable to decode file")
+
+    # delimiter fallback
+    for sep in (",", ";", "\t"):
+        try:
+            return pd.read_csv(io.StringIO(text), sep=sep)
+        except:
+            continue
+
+    raise Exception("Unable to parse CSV (delimiter issue)")
+
+def extract_fields(row):
+    """
+    Dynamically find fields from messy headers.
+    """
+    submission = ""
+    name = ""
+    contact = ""
+    status = ""
+    service = ""
+    count = None
+
+    for key in row.keys():
+        k = str(key).lower()
+
+        if not submission and "submission" in k:
+            submission = clean(row.get(key))
+        elif not name and ("name" in k):
+            name = clean(row.get(key))
+        elif not contact and ("contact" in k or "phone" in k):
+            contact = clean(row.get(key))
+        elif not status and ("status" in k):
+            status = clean(row.get(key))
+        elif not service and ("service" in k):
+            service = clean(row.get(key))
+        elif count is None and ("card" in k):
+            count = row.get(key)
+
+    return submission, name, contact, count, service, status
+
+# ---------- ROUTES ----------
 @app.route("/")
 def home():
     return """
@@ -58,12 +119,10 @@ def home():
     <a href="/search">Staff Search</a>
     """
 
-# ---------- UPLOAD ----------
 @app.route("/upload", methods=["GET", "POST"])
 def upload():
     if request.method == "POST":
         file = request.files.get("file")
-
         if not file:
             return "No file uploaded"
 
@@ -81,38 +140,11 @@ def upload():
 
         for _, row in df.iterrows():
             try:
-                # 🔥 DYNAMIC SUBMISSION COLUMN DETECTION
-                submission = ""
-                for key in row.keys():
-                    k = str(key).lower()
-                    if "submission" in k:
-                        submission = clean(row.get(key))
-                        break
+                submission, name, contact, count, service, status = extract_fields(row)
 
                 if not submission:
                     errors += 1
                     continue
-
-                # Other fields (safe)
-                name = ""
-                contact = ""
-                status = ""
-                service = ""
-                count = None
-
-                for key in row.keys():
-                    k = str(key).lower()
-
-                    if "name" in k:
-                        name = clean(row.get(key))
-                    elif "contact" in k or "phone" in k:
-                        contact = clean(row.get(key))
-                    elif "status" in k:
-                        status = clean(row.get(key))
-                    elif "service" in k:
-                        service = clean(row.get(key))
-                    elif "card" in k:
-                        count = row.get(key)
 
                 cur.execute("""
                     INSERT INTO submissions
@@ -127,6 +159,8 @@ def upload():
                         status = EXCLUDED.status
                 """, (submission, name, contact, count, service, status))
 
+                # rowcount is 1 for insert or update in this pattern
+                # we can approximate:
                 if cur.rowcount == 1:
                     inserted += 1
                 else:
@@ -157,7 +191,6 @@ def upload():
     <br><a href="/">Back</a>
     """
 
-# ---------- SEARCH ----------
 @app.route("/search", methods=["GET", "POST"])
 def search():
     results = []
