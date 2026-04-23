@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect
+from flask import Flask, request
 import psycopg2
 import pandas as pd
 import os
@@ -10,7 +10,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 def get_conn():
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
-# ---------- SAFE TABLE ----------
+# ---------- TABLE ----------
 def ensure_table():
     conn = get_conn()
     cur = conn.cursor()
@@ -19,18 +19,11 @@ def ensure_table():
     CREATE TABLE IF NOT EXISTS submissions (
         id SERIAL PRIMARY KEY,
         submission_number TEXT UNIQUE,
-        submission_date TEXT,
         customer_name TEXT,
         contact_info TEXT,
         card_count TEXT,
         service_type TEXT,
-        est_cost TEXT,
-        prep_needed TEXT,
-        customer_paid TEXT,
-        status TEXT,
-        declared_value TEXT,
-        notes TEXT,
-        last_updated TIMESTAMP DEFAULT NOW()
+        status TEXT
     );
     """)
 
@@ -40,15 +33,7 @@ def ensure_table():
 
 ensure_table()
 
-# ---------- HELPERS ----------
-def clean(val):
-    try:
-        if pd.isna(val):
-            return ""
-    except:
-        pass
-    return str(val).strip()
-
+# ---------- FILE READER ----------
 def read_any(file):
     name = file.filename.lower()
 
@@ -57,52 +42,8 @@ def read_any(file):
 
     raw = file.read()
     file.seek(0)
-
     text = raw.decode("latin1")
-
     return pd.read_csv(io.StringIO(text))
-
-# ---------- STRONG COLUMN DETECTION ----------
-def extract_row(row):
-
-    data = {
-        "submission_number": "",
-        "customer_name": "",
-        "contact_info": "",
-        "status": "",
-        "service_type": "",
-        "card_count": ""
-    }
-
-    for key in row.keys():
-        k = str(key).strip().lower()
-        v = clean(row.get(key))
-
-        # --- submission (highest priority) ---
-        if any(x in k for x in ["submission", "#", "id"]) and not data["submission_number"]:
-            data["submission_number"] = v
-
-        # --- name ---
-        elif "customer name" in k or (k == "name"):
-            data["customer_name"] = v
-
-        # --- contact ---
-        elif any(x in k for x in ["email","phone","contact"]):
-            data["contact_info"] = v
-
-        # --- status ---
-        elif "status" in k:
-            data["status"] = v
-
-        # --- service ---
-        elif "service" in k:
-            data["service_type"] = v
-
-        # --- cards ---
-        elif "card" in k:
-            data["card_count"] = v
-
-    return data
 
 # ---------- HOME ----------
 @app.route("/")
@@ -111,12 +52,13 @@ def home():
     <h2>PSA System</h2>
     <a href="/upload">Upload</a><br>
     <a href="/dashboard">Dashboard</a><br>
-    <a href="/staff">Staff Search</a>
+    <a href="/search">Search</a>
     """
 
 # ---------- UPLOAD ----------
 @app.route("/upload", methods=["GET","POST"])
 def upload():
+
     if request.method == "POST":
         file = request.files.get("file")
 
@@ -131,9 +73,15 @@ def upload():
 
         for _, row in df.iterrows():
             try:
-                d = extract_row(row)
+                # 🔥 EXACT COLUMN MAPPING (NO GUESSING)
+                submission = str(row.get("Submission #", "")).strip()
+                name = str(row.get("Customer Name", "")).strip()
+                contact = str(row.get("Contact Info", "")).strip()
+                cards = str(row.get("# of Cards", "")).strip()
+                service = str(row.get("Service Type", "")).strip()
+                status = str(row.get("Current Status", "")).strip()
 
-                if not d["submission_number"]:
+                if not submission:
                     errors += 1
                     continue
 
@@ -148,14 +96,7 @@ def upload():
                     card_count=EXCLUDED.card_count,
                     service_type=EXCLUDED.service_type,
                     status=EXCLUDED.status
-                """, (
-                    d["submission_number"],
-                    d["customer_name"],
-                    d["contact_info"],
-                    d["card_count"],
-                    d["service_type"],
-                    d["status"]
-                ))
+                """, (submission, name, contact, cards, service, status))
 
                 inserted += 1
 
@@ -199,12 +140,11 @@ def dashboard():
         html += "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>"
 
     html += "</table>"
-
     return html
 
 # ---------- SEARCH ----------
-@app.route("/staff", methods=["GET","POST"])
-def staff():
+@app.route("/search", methods=["GET","POST"])
+def search():
     results = []
 
     if request.method == "POST":
