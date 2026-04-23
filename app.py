@@ -38,6 +38,9 @@ def upload():
         on_bad_lines="skip"
     )
 
+    # 🔥 CRITICAL: normalize column names (fixes your 0 rows issue)
+    df.columns = df.columns.str.strip()
+
     conn = get_conn()
     cur = conn.cursor()
 
@@ -45,6 +48,17 @@ def upload():
 
     for _, row in df.iterrows():
         try:
+            submission = str(row.get("Submission #", "")).strip()
+            name = str(row.get("Customer Name", "")).strip()
+            contact = str(row.get("Contact Info", "")).strip()
+            cards = str(row.get("# Of Cards", "")).strip()
+            service = str(row.get("Service Type", "")).strip()
+            status = str(row.get("Current Status", "")).strip()
+
+            # Skip empty garbage rows
+            if not submission and not name:
+                continue
+
             cur.execute("""
             INSERT INTO submissions (
                 submission_number,
@@ -54,24 +68,19 @@ def upload():
                 service_type,
                 status
             ) VALUES (%s, %s, %s, %s, %s, %s)
-            """, (
-                str(row.get("Submission #")),
-                str(row.get("Customer Name")),
-                str(row.get("Contact Info")),
-                str(row.get("# Of Cards")),
-                str(row.get("Service Type")),
-                str(row.get("Current Status"))
-            ))
+            """, (submission, name, contact, cards, service, status))
+
             inserted += 1
-        except Exception:
-            # skip any bad row silently
+
+        except Exception as e:
+            print("Row skipped:", e)
             continue
 
     conn.commit()
     cur.close()
     conn.close()
 
-    return f"Uploaded {inserted} rows successfully"
+    return f"<h2>Uploaded {inserted} rows successfully</h2><a href='/dashboard'>Go to dashboard</a>"
 
 
 # ---------- DASHBOARD ----------
