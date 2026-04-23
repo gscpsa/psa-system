@@ -1,10 +1,14 @@
 from flask import Flask, request, redirect, session, render_template_string
 import psycopg2
 import os
+import pandas as pd
 
 app = Flask(__name__)
 app.secret_key = "secret123"
 
+# -------------------------
+# DATABASE
+# -------------------------
 def get_db():
     url = os.environ.get("DATABASE_URL")
     return psycopg2.connect(url, sslmode="require")
@@ -12,7 +16,7 @@ def get_db():
 # -------------------------
 # STATUS STAGES
 # -------------------------
-STAGES = ["Received", "Grading", "Assembly", "QA Check", "Shipped"]
+STAGES = ["Received", "Research & ID", "Grading", "Assembly", "QA Check", "Shipped"]
 
 # -------------------------
 # HTML
@@ -29,51 +33,42 @@ ADMIN_HTML = """
 DASHBOARD_HTML = """
 <h2>Admin Dashboard</h2>
 
-<h3>Add PSA Order</h3>
-<form method="POST">
-    <input name="customer_name" placeholder="Customer Name" required>
-    <input name="email" placeholder="Email" required>
-    <input name="order_code" placeholder="PSA Order #" required>
-
-    <select name="status">
-        {% for s in stages %}
-            <option value="{{s}}">{{s}}</option>
-        {% endfor %}
-    </select>
-
-    <button>Add Order</button>
+<h3>Upload Spreadsheet</h3>
+<form method="POST" action="/upload-csv" enctype="multipart/form-data">
+    <input type="file" name="file" required>
+    <button>Upload</button>
 </form>
 
-<h3>All Orders</h3>
+<h3>All Submissions</h3>
 <table border="1" cellpadding="5">
 <tr>
-<th>Order</th><th>Name</th><th>Status</th><th>Track</th>
+<th>Submission</th><th>Name</th><th>Status</th><th>Track</th>
 </tr>
 
 {% for o in orders %}
 <tr>
+<td>{{ o[0] }}</td>
 <td>{{ o[1] }}</td>
-<td>{{ o[2] }}</td>
-<td>{{ o[4] }}</td>
-<td><a href="/track/{{ o[1] }}">View</a></td>
+<td>{{ o[5] }}</td>
+<td><a href="/track/{{ o[0] }}">View</a></td>
 </tr>
 {% endfor %}
 </table>
 """
 
 TRACK_HTML = """
-<h2>Order Tracking</h2>
+<h2>Submission Tracking</h2>
 
 {% if order %}
-    <h3>Order #: {{ order[1] }}</h3>
-    <p>Customer: {{ order[2] }}</p>
+    <h3>Submission #: {{ order[0] }}</h3>
+    <p>Customer: {{ order[1] }}</p>
 
     <h3>Status Progress</h3>
 
     {% for s in stages %}
-        {% if stages.index(s) < stages.index(order[4]) %}
+        {% if stages.index(s) < stages.index(order[5]) %}
             <div style="color:green;">✔ {{ s }}</div>
-        {% elif s == order[4] %}
+        {% elif s == order[5] %}
             <div style="color:orange;">➡ {{ s }}</div>
         {% else %}
             <div style="color:gray;">⬜ {{ s }}</div>
@@ -81,25 +76,26 @@ TRACK_HTML = """
     {% endfor %}
 
 {% else %}
-    <p>Order not found</p>
+    <p>Submission not found</p>
 {% endif %}
 """
 
 # -------------------------
 # DB INIT
 # -------------------------
-
 def init_db():
     conn = get_db()
     c = conn.cursor()
 
     c.execute("""
-    CREATE TABLE IF NOT EXISTS orders (
-        id SERIAL PRIMARY KEY,
-        order_code TEXT,
+    CREATE TABLE IF NOT EXISTS submissions (
+        submission_number TEXT PRIMARY KEY,
         customer_name TEXT,
-        email TEXT,
-        status TEXT
+        contact_info TEXT,
+        card_count INT,
+        service_type TEXT,
+        status TEXT,
+        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
 
@@ -122,7 +118,7 @@ def admin():
             return redirect("/dashboard")
     return render_template_string(ADMIN_HTML)
 
-@app.route("/dashboard", methods=["GET", "POST"])
+@app.route("/dashboard", methods=["GET"])
 def dashboard():
     if not session.get("admin"):
         return redirect("/admin")
@@ -132,30 +128,84 @@ def dashboard():
     conn = get_db()
     c = conn.cursor()
 
-    if request.method == "POST":
-        c.execute(
-            "INSERT INTO orders (order_code, customer_name, email, status) VALUES (%s,%s,%s,%s)",
-            (
-                request.form["order_code"],
-                request.form["customer_name"],
-                request.form["email"],
-                request.form["status"],
-            ),
-        )
-        conn.commit()
-
-    c.execute("SELECT * FROM orders ORDER BY id DESC")
+    c.execute("""
+        SELECT submission_number, customer_name, contact_info, card_count, service_type, status
+        FROM submissions
+        ORDER BY last_updated DESC
+    """)
     orders = c.fetchall()
     conn.close()
 
-    return render_template_string(DASHBOARD_HTML, orders=orders, stages=STAGES)
+    return render_template_string(DASHBOARD_HTML, orders=orders)
 
-@app.route("/track/<order_code>")
-def track(order_code):
+# -------------------------
+# CSV UPLOAD
+# -------------------------
+
+@app.route("/upload-csv", methods=["POST"])
+def upload_csv():
+    if not session.get("admin"):
+        return "Unauthorized", 403
+
+    file = request.files.get("file")
+    if not file:
+        return "No file", 400
+
+    df = pd.read_excel(file)
+
     conn = get_db()
     c = conn.cursor()
 
-    c.execute("SELECT * FROM orders WHERE order_code=%s", (order_code,))
+    count = 0
+
+    for _, row in df.iterrows():
+        submission = str(row.get("Submission #", "")).strip()
+        if not submission:
+            continue
+
+        c.execute("""
+        INSERT INTO submissions
+        (submission_number, customer_name, contact_info, card_count, service_type, status)
+        VALUES (%s,%s,%s,%s,%s,%s)
+        ON CONFLICT (submission_number)
+        DO UPDATE SET
+            customer_name = EXCLUDED.customer_name,
+            contact_info = EXCLUDED.contact_info,
+            card_count = EXCLUDED.card_count,
+            service_type = EXCLUDED.service_type,
+            status = EXCLUDED.status,
+            last_updated = CURRENT_TIMESTAMP
+        """, (
+            submission,
+            row.get("Customer Name", ""),
+            row.get("Contact Info", ""),
+            int(row.get("# Of Cards", 0)),
+            row.get("Service Type", ""),
+            row.get("Current Status", "")
+        ))
+
+        count += 1
+
+    conn.commit()
+    conn.close()
+
+    return f"Uploaded {count} records"
+
+# -------------------------
+# TRACK PAGE
+# -------------------------
+
+@app.route("/track/<submission_number>")
+def track(submission_number):
+    conn = get_db()
+    c = conn.cursor()
+
+    c.execute("""
+        SELECT submission_number, customer_name, contact_info, card_count, service_type, status
+        FROM submissions
+        WHERE submission_number=%s
+    """, (submission_number,))
+
     order = c.fetchone()
     conn.close()
 
