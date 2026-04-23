@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect
+from flask import Flask, request
 import pandas as pd
 import psycopg2
 import os
@@ -9,6 +9,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def get_conn():
     return psycopg2.connect(DATABASE_URL)
+
 
 # ---------- HOME ----------
 @app.route("/")
@@ -23,13 +24,19 @@ def home():
     <a href="/dashboard">View Dashboard</a>
     """
 
+
 # ---------- UPLOAD ----------
 @app.route("/upload", methods=["POST"])
 def upload():
     file = request.files["file"]
 
-    # SAFE CSV LOAD (fixes your crash)
-    df = pd.read_csv(file, encoding="latin1")
+    # FIXED CSV READ (this was your crash)
+    df = pd.read_csv(
+        file,
+        encoding="latin1",
+        engine="python",
+        on_bad_lines="skip"
+    )
 
     conn = get_conn()
     cur = conn.cursor()
@@ -59,6 +66,7 @@ def upload():
     conn.close()
 
     return f"Uploaded {len(df)} rows successfully"
+
 
 # ---------- DASHBOARD ----------
 @app.route("/dashboard")
@@ -93,6 +101,7 @@ def dashboard():
     conn.close()
 
     return html
+
 
 # ---------- RUN ----------
 if __name__ == "__main__":
