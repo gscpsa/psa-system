@@ -5,29 +5,33 @@ import os
 import io
 
 app = Flask(__name__)
-
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 def get_conn():
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
-# ---------- ONE-TIME SETUP (resets table to match code) ----------
+# ---------- SETUP ----------
 def setup_database():
     conn = get_conn()
     cur = conn.cursor()
 
-    # ⚠️ This will DROP existing data (safe if your source is your file)
     cur.execute("DROP TABLE IF EXISTS submissions;")
 
     cur.execute("""
     CREATE TABLE submissions (
         id SERIAL PRIMARY KEY,
         submission_number TEXT UNIQUE,
+        submission_date TEXT,
         customer_name TEXT,
         contact_info TEXT,
         card_count TEXT,
         service_type TEXT,
-        status TEXT
+        est_cost TEXT,
+        prep_needed TEXT,
+        customer_paid TEXT,
+        status TEXT,
+        declared_value TEXT,
+        notes TEXT
     );
     """)
 
@@ -35,10 +39,33 @@ def setup_database():
     cur.close()
     conn.close()
 
-# Run once at startup
 setup_database()
 
-# ---------- HELPERS ----------
+# ---------- FILE READER ----------
+def read_any(file):
+    name = file.filename.lower()
+
+    if name.endswith(("xlsx", "xls")):
+        return pd.read_excel(file)
+
+    raw = file.read()
+    file.seek(0)
+
+    for enc in ["utf-8", "latin1"]:
+        try:
+            text = raw.decode(enc)
+            break
+        except:
+            continue
+
+    for sep in [",", ";", "\t"]:
+        try:
+            return pd.read_csv(io.StringIO(text), sep=sep)
+        except:
+            continue
+
+    raise Exception("Cannot parse file")
+
 def clean(val):
     try:
         if pd.isna(val):
@@ -47,75 +74,60 @@ def clean(val):
         pass
     return str(val).strip()
 
-def read_any(file_storage):
-    """
-    Read CSV or Excel with encoding + delimiter fallback.
-    """
-    filename = (file_storage.filename or "").lower()
-
-    # Excel
-    if filename.endswith((".xlsx", ".xls")):
-        return pd.read_excel(file_storage)
-
-    # CSV
-    raw = file_storage.read()
-    file_storage.seek(0)
-
-    # encoding fallback
-    text = None
-    for enc in ("utf-8", "latin1"):
-        try:
-            text = raw.decode(enc)
-            break
-        except:
-            continue
-    if text is None:
-        raise Exception("Unable to decode file")
-
-    # delimiter fallback
-    for sep in (",", ";", "\t"):
-        try:
-            return pd.read_csv(io.StringIO(text), sep=sep)
-        except:
-            continue
-
-    raise Exception("Unable to parse CSV (delimiter issue)")
-
-def extract_fields(row):
-    """
-    Dynamically find fields from messy headers.
-    """
-    submission = ""
-    name = ""
-    contact = ""
-    status = ""
-    service = ""
-    count = None
+# ---------- FIELD EXTRACTION ----------
+def extract(row):
+    data = {
+        "submission_number": "",
+        "submission_date": "",
+        "customer_name": "",
+        "contact_info": "",
+        "card_count": "",
+        "service_type": "",
+        "est_cost": "",
+        "prep_needed": "",
+        "customer_paid": "",
+        "status": "",
+        "declared_value": "",
+        "notes": ""
+    }
 
     for key in row.keys():
         k = str(key).lower()
+        v = clean(row.get(key))
 
-        if not submission and "submission" in k:
-            submission = clean(row.get(key))
-        elif not name and ("name" in k):
-            name = clean(row.get(key))
-        elif not contact and ("contact" in k or "phone" in k):
-            contact = clean(row.get(key))
-        elif not status and ("status" in k):
-            status = clean(row.get(key))
-        elif not service and ("service" in k):
-            service = clean(row.get(key))
-        elif count is None and ("card" in k):
-            count = row.get(key)
+        if "submission" in k:
+            data["submission_number"] = v
+        elif k == "s" or "date" in k:
+            data["submission_date"] = v
+        elif "name" in k:
+            data["customer_name"] = v
+        elif "contact" in k or "phone" in k:
+            data["contact_info"] = v
+        elif "card" in k:
+            data["card_count"] = v
+        elif "service" in k:
+            data["service_type"] = v
+        elif "cost" in k:
+            data["est_cost"] = v
+        elif "prep" in k:
+            data["prep_needed"] = v
+        elif "paid" in k:
+            data["customer_paid"] = v
+        elif "status" in k:
+            data["status"] = v
+        elif "declared" in k:
+            data["declared_value"] = v
+        elif "note" in k:
+            data["notes"] = v
 
-    return submission, name, contact, count, service, status
+    return data
 
 # ---------- ROUTES ----------
 @app.route("/")
 def home():
     return """
     <h2>PSA System</h2>
-    <a href="/upload">Upload File</a><br><br>
+    <a href="/upload">Upload</a><br><br>
     <a href="/search">Staff Search</a>
     """
 
@@ -123,48 +135,48 @@ def home():
 def upload():
     if request.method == "POST":
         file = request.files.get("file")
-        if not file:
-            return "No file uploaded"
 
         try:
             df = read_any(file)
         except Exception as e:
-            return f"FILE READ ERROR: {str(e)}"
-
-        inserted = 0
-        updated = 0
-        errors = 0
+            return str(e)
 
         conn = get_conn()
         cur = conn.cursor()
 
+        inserted = updated = errors = 0
+
         for _, row in df.iterrows():
             try:
-                submission, name, contact, count, service, status = extract_fields(row)
+                d = extract(row)
 
-                if not submission:
+                if not d["submission_number"]:
                     errors += 1
                     continue
 
                 cur.execute("""
-                    INSERT INTO submissions
-                    (submission_number, customer_name, contact_info, card_count, service_type, status)
-                    VALUES (%s,%s,%s,%s,%s,%s)
-                    ON CONFLICT (submission_number)
-                    DO UPDATE SET
-                        customer_name = EXCLUDED.customer_name,
-                        contact_info = EXCLUDED.contact_info,
-                        card_count = EXCLUDED.card_count,
-                        service_type = EXCLUDED.service_type,
-                        status = EXCLUDED.status
-                """, (submission, name, contact, count, service, status))
+                INSERT INTO submissions (
+                    submission_number, submission_date, customer_name,
+                    contact_info, card_count, service_type,
+                    est_cost, prep_needed, customer_paid,
+                    status, declared_value, notes
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (submission_number)
+                DO UPDATE SET
+                    submission_date=EXCLUDED.submission_date,
+                    customer_name=EXCLUDED.customer_name,
+                    contact_info=EXCLUDED.contact_info,
+                    card_count=EXCLUDED.card_count,
+                    service_type=EXCLUDED.service_type,
+                    est_cost=EXCLUDED.est_cost,
+                    prep_needed=EXCLUDED.prep_needed,
+                    customer_paid=EXCLUDED.customer_paid,
+                    status=EXCLUDED.status,
+                    declared_value=EXCLUDED.declared_value,
+                    notes=EXCLUDED.notes
+                """, tuple(d.values()))
 
-                # rowcount is 1 for insert or update in this pattern
-                # we can approximate:
-                if cur.rowcount == 1:
-                    inserted += 1
-                else:
-                    updated += 1
+                inserted += 1
 
             except Exception as e:
                 print("ROW ERROR:", e)
@@ -174,21 +186,14 @@ def upload():
         cur.close()
         conn.close()
 
-        return f"""
-        <h3>Upload Results</h3>
-        Inserted: {inserted}<br>
-        Updated: {updated}<br>
-        Errors: {errors}<br>
-        <a href="/">Back</a>
-        """
+        return f"Inserted/Updated: {inserted} | Errors: {errors}"
 
     return """
-    <h2>Upload CSV or Excel</h2>
+    <h2>Upload</h2>
     <form method="post" enctype="multipart/form-data">
         <input type="file" name="file">
-        <button type="submit">Upload</button>
+        <button>Upload</button>
     </form>
-    <br><a href="/">Back</a>
     """
 
 @app.route("/search", methods=["GET", "POST"])
@@ -196,20 +201,20 @@ def search():
     results = []
 
     if request.method == "POST":
-        query = request.form.get("query", "")
+        q = request.form["query"]
 
         conn = get_conn()
         cur = conn.cursor()
 
         cur.execute("""
-            SELECT submission_number, customer_name, contact_info, status
-            FROM submissions
-            WHERE
-                submission_number ILIKE %s OR
-                customer_name ILIKE %s OR
-                contact_info ILIKE %s
-            LIMIT 100
-        """, (f"%{query}%", f"%{query}%", f"%{query}%"))
+        SELECT *
+        FROM submissions
+        WHERE
+            submission_number ILIKE %s OR
+            customer_name ILIKE %s OR
+            contact_info ILIKE %s
+        LIMIT 50
+        """, (f"%{q}%", f"%{q}%", f"%{q}%"))
 
         results = cur.fetchall()
 
@@ -217,28 +222,20 @@ def search():
         conn.close()
 
     html = """
-    <h2>Staff Search</h2>
+    <h2>Search</h2>
     <form method="post">
-        <input name="query" placeholder="Search anything">
-        <button type="submit">Search</button>
+        <input name="query">
+        <button>Search</button>
     </form>
-    <br>
     <table border=1>
-        <tr>
-            <th>Submission</th>
-            <th>Name</th>
-            <th>Contact</th>
-            <th>Status</th>
-        </tr>
     """
 
     for r in results:
-        html += f"<tr><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td></tr>"
+        html += "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>"
 
-    html += "</table><br><a href='/'>Back</a>"
+    html += "</table>"
 
     return html
-
 
 if __name__ == "__main__":
     app.run()
