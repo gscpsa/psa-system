@@ -1,8 +1,7 @@
 from flask import Flask, request
 import pandas as pd
 import psycopg2
-import os, io, re
-from datetime import datetime
+import os, io, json, re
 
 app = Flask(__name__)
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -11,7 +10,7 @@ def get_conn():
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
 # =========================
-# INIT TABLE
+# INIT TABLE (DYNAMIC SAFE)
 # =========================
 def init_db():
     conn = get_conn()
@@ -20,15 +19,9 @@ def init_db():
     cur.execute("""
     CREATE TABLE IF NOT EXISTS submissions (
         submission_number TEXT PRIMARY KEY,
-        customer_name TEXT,
-        email TEXT,
-        phone TEXT,
         status TEXT,
-        service_level TEXT,
-        cards INTEGER,
-        date_arrived TEXT,
-        est_date TEXT,
-        last_updated TIMESTAMP
+        raw_data JSONB,
+        last_updated TIMESTAMP DEFAULT NOW()
     )
     """)
 
@@ -39,137 +32,200 @@ def init_db():
 init_db()
 
 # =========================
-# UPSERT
+# HELPERS
 # =========================
-def save_row(row):
+def clean(v):
+    try:
+        if pd.isna(v):
+            return ""
+    except:
+        pass
+    return str(v).strip()
+
+def read_file(file):
+    name = file.filename.lower()
+
+    if name.endswith(("xlsx","xls")):
+        return pd.read_excel(file)
+
+    raw = file.read()
+    file.seek(0)
+
+    try:
+        return pd.read_csv(io.StringIO(raw.decode("utf-8")), on_bad_lines="skip")
+    except:
+        return pd.read_csv(io.StringIO(raw.decode("latin1")), on_bad_lines="skip")
+
+# =========================
+# UPSERT (NO DATA LOSS)
+# =========================
+def save_row(submission, raw):
     conn = get_conn()
     cur = conn.cursor()
 
     cur.execute("""
-    INSERT INTO submissions VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+    INSERT INTO submissions (submission_number, raw_data)
+    VALUES (%s,%s)
     ON CONFLICT (submission_number) DO UPDATE SET
-        customer_name=EXCLUDED.customer_name,
-        email=EXCLUDED.email,
-        phone=EXCLUDED.phone,
-        status=EXCLUDED.status,
-        service_level=EXCLUDED.service_level,
-        cards=EXCLUDED.cards,
-        date_arrived=EXCLUDED.date_arrived,
-        est_date=EXCLUDED.est_date,
-        last_updated=EXCLUDED.last_updated
-    """, (
-        row.get("submission_number"),
-        row.get("customer_name"),
-        row.get("email"),
-        row.get("phone"),
-        row.get("status"),
-        row.get("service_level"),
-        row.get("cards"),
-        row.get("date_arrived"),
-        row.get("est_date"),
-        datetime.now()
-    ))
+        raw_data = EXCLUDED.raw_data,
+        last_updated = NOW()
+    """, (submission, json.dumps(raw)))
 
     conn.commit()
     cur.close()
     conn.close()
 
 # =========================
-# DASHBOARD
+# DASHBOARD (CLEAN VIEW)
 # =========================
 @app.route("/")
 def dashboard():
     conn = get_conn()
-    df = pd.read_sql("SELECT * FROM submissions ORDER BY last_updated DESC LIMIT 100", conn)
+    cur = conn.cursor()
+
+    cur.execute("SELECT raw_data, status FROM submissions ORDER BY last_updated DESC LIMIT 200")
+    rows = cur.fetchall()
+
+    cur.close()
     conn.close()
 
-    return f"""
-    <h2>PSA Dashboard</h2>
+    keys = set()
+    clean_rows = []
 
-    <a href='/upload'>Upload Excel</a> |
-    <a href='/upload_psa'>Upload PSA PDF</a> |
-    <a href='/search'>Search</a>
+    for r in rows:
+        data = r[0] or {}
 
-    <br><br>
+        # remove junk columns
+        row = {
+            k: v for k, v in data.items()
+            if not str(k).lower().startswith("unnamed")
+        }
 
-    {df.to_html(index=False)}
+        if r[1]:
+            row["PSA Status"] = r[1]
+
+        clean_rows.append(row)
+        keys.update(row.keys())
+
+    ordered = sorted(keys)
+
+    html = """
+    <div style="position:sticky;top:0;background:white;padding:10px;border-bottom:2px solid black;">
+        <b>PSA System</b> |
+        <a href="/upload">Upload Excel</a> |
+        <a href="/upload_psa">Upload PSA PDF</a> |
+        <a href="/search">Search</a>
+    </div><br>
     """
 
+    html += "<table border=1><tr>"
+    for k in ordered:
+        html += f"<th>{k}</th>"
+    html += "</tr>"
+
+    for row in clean_rows:
+        html += "<tr>"
+        for k in ordered:
+            html += f"<td>{row.get(k,'')}</td>"
+        html += "</tr>"
+
+    html += "</table>"
+    return html
+
 # =========================
-# SEARCH
+# SEARCH (ALL FIELDS)
 # =========================
-@app.route("/search", methods=["GET","POST"])
+@app.route("/search", methods=["GET"])
 def search():
-    if request.method == "POST":
-        q = request.form.get("q")
+    q = request.args.get("q","")
 
-        conn = get_conn()
-        df = pd.read_sql("""
-        SELECT * FROM submissions
-        WHERE submission_number ILIKE %s
-        OR customer_name ILIKE %s
-        OR email ILIKE %s
-        OR phone ILIKE %s
-        """, conn, params=[f"%{q}%"]*4)
-        conn.close()
+    conn = get_conn()
+    cur = conn.cursor()
 
-        return df.to_html(index=False)
+    cur.execute("""
+    SELECT raw_data FROM submissions
+    WHERE raw_data::text ILIKE %s
+    LIMIT 100
+    """, (f"%{q}%",))
 
-    return """
-    <form method="post">
-        <input name="q">
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    html = f"""
+    <form>
+        <input name="q" value="{q}">
         <button>Search</button>
-    </form>
+    </form><br>
+    <table border=1>
     """
 
+    for r in rows:
+        data = r[0] or {}
+        html += "<tr>"
+        for v in data.values():
+            html += f"<td>{v}</td>"
+        html += "</tr>"
+
+    html += "</table><br><a href='/'>Back</a>"
+    return html
+
 # =========================
-# EXCEL UPLOAD
+# EXCEL / CSV UPLOAD
 # =========================
 @app.route("/upload", methods=["GET","POST"])
 def upload():
     if request.method == "POST":
-        file = request.files["file"]
+        file = request.files.get("file")
 
-        try:
-            df = pd.read_excel(file)
-        except:
-            file.seek(0)
-            df = pd.read_csv(file, encoding="utf-8", errors="ignore")
+        if not file:
+            return "No file"
+
+        df = read_file(file)
+        df.columns = [str(c).strip() for c in df.columns]
+
+        inserted = errors = 0
 
         for _, row in df.iterrows():
-            save_row({
-                "submission_number": str(row.get("Submission #")),
-                "customer_name": row.get("Customer Name"),
-                "email": row.get("Email"),
-                "phone": row.get("Phone"),
-                "status": row.get("Current Status"),
-                "service_level": row.get("Service Type"),
-                "cards": row.get("# Of Cards"),
-                "date_arrived": row.get("S"),
-                "est_date": None
-            })
+            try:
+                raw = {c: clean(row[c]) for c in df.columns}
 
-        return "Upload complete"
+                submission = raw.get("Submission #") or raw.get("Submission Number")
+
+                if not submission:
+                    errors += 1
+                    continue
+
+                save_row(submission, raw)
+                inserted += 1
+
+            except:
+                errors += 1
+
+        return f"Inserted/Updated: {inserted} | Errors: {errors}"
 
     return """
-    <h2>Upload Excel</h2>
+    <h3>Upload Excel/CSV</h3>
     <form method="post" enctype="multipart/form-data">
         <input type="file" name="file">
         <button>Upload</button>
     </form>
+    <br><a href="/">Dashboard</a>
     """
 
 # =========================
-# PSA PDF PARSER
+# PSA PDF UPLOAD (WORKING)
 # =========================
 @app.route("/upload_psa", methods=["GET","POST"])
 def upload_psa():
     if request.method == "POST":
-        file = request.files["file"]
+        file = request.files.get("file")
 
         import pdfplumber
 
         text = ""
+
         with pdfplumber.open(file) as pdf:
             for page in pdf.pages:
                 t = page.extract_text()
@@ -178,17 +234,20 @@ def upload_psa():
 
         blocks = re.split(r"Sub\s*#", text)
 
+        conn = get_conn()
+        cur = conn.cursor()
+
         updated = 0
 
         for b in blocks:
             if not b.strip() or not b[0].isdigit():
                 continue
 
-            sub = re.match(r"(\d+)", b)
-            if not sub:
+            sub_match = re.match(r"(\d+)", b)
+            if not sub_match:
                 continue
 
-            sub_number = sub.group(1)
+            sub = sub_match.group(1)
 
             if "Order Arrived" in b:
                 status = "Order Arrived"
@@ -196,24 +255,33 @@ def upload_psa():
                 status = "Grading"
             elif "Complete" in b:
                 status = "Complete"
+            elif "QA Checks" in b:
+                status = "QA Checks"
             else:
                 status = "Processing"
 
-            save_row({
-                "submission_number": sub_number,
-                "status": status
-            })
+            cur.execute("""
+            UPDATE submissions
+            SET status=%s, last_updated=NOW()
+            WHERE submission_number=%s
+            """, (status, sub))
 
-            updated += 1
+            if cur.rowcount > 0:
+                updated += 1
 
-        return f"PSA updated: {updated}"
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return f"PSA Updated: {updated}"
 
     return """
-    <h2>Upload PSA PDF</h2>
+    <h3>Upload PSA PDF</h3>
     <form method="post" enctype="multipart/form-data">
         <input type="file" name="file">
         <button>Upload</button>
     </form>
+    <br><a href="/">Dashboard</a>
     """
 
 # =========================
