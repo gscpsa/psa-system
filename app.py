@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect
+from flask import Flask, request
 import psycopg2
 import pandas as pd
 import os, io, json
@@ -59,6 +59,16 @@ def clean(v):
         pass
     return str(v).strip()
 
+# ---------- HOME ----------
+@app.route("/")
+def home():
+    return """
+    <h2>PSA System</h2>
+    <a href="/upload">Upload</a><br>
+    <a href="/dashboard">Dashboard</a><br>
+    <a href="/search">Search</a>
+    """
+
 # ---------- UPLOAD ----------
 @app.route("/upload", methods=["GET","POST"])
 def upload():
@@ -72,14 +82,12 @@ def upload():
         cur = conn.cursor()
 
         inserted = 0
-        updated = 0
         errors = 0
 
         for _, row in df.iterrows():
             try:
                 raw = {c: clean(row[c]) for c in df.columns}
 
-                # 🔥 EXACT COLUMN MATCHING
                 submission = raw.get("Submission #", "")
                 date = raw.get("Submission Date", "")
                 name = raw.get("Customer Name", "")
@@ -136,7 +144,7 @@ def upload():
         cur.close()
         conn.close()
 
-        return f"Inserted: {inserted} | Updated: {updated} | Errors: {errors}"
+        return f"Inserted: {inserted} | Errors: {errors}"
 
     return """
     <h3>Upload</h3>
@@ -153,16 +161,7 @@ def dashboard():
     cur = conn.cursor()
 
     cur.execute("""
-    SELECT
-        submission_number,
-        submission_date,
-        customer_name,
-        contact_info,
-        card_count,
-        service_type,
-        status,
-        est_cost,
-        customer_paid
+    SELECT submission_number, submission_date, customer_name, contact_info, status
     FROM submissions
     ORDER BY last_updated DESC
     LIMIT 2000
@@ -171,10 +170,10 @@ def dashboard():
     rows = cur.fetchall()
 
     html = "<h2>Dashboard</h2><table border=1>"
-    html += "<tr><th>Submission</th><th>Date</th><th>Name</th><th>Contact</th><th>Cards</th><th>Service</th><th>Status</th><th>Cost</th><th>Paid</th></tr>"
+    html += "<tr><th>Submission</th><th>Date</th><th>Name</th><th>Contact</th><th>Status</th></tr>"
 
     for r in rows:
-        html += "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>
+        html += "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>"
 
     html += "</table>"
     return html
