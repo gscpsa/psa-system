@@ -60,9 +60,11 @@ def home():
     </form>
     <br>
     <a href="/dashboard">Dashboard</a>
+    <br><br>
+    <a href="/track">Track Submission</a>
     """
 
-# ---------- UPLOAD WITH DUPLICATE PROTECTION ----------
+# ---------- UPLOAD ----------
 @app.route("/upload", methods=["POST"])
 def upload():
     file = request.files["file"]
@@ -90,87 +92,51 @@ def upload():
                 skipped += 1
                 continue
 
-            submission_date = clean(row.get("s"))
-            customer_name = clean(row.get("Customer Name"))
-            contact_info = clean(row.get("Contact Info"))
-            card_count = clean(row.get("# Of Cards"))
-            service_type = clean(row.get("Service Type"))
-            est_cost = clean(row.get("Est Cost"))
-            prep_needed = clean(row.get("Prep Needed"))
-            customer_paid = clean(row.get("Customer Paid"))
-            current_status = clean(row.get("Current Status"))
-            declared_value = clean(row.get("Decalared Value"))
-            notes = clean(row.get("Notes"))
-
-            # Check if submission already exists
-            cur.execute(
-                "SELECT id FROM submissions WHERE submission_number = %s LIMIT 1",
-                (submission,)
+            data = (
+                clean(row.get("s")),
+                submission,
+                clean(row.get("Customer Name")),
+                clean(row.get("Contact Info")),
+                clean(row.get("# Of Cards")),
+                clean(row.get("Service Type")),
+                clean(row.get("Est Cost")),
+                clean(row.get("Prep Needed")),
+                clean(row.get("Customer Paid")),
+                clean(row.get("Current Status")),
+                clean(row.get("Decalared Value")),
+                clean(row.get("Notes")),
             )
-            existing = cur.fetchone()
 
-            if existing:
+            cur.execute("SELECT id FROM submissions WHERE submission_number=%s", (submission,))
+            exists = cur.fetchone()
+
+            if exists:
                 cur.execute("""
-                    UPDATE submissions
-                    SET
-                        submission_date = %s,
-                        customer_name = %s,
-                        contact_info = %s,
-                        card_count = %s,
-                        service_type = %s,
-                        est_cost = %s,
-                        prep_needed = %s,
-                        customer_paid = %s,
-                        current_status = %s,
-                        declared_value = %s,
-                        notes = %s,
-                        last_updated = NOW()
-                    WHERE submission_number = %s
-                """, (
-                    submission_date,
-                    customer_name,
-                    contact_info,
-                    card_count,
-                    service_type,
-                    est_cost,
-                    prep_needed,
-                    customer_paid,
-                    current_status,
-                    declared_value,
-                    notes,
-                    submission
-                ))
+                    UPDATE submissions SET
+                        submission_date=%s,
+                        customer_name=%s,
+                        contact_info=%s,
+                        card_count=%s,
+                        service_type=%s,
+                        est_cost=%s,
+                        prep_needed=%s,
+                        customer_paid=%s,
+                        current_status=%s,
+                        declared_value=%s,
+                        notes=%s,
+                        last_updated=NOW()
+                    WHERE submission_number=%s
+                """, data[0:1] + data[2:] + (submission,))
                 updated += 1
             else:
                 cur.execute("""
                     INSERT INTO submissions (
-                        submission_date,
-                        submission_number,
-                        customer_name,
-                        contact_info,
-                        card_count,
-                        service_type,
-                        est_cost,
-                        prep_needed,
-                        customer_paid,
-                        current_status,
-                        declared_value,
-                        notes
+                        submission_date, submission_number, customer_name,
+                        contact_info, card_count, service_type,
+                        est_cost, prep_needed, customer_paid,
+                        current_status, declared_value, notes
                     ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                """, (
-                    submission_date,
-                    submission,
-                    customer_name,
-                    contact_info,
-                    card_count,
-                    service_type,
-                    est_cost,
-                    prep_needed,
-                    customer_paid,
-                    current_status,
-                    declared_value,
-                    notes
-                ))
+                """, data)
                 inserted += 1
 
         except Exception as e:
@@ -183,67 +149,89 @@ def upload():
 
     return f"""
     <h2>Upload Complete</h2>
-    <p>Inserted: {inserted}</p>
-    <p>Updated: {updated}</p>
-    <p>Skipped: {skipped}</p>
+    Inserted: {inserted}<br>
+    Updated: {updated}<br>
+    Skipped: {skipped}<br>
     <a href='/dashboard'>Dashboard</a>
     """
 
-# ---------- FULL DASHBOARD ----------
+# ---------- DASHBOARD ----------
 @app.route("/dashboard")
 def dashboard():
     conn = get_conn()
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT
-            submission_date,
-            submission_number,
-            customer_name,
-            contact_info,
-            card_count,
-            service_type,
-            est_cost,
-            prep_needed,
-            customer_paid,
-            current_status,
-            declared_value,
-            notes,
-            last_updated
+        SELECT submission_number, customer_name, current_status, last_updated
         FROM submissions
         ORDER BY last_updated DESC
     """)
 
     rows = cur.fetchall()
 
-    html = "<h2>PSA Submissions</h2><table border=1 cellpadding=5 cellspacing=0>"
-    html += """
-    <tr>
-        <th>Date</th>
-        <th>Submission</th>
-        <th>Name</th>
-        <th>Contact</th>
-        <th>Cards</th>
-        <th>Service</th>
-        <th>Cost</th>
-        <th>Prep</th>
-        <th>Paid</th>
-        <th>Status</th>
-        <th>Declared</th>
-        <th>Notes</th>
-        <th>Updated</th>
-    </tr>
-    """
+    html = "<h2>Dashboard</h2><table border=1>"
+    html += "<tr><th>Submission</th><th>Name</th><th>Status</th><th>Updated</th></tr>"
 
     for r in rows:
         html += "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>"
 
-    html += "</table><br><a href='/'>Upload More</a>"
+    html += "</table><br><a href='/'>Home</a>"
 
     cur.close()
     conn.close()
 
     return html
+
+# ---------- TRACK SEARCH ----------
+@app.route("/track")
+def track_search():
+    return """
+    <h2>Track Your Submission</h2>
+    <form action="/track_result">
+        <input name="submission" placeholder="Enter Submission #">
+        <button>Search</button>
+    </form>
+    """
+
+# ---------- TRACK RESULT ----------
+@app.route("/track_result")
+def track_result():
+    submission = request.args.get("submission")
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT
+            submission_number,
+            customer_name,
+            card_count,
+            service_type,
+            current_status,
+            last_updated
+        FROM submissions
+        WHERE submission_number=%s
+    """, (submission,))
+
+    row = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    if not row:
+        return "<h3>Submission not found</h3><a href='/track'>Try Again</a>"
+
+    return f"""
+    <h2>Tracking Result</h2>
+    <p><b>Submission:</b> {row[0]}</p>
+    <p><b>Name:</b> {row[1]}</p>
+    <p><b>Cards:</b> {row[2]}</p>
+    <p><b>Service:</b> {row[3]}</p>
+    <p><b>Status:</b> {row[4]}</p>
+    <p><b>Last Updated:</b> {row[5]}</p>
+    <br>
+    <a href='/track'>Search Again</a>
+    """
 
 # ---------- RUN ----------
 if __name__ == "__main__":
