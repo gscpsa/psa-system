@@ -10,8 +10,6 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # DB
 # =========================
 def get_conn():
-    if not DATABASE_URL:
-        raise Exception("DATABASE_URL not set")
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
 def init_db():
@@ -64,13 +62,6 @@ def normalize_submission(val):
     val = re.sub(r"\D", "", val)
     return val
 
-def is_picked_up(raw):
-    for k, v in raw.items():
-        if "pick" in str(k).lower():
-            if str(v).strip().lower() in ["yes", "y", "true", "1"]:
-                return True
-    return False
-
 def read_file(file):
     name = (file.filename or "").lower()
 
@@ -86,40 +77,25 @@ def read_file(file):
         return pd.read_csv(io.StringIO(raw.decode("latin1")), on_bad_lines="skip")
 
 # =========================
-# SAFE SAVE (WITH LOCK RULE)
+# SAFE SAVE (EXCEL)
 # =========================
 def save_row(submission, raw):
     conn = get_conn()
     cur = conn.cursor()
 
-    cur.execute("""
-        SELECT status FROM submissions
-        WHERE submission_number = %s
-    """, (submission,))
-    existing = cur.fetchone()
-
-    existing_status = existing[0] if existing else None
-
-    picked_up = is_picked_up(raw)
-
-    # 🔒 CORE LOGIC
-    if picked_up:
-        new_status = "Picked Up"
-    else:
-        new_status = existing_status  # preserve PSA status
+    # 🔥 REMOVE ANY STATUS FROM EXCEL
+    for k in list(raw.keys()):
+        if "status" in k.lower():
+            del raw[k]
 
     cur.execute("""
-    INSERT INTO submissions (submission_number, raw_data, status)
-    VALUES (%s,%s,%s)
+    INSERT INTO submissions (submission_number, raw_data)
+    VALUES (%s,%s)
     ON CONFLICT (submission_number)
     DO UPDATE SET
         raw_data = EXCLUDED.raw_data,
-        status = CASE
-            WHEN submissions.status IS NULL THEN EXCLUDED.status
-            ELSE submissions.status
-        END,
         last_updated = NOW()
-    """, (submission, json.dumps(raw), new_status))
+    """, (submission, json.dumps(raw)))
 
     conn.commit()
     cur.close()
@@ -148,7 +124,7 @@ def dashboard():
         row = {k:v for k,v in data.items() if not str(k).lower().startswith("unnamed")}
 
         if r[1]:
-            row["PSA Status"] = r[1]
+            row["Status"] = r[1]
 
         clean_rows.append(row)
         keys.update(row.keys())
@@ -260,23 +236,27 @@ def upload():
     """
 
 # =========================
-# PDF UPLOAD
+# PDF UPLOAD (MOBILE SAFE + GUARANTEED UPDATE)
 # =========================
 @app.route("/upload_psa", methods=["GET","POST"])
 def upload_psa():
     if request.method == "POST":
         file = request.files.get("file")
 
-        import pdfplumber
+        import pdfplumber, tempfile
 
-        file_bytes = file.read()
+        temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+        file.save(temp.name)
 
         text = ""
-        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+
+        with pdfplumber.open(temp.name) as pdf:
             for page in pdf.pages:
                 t = page.extract_text()
                 if t:
                     text += t + "\n"
+
+        os.unlink(temp.name)
 
         blocks = re.split(r"Sub\s*#", text)
 
@@ -308,11 +288,14 @@ def upload_psa():
             else:
                 continue
 
+            # 🔥 SIMPLE + RELIABLE MATCH
             cur.execute("""
             UPDATE submissions
             SET status=%s, last_updated=NOW()
-            WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g') = %s
+            WHERE submission_number = %s
             """, (status, sub))
+
+            print("CHECK:", sub, status, "UPDATED:", cur.rowcount)
 
             if cur.rowcount > 0:
                 updated += 1
