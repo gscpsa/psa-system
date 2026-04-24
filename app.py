@@ -107,13 +107,113 @@ def save_row(sub, raw):
 def page(content):
     return f"""
     <html>
-    <body style="font-family:Arial;background:#f4f6f8;margin:0">
-    <div style="background:#1f2937;color:white;padding:15px">
-    PSA System |
-    <a href="/admin" style="color:white">Admin</a> |
-    <a href="/portal" style="color:white">Customer Portal</a>
+    <head>
+    <style>
+    body {{
+        font-family: Arial;
+        margin: 0;
+        background: #f4f6f8;
+    }}
+
+    .topbar {{
+        background: #1f2937;
+        color: white;
+        padding: 15px;
+        display: flex;
+        justify-content: space-between;
+    }}
+
+    .links a {{
+        color: white;
+        margin-left: 15px;
+        text-decoration: none;
+    }}
+
+    .container {{
+        padding: 20px;
+    }}
+
+    table {{
+        width: 100%;
+        border-collapse: collapse;
+        background: white;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }}
+
+    th {{
+        background: #111827;
+        color: white;
+        padding: 10px;
+        position: sticky;
+        top: 0;
+    }}
+
+    td {{
+        padding: 8px;
+        border-bottom: 1px solid #ddd;
+    }}
+
+    tr:hover {{
+        background: #f1f5f9;
+    }}
+
+    .status {{
+        font-weight: bold;
+        color: #2563eb;
+    }}
+
+    .card {{
+        background: white;
+        padding: 18px;
+        margin-bottom: 15px;
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }}
+
+    .bar {{
+        display: flex;
+        gap: 6px;
+        margin-top: 10px;
+        flex-wrap: wrap;
+    }}
+
+    .step {{
+        padding: 6px 10px;
+        border-radius: 20px;
+        background: #e5e7eb;
+        font-size: 13px;
+    }}
+
+    .done {{
+        background: #bfdbfe;
+    }}
+
+    .current {{
+        background: #2563eb;
+        color: white;
+    }}
+
+    input, button {{
+        padding: 10px;
+        margin: 5px;
+    }}
+    </style>
+    </head>
+
+    <body>
+
+    <div class="topbar">
+        <div>PSA Tracking System</div>
+        <div class="links">
+            <a href="/admin">Admin</a>
+            <a href="/portal">Customer Portal</a>
+        </div>
     </div>
-    <div style="padding:20px">{content}</div>
+
+    <div class="container">
+    {content}
+    </div>
+
     </body>
     </html>
     """
@@ -139,7 +239,7 @@ def build_table(rows):
 
     ordered = sorted(keys)
 
-    html = "<table border=1><tr>"
+    html = "<table><tr>"
     for k in ordered:
         html += f"<th>{k}</th>"
     html += "</tr>"
@@ -147,9 +247,9 @@ def build_table(rows):
     for row in clean_rows:
         html += "<tr>"
         for k in ordered:
-            val = row.get(k, "")
+            val = row.get(k,"")
             if k == "PSA Status":
-                html += f"<td><b>{val}</b></td>"
+                html += f"<td class='status'>{val}</td>"
             else:
                 html += f"<td>{val}</td>"
         html += "</tr>"
@@ -161,17 +261,17 @@ def status_bar(status):
     steps = ["Order Arrived","Research & ID","Grading","QA Checks","Complete","Picked Up"]
     idx = steps.index(status) if status in steps else -1
 
-    html = "<div style='display:flex;gap:6px;margin-top:10px'>"
-    for i,s in enumerate(steps):
-        color = "#e5e7eb"
-        if i < idx: color = "#bfdbfe"
-        if i == idx: color = "#2563eb;color:white"
-        html += f"<div style='padding:6px 10px;background:{color};border-radius:20px'>{s}</div>"
+    html = "<div class='bar'>"
+    for i, s in enumerate(steps):
+        cls = "step"
+        if i < idx: cls += " done"
+        if i == idx: cls += " current"
+        html += f"<div class='{cls}'>{s}</div>"
     html += "</div>"
     return html
 
 # =========================
-# ADMIN LOGIN
+# ADMIN
 # =========================
 @app.route("/admin/login", methods=["GET","POST"])
 def admin_login():
@@ -189,14 +289,6 @@ def admin_login():
     </form>
     """)
 
-@app.route("/admin/logout")
-def admin_logout():
-    session.clear()
-    return redirect("/admin/login")
-
-# =========================
-# ADMIN DASHBOARD (FIXED)
-# =========================
 @app.route("/admin")
 @admin_required
 def admin_dashboard():
@@ -214,55 +306,9 @@ def admin_dashboard():
     <br><br>
     <a href="/admin/upload">Upload Excel</a><br>
     <a href="/admin/upload_psa">Upload PDF</a><br>
-    <a href="/admin/search">Search</a><br>
-    <a href="/admin/logout">Logout</a>
     """
 
     return page(html)
-
-# =========================
-# ADMIN SEARCH
-# =========================
-@app.route("/admin/search")
-@admin_required
-def search():
-    q = request.args.get("q","")
-
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("""
-    SELECT raw_data, status FROM submissions
-    WHERE raw_data::text ILIKE %s
-    """, (f"%{q}%",))
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-
-    html = f"""
-    <form>
-    <input name="q" value="{q}">
-    <button>Search</button>
-    </form><br>
-    """
-
-    html += build_table(rows)
-    return page(html)
-
-# =========================
-# ADMIN UPLOAD
-# =========================
-@app.route("/admin/upload", methods=["POST","GET"])
-@admin_required
-def upload():
-    if request.method == "POST":
-        df = read_file(request.files["file"])
-        for _, row in df.iterrows():
-            raw = {c:clean(row[c]) for c in df.columns}
-            sub = normalize_submission(raw.get("Submission #"))
-            if sub: save_row(sub, raw)
-        return page("Uploaded")
-
-    return page('<form method="post" enctype="multipart/form-data"><input type="file" name="file"><button>Upload</button></form>')
 
 # =========================
 # CUSTOMER PORTAL
@@ -288,9 +334,6 @@ def orders():
     phone = session.get("phone")
     last = session.get("last")
 
-    if not phone or not last:
-        return redirect("/portal")
-
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("SELECT raw_data, status FROM submissions")
@@ -313,8 +356,9 @@ def orders():
     html = "<h2>My Orders</h2>"
 
     for sub,(data,status) in grouped.items():
-        html += f"<div style='background:white;padding:15px;margin-bottom:10px'>"
-        html += f"<b>Submission {sub}</b><br>Status: {status or 'Submitted'}"
+        html += f"<div class='card'>"
+        html += f"<h3>Submission {sub}</h3>"
+        html += f"<p><b>Status:</b> <span class='status'>{status}</span></p>"
         html += status_bar(status or "Submitted")
         html += "</div>"
 
