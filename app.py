@@ -15,6 +15,7 @@ def get_conn():
 def init_db():
     conn = get_conn()
     cur = conn.cursor()
+
     cur.execute("""
     CREATE TABLE IF NOT EXISTS submissions (
         submission_number TEXT PRIMARY KEY,
@@ -23,6 +24,7 @@ def init_db():
         last_updated TIMESTAMP DEFAULT NOW()
     )
     """)
+
     conn.commit()
     cur.close()
     conn.close()
@@ -39,7 +41,7 @@ def setup():
 # =========================
 @app.errorhandler(Exception)
 def err(e):
-    return f"<pre>ERROR:\n{str(e)}\n\n{traceback.format_exc()}</pre>"
+    return f"<pre>{traceback.format_exc()}</pre>"
 
 # =========================
 # HELPERS
@@ -79,7 +81,6 @@ def save_row(submission, raw):
     conn = get_conn()
     cur = conn.cursor()
 
-    # remove any Excel status fields
     for k in list(raw.keys()):
         if "status" in k.lower():
             del raw[k]
@@ -98,28 +99,22 @@ def save_row(submission, raw):
     conn.close()
 
 # =========================
-# UI WRAPPER
+# UI
 # =========================
 def page(content):
     return f"""
     <html>
     <head>
-        <title>PSA System</title>
         <style>
             body {{ font-family: Arial; margin:0; background:#f4f6f8; }}
-            .topbar {{
-                background:#1f2937; color:white; padding:15px;
-                display:flex; justify-content:space-between;
-            }}
+            .topbar {{ background:#1f2937; color:white; padding:15px; display:flex; justify-content:space-between; }}
             .links a {{ color:white; margin-left:15px; text-decoration:none; }}
             .container {{ padding:20px; }}
             table {{ width:100%; border-collapse:collapse; background:white; }}
-            th {{ background:#111827; color:white; padding:10px; position:sticky; top:0; }}
+            th {{ background:#111827; color:white; padding:10px; }}
             td {{ padding:8px; border-bottom:1px solid #ddd; }}
             tr:hover {{ background:#f1f5f9; }}
             .status {{ font-weight:bold; color:#2563eb; }}
-            input {{ padding:8px; }}
-            button {{ padding:8px; }}
         </style>
     </head>
     <body>
@@ -158,7 +153,7 @@ def dashboard():
 
     for r in rows:
         data = r[0] or {}
-        row = {k:v for k,v in data.items() if not str(k).lower().startswith("unnamed")}
+        row = {k:v for k,v in data.items() if "unnamed" not in k.lower()}
 
         if r[1]:
             row["PSA Status"] = r[1]
@@ -184,80 +179,42 @@ def dashboard():
         html += "</tr>"
 
     html += "</table>"
-
     return page(html)
 
 # =========================
-# SEARCH (FIXED)
+# SEARCH
 # =========================
 @app.route("/search")
 def search():
-    try:
-        q = request.args.get("q","")
+    q = request.args.get("q","")
 
-        conn = get_conn()
-        cur = conn.cursor()
+    conn = get_conn()
+    cur = conn.cursor()
 
-        cur.execute("""
-        SELECT raw_data, status FROM submissions
-        WHERE raw_data::text ILIKE %s
-           OR submission_number ILIKE %s
-           OR status ILIKE %s
-        LIMIT 100
-        """, (f"%{q}%", f"%{q}%", f"%{q}%"))
+    cur.execute("""
+    SELECT raw_data, status FROM submissions
+    WHERE raw_data::text ILIKE %s
+       OR submission_number ILIKE %s
+       OR status ILIKE %s
+    LIMIT 100
+    """, (f"%{q}%", f"%{q}%", f"%{q}%"))
 
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
+    rows = cur.fetchall()
 
-        keys = set()
-        clean_rows = []
+    cur.close()
+    conn.close()
 
-        for r in rows:
-            data = r[0] or {}
-            row = {k:v for k,v in data.items() if not str(k).lower().startswith("unnamed")}
+    html = f"""
+    <form>
+        <input name="q" value="{q}">
+        <button>Search</button>
+    </form><br>
+    """
 
-            if r[1]:
-                row["PSA Status"] = r[1]
+    for r in rows:
+        html += str(r[0]) + "<br><br>"
 
-            clean_rows.append(row)
-            keys.update(row.keys())
-
-        ordered = sorted(keys)
-
-        html = f"""
-        <h3>Search</h3>
-        <form>
-            <input name="q" value="{q}">
-            <button>Search</button>
-        </form><br>
-        """
-
-        if not ordered:
-            html += "<div>No results</div>"
-            return page(html)
-
-        html += "<table><tr>"
-        for k in ordered:
-            html += f"<th>{k}</th>"
-        html += "</tr>"
-
-        for row in clean_rows:
-            html += "<tr>"
-            for k in ordered:
-                val = row.get(k,"")
-                if k == "PSA Status":
-                    html += f"<td class='status'>{val}</td>"
-                else:
-                    html += f"<td>{val}</td>"
-            html += "</tr>"
-
-        html += "</table>"
-
-        return page(html)
-
-    except:
-        return page(traceback.format_exc())
+    return page(html)
 
 # =========================
 # EXCEL
@@ -267,7 +224,6 @@ def upload():
     if request.method == "POST":
         file = request.files.get("file")
         df = read_file(file)
-        df.columns = [str(c).strip() for c in df.columns]
 
         for _, row in df.iterrows():
             raw = {c: clean(row[c]) for c in df.columns}
@@ -279,7 +235,6 @@ def upload():
         return page("Excel uploaded")
 
     return page("""
-    <h3>Upload Excel</h3>
     <form method="post" enctype="multipart/form-data">
     <input type="file" name="file">
     <button>Upload</button>
@@ -287,7 +242,7 @@ def upload():
     """)
 
 # =========================
-# PDF (FIXED PRIORITY)
+# PDF (REAL FIX)
 # =========================
 @app.route("/upload_psa", methods=["GET","POST"])
 def upload_psa():
@@ -310,10 +265,15 @@ def upload_psa():
 
         blocks = re.split(r"Sub\s*#", text)
 
-        conn = get_conn()
-        cur = conn.cursor()
+        status_priority = {
+            "Order Arrived": 1,
+            "Research & ID": 2,
+            "Grading": 3,
+            "QA Checks": 4,
+            "Complete": 5
+        }
 
-        updated = 0
+        best_status = {}
 
         for b in blocks:
             if not b.strip() or not b[0].isdigit():
@@ -325,20 +285,24 @@ def upload_psa():
 
             sub = normalize_submission(match.group(1))
 
-            # FIXED ORDER
-            if "Order Arrived" in b:
-                status = "Order Arrived"
-            elif "Research & ID" in b:
-                status = "Research & ID"
-            elif "Grading" in b:
-                status = "Grading"
-            elif "QA Checks" in b:
-                status = "QA Checks"
-            elif "Complete" in b:
-                status = "Complete"
-            else:
+            status = None
+            for s in status_priority:
+                if s in b:
+                    status = s
+                    break
+
+            if not status:
                 continue
 
+            if sub not in best_status or status_priority[status] < status_priority[best_status[sub]]:
+                best_status[sub] = status
+
+        conn = get_conn()
+        cur = conn.cursor()
+
+        updated = 0
+
+        for sub, status in best_status.items():
             cur.execute("""
             UPDATE submissions
             SET status=%s, last_updated=NOW()
@@ -354,10 +318,9 @@ def upload_psa():
         return page(f"Updated: {updated}")
 
     return page("""
-    <h3>Upload PSA PDF</h3>
     <form method="post" enctype="multipart/form-data">
     <input type="file" name="file">
-    <button>Upload</button>
+    <button>Upload PDF</button>
     </form>
     """)
 
