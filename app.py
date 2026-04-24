@@ -68,6 +68,16 @@ def normalize_submission(v):
         return None
     return re.sub(r"\D", "", str(v).split(".")[0])
 
+def normalize_phone(v):
+    return re.sub(r"\D", "", str(v or ""))
+
+def get_field(data, names):
+    for n in names:
+        for k, v in data.items():
+            if str(k).lower().strip() == n.lower().strip():
+                return v
+    return ""
+
 def row_is_picked_up(raw):
     for k, v in raw.items():
         if "status" in str(k).lower() and "picked up" in str(v).lower():
@@ -76,6 +86,7 @@ def row_is_picked_up(raw):
 
 def read_file(file):
     name = (file.filename or "").lower()
+
     if name.endswith(("xlsx","xls")):
         return pd.read_excel(file)
 
@@ -146,6 +157,7 @@ def page(content):
             <a href="/admin/search">Search</a>
             <a href="/admin/upload">Upload Excel</a>
             <a href="/admin/upload_psa">Upload PDF</a>
+            <a href="/portal">Customer Portal</a>
             <a href="/admin/logout">Logout</a>
         </div>
     </div>
@@ -222,10 +234,7 @@ def admin():
 
     conn=get_conn()
     cur=conn.cursor()
-    cur.execute(f"""
-    SELECT raw_data,status FROM submissions
-    ORDER BY last_updated {order}
-    """)
+    cur.execute(f"SELECT raw_data,status FROM submissions ORDER BY last_updated {order}")
     rows=cur.fetchall()
     cur.close()
     conn.close()
@@ -270,7 +279,7 @@ def search():
     return page(html)
 
 # =========================
-# EXCEL UPLOAD
+# EXCEL
 # =========================
 @app.route("/admin/upload",methods=["GET","POST"])
 @admin_required
@@ -281,16 +290,16 @@ def upload():
 
         for _,row in df.iterrows():
             raw={c:clean(row[c]) for c in df.columns}
-            sub=normalize_submission(raw.get("Submission #"))
+            sub=normalize_submission(raw.get("Submission #") or raw.get("Submission Number"))
             if sub:
                 save_row(sub,raw)
 
-        return page("Excel uploaded")
+        return page("Excel uploaded successfully")
 
-    return page("<form method='post' enctype='multipart/form-data'><input type='file' name='file'><button>Upload</button></form>")
+    return page("<form method='post' enctype='multipart/form-data'><input type='file' name='file'><button>Upload Excel</button></form>")
 
 # =========================
-# PDF PARSER
+# PDF
 # =========================
 @app.route("/admin/upload_psa",methods=["GET","POST"])
 @admin_required
@@ -341,9 +350,46 @@ def upload_psa():
         cur.close()
         conn.close()
 
-        return page("PDF processed")
+        return page("PDF processed successfully")
 
     return page("<form method='post' enctype='multipart/form-data'><input type='file' name='file'><button>Upload PDF</button></form>")
+
+# =========================
+# CUSTOMER PORTAL
+# =========================
+@app.route("/portal",methods=["GET","POST"])
+def portal():
+    if request.method=="POST":
+        session["phone"]=normalize_phone(request.form.get("phone"))
+        session["last"]=request.form.get("last","").lower()
+        return redirect("/portal/orders")
+
+    return page("<form method='post'><input name='phone'><input name='last'><button>View Orders</button></form>")
+
+@app.route("/portal/orders")
+def orders():
+    phone=session.get("phone")
+    last=session.get("last")
+
+    conn=get_conn()
+    cur=conn.cursor()
+    cur.execute("SELECT raw_data,status FROM submissions")
+    rows=cur.fetchall()
+    cur.close()
+    conn.close()
+
+    html="<h2>Your Orders</h2>"
+
+    for r in rows:
+        data=r[0] or {}
+        name=str(get_field(data,["Customer Name","Name"])).lower()
+        contact=normalize_phone(get_field(data,["Phone","Contact Info"]))
+        sub=get_field(data,["Submission #","Submission Number"])
+
+        if phone in contact and last in name:
+            html+=f"<div><b>{sub}</b> - {r[1]}</div>"
+
+    return page(html)
 
 # =========================
 if __name__=="__main__":
