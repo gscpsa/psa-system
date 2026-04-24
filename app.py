@@ -83,7 +83,7 @@ def save_row(submission, raw):
     conn = get_conn()
     cur = conn.cursor()
 
-    # remove any Excel status column
+    # remove Excel status columns
     for k in list(raw.keys()):
         if "status" in k.lower():
             del raw[k]
@@ -100,6 +100,56 @@ def save_row(submission, raw):
     conn.commit()
     cur.close()
     conn.close()
+
+# =========================
+# UI TEMPLATE
+# =========================
+def page_wrapper(content, title="PSA System"):
+    return f"""
+    <html>
+    <head>
+        <title>{title}</title>
+        <style>
+            body {{ font-family: Arial; margin:0; background:#f4f6f8; }}
+            .topbar {{
+                background:#1f2937; color:white; padding:15px;
+                display:flex; justify-content:space-between;
+            }}
+            .links a {{
+                color:white; margin-left:15px; text-decoration:none;
+            }}
+            .container {{ padding:20px; }}
+            table {{
+                width:100%; border-collapse:collapse; background:white;
+                box-shadow:0 2px 8px rgba(0,0,0,0.1);
+            }}
+            th {{
+                background:#111827; color:white; padding:10px;
+                position:sticky; top:0;
+            }}
+            td {{ padding:8px; border-bottom:1px solid #ddd; }}
+            tr:hover {{ background:#f1f5f9; }}
+            .status {{ font-weight:bold; color:#2563eb; }}
+            input {{ padding:8px; }}
+            button {{ padding:8px; }}
+        </style>
+    </head>
+    <body>
+    <div class="topbar">
+        <div>PSA Tracking System</div>
+        <div class="links">
+            <a href="/">Dashboard</a>
+            <a href="/upload">Upload Excel</a>
+            <a href="/upload_psa">Upload PDF</a>
+            <a href="/search">Search</a>
+        </div>
+    </div>
+    <div class="container">
+    {content}
+    </div>
+    </body>
+    </html>
+    """
 
 # =========================
 # DASHBOARD
@@ -120,7 +170,6 @@ def dashboard():
 
     for r in rows:
         data = r[0] or {}
-
         row = {k:v for k,v in data.items() if not str(k).lower().startswith("unnamed")}
 
         if r[1]:
@@ -131,9 +180,7 @@ def dashboard():
 
     ordered = sorted(keys)
 
-    html = "<b>PSA System</b> | <a href='/upload'>Upload Excel</a> | <a href='/upload_psa'>Upload PDF</a> | <a href='/search'>Search</a><br><br>"
-
-    html += "<table border=1><tr>"
+    html = "<table><tr>"
     for k in ordered:
         html += f"<th>{k}</th>"
     html += "</tr>"
@@ -141,11 +188,16 @@ def dashboard():
     for row in clean_rows:
         html += "<tr>"
         for k in ordered:
-            html += f"<td>{row.get(k,'')}</td>"
+            val = row.get(k,"")
+            if k == "PSA Status":
+                html += f"<td class='status'>{val}</td>"
+            else:
+                html += f"<td>{val}</td>"
         html += "</tr>"
 
     html += "</table>"
-    return html
+
+    return page_wrapper(html)
 
 # =========================
 # SEARCH
@@ -171,44 +223,18 @@ def search():
     cur.close()
     conn.close()
 
-    keys = set()
-    clean_rows = []
+    html = f"""
+    <form>
+        <input name="q" value="{q}" placeholder="Search...">
+        <button>Search</button>
+    </form><br>
+    """
 
     for r in rows:
         data = r[0] or {}
-        row = {k:v for k,v in data.items() if not str(k).lower().startswith("unnamed")}
+        html += "<div>" + str(data) + "</div><br>"
 
-        if r[1]:
-            row["PSA Status"] = r[1]
-
-        clean_rows.append(row)
-        keys.update(row.keys())
-
-    ordered = sorted(keys)
-
-    html = f"""
-    <b>Search</b> | <a href="/">Dashboard</a><br><br>
-    <form>
-        <input name="q" value="{q}">
-        <button>Search</button>
-    </form>
-    <br>
-    <table border=1>
-    <tr>
-    """
-
-    for k in ordered:
-        html += f"<th>{k}</th>"
-    html += "</tr>"
-
-    for row in clean_rows:
-        html += "<tr>"
-        for k in ordered:
-            html += f"<td>{row.get(k,'')}</td>"
-        html += "</tr>"
-
-    html += "</table>"
-    return html
+    return page_wrapper(html, "Search")
 
 # =========================
 # EXCEL UPLOAD
@@ -218,7 +244,6 @@ def upload():
     if request.method == "POST":
         try:
             file = request.files.get("file")
-
             df = read_file(file)
             df.columns = [str(c).strip() for c in df.columns]
 
@@ -231,12 +256,18 @@ def upload():
                 if submission:
                     save_row(submission, raw)
 
-            return "Excel uploaded"
+            return page_wrapper("Excel uploaded successfully")
 
         except:
-            return traceback.format_exc()
+            return page_wrapper(traceback.format_exc())
 
-    return '<form method="post" enctype="multipart/form-data"><input type="file" name="file"><button>Upload</button></form>'
+    return page_wrapper("""
+    <h3>Upload Excel</h3>
+    <form method="post" enctype="multipart/form-data">
+        <input type="file" name="file">
+        <button>Upload</button>
+    </form>
+    """)
 
 # =========================
 # PDF UPLOAD (WORKING PARSER)
@@ -304,12 +335,18 @@ def upload_psa():
             cur.close()
             conn.close()
 
-            return f"Updated: {updated}"
+            return page_wrapper(f"PDF processed. Updated: {updated}")
 
         except:
-            return traceback.format_exc()
+            return page_wrapper(traceback.format_exc())
 
-    return '<form method="post" enctype="multipart/form-data"><input type="file" name="file"><button>Upload PDF</button></form>'
+    return page_wrapper("""
+    <h3>Upload PSA PDF</h3>
+    <form method="post" enctype="multipart/form-data">
+        <input type="file" name="file">
+        <button>Upload</button>
+    </form>
+    """)
 
 # =========================
 if __name__ == "__main__":
