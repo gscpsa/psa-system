@@ -86,7 +86,6 @@ def row_is_picked_up(raw):
 
 def read_file(file):
     name = (file.filename or "").lower()
-
     if name.endswith(("xlsx","xls")):
         return pd.read_excel(file)
 
@@ -104,6 +103,7 @@ def save_row(sub, raw):
 
     picked_up = row_is_picked_up(raw)
 
+    # remove any excel status field
     for k in list(raw.keys()):
         if "status" in str(k).lower():
             del raw[k]
@@ -317,7 +317,6 @@ def upload_psa():
         with pdfplumber.open(temp.name) as pdf:
             for pdf_page in pdf.pages:
                 tables=pdf_page.extract_tables()
-
                 for table in tables:
                     for row in table:
                         text=" ".join([str(c or "") for c in row])
@@ -355,7 +354,7 @@ def upload_psa():
     return page("<form method='post' enctype='multipart/form-data'><input type='file' name='file'><button>Upload PDF</button></form>")
 
 # =========================
-# CUSTOMER PORTAL
+# CUSTOMER PORTAL (FIXED)
 # =========================
 @app.route("/portal",methods=["GET","POST"])
 def portal():
@@ -368,8 +367,8 @@ def portal():
 
 @app.route("/portal/orders")
 def orders():
-    phone=session.get("phone")
-    last=session.get("last")
+    phone=normalize_phone(session.get("phone"))
+    last=(session.get("last") or "").lower()
 
     conn=get_conn()
     cur=conn.cursor()
@@ -379,15 +378,20 @@ def orders():
     conn.close()
 
     html="<h2>Your Orders</h2>"
+    found=False
 
     for r in rows:
         data=r[0] or {}
         name=str(get_field(data,["Customer Name","Name"])).lower()
-        contact=normalize_phone(get_field(data,["Phone","Contact Info"]))
+        contact=normalize_phone(get_field(data,["Phone","Contact Info","Phone Number"]))
         sub=get_field(data,["Submission #","Submission Number"])
 
-        if phone in contact and last in name:
+        if (phone in contact or contact in phone) and last in name:
+            found=True
             html+=f"<div><b>{sub}</b> - {r[1]}</div>"
+
+    if not found:
+        html+="<div>No matching orders found</div>"
 
     return page(html)
 
