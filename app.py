@@ -77,13 +77,13 @@ def read_file(file):
         return pd.read_csv(io.StringIO(raw.decode("latin1")), on_bad_lines="skip")
 
 # =========================
-# SAFE SAVE (EXCEL)
+# SAVE (EXCEL SAFE)
 # =========================
 def save_row(submission, raw):
     conn = get_conn()
     cur = conn.cursor()
 
-    # 🔥 REMOVE ANY STATUS FROM EXCEL
+    # REMOVE EXCEL STATUS
     for k in list(raw.keys()):
         if "status" in k.lower():
             del raw[k]
@@ -120,7 +120,6 @@ def dashboard():
 
     for r in rows:
         data = r[0] or {}
-
         row = {k:v for k,v in data.items() if not str(k).lower().startswith("unnamed")}
 
         if r[1]:
@@ -132,12 +131,10 @@ def dashboard():
     ordered = sorted(keys)
 
     html = """
-    <div style="position:sticky;top:0;background:white;padding:10px;border-bottom:2px solid black;">
-        <b>PSA System</b> |
-        <a href="/upload">Upload Excel</a> |
-        <a href="/upload_psa">Upload PSA PDF</a> |
-        <a href="/search">Search</a>
-    </div><br>
+    <b>PSA System</b> |
+    <a href="/upload">Upload Excel</a> |
+    <a href="/upload_psa">Upload PSA PDF</a> |
+    <a href="/search">Search</a><br><br>
     """
 
     html += "<table border=1><tr>"
@@ -155,46 +152,7 @@ def dashboard():
     return html
 
 # =========================
-# SEARCH
-# =========================
-@app.route("/search")
-def search():
-    q = request.args.get("q","")
-
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT raw_data FROM submissions
-    WHERE raw_data::text ILIKE %s
-    LIMIT 100
-    """, (f"%{q}%",))
-
-    rows = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    html = f"""
-    <form>
-        <input name="q" value="{q}">
-        <button>Search</button>
-    </form><br>
-    <table border=1>
-    """
-
-    for r in rows:
-        data = r[0] or {}
-        html += "<tr>"
-        for v in data.values():
-            html += f"<td>{v}</td>"
-        html += "</tr>"
-
-    html += "</table><br><a href='/'>Back</a>"
-    return html
-
-# =========================
-# EXCEL UPLOAD
+# EXCEL
 # =========================
 @app.route("/upload", methods=["GET","POST"])
 def upload():
@@ -204,39 +162,21 @@ def upload():
         df = read_file(file)
         df.columns = [str(c).strip() for c in df.columns]
 
-        inserted = errors = 0
-
         for _, row in df.iterrows():
-            try:
-                raw = {c: clean(row[c]) for c in df.columns}
+            raw = {c: clean(row[c]) for c in df.columns}
 
-                submission = raw.get("Submission #") or raw.get("Submission Number")
-                submission = normalize_submission(submission)
+            submission = raw.get("Submission #") or raw.get("Submission Number")
+            submission = normalize_submission(submission)
 
-                if not submission:
-                    errors += 1
-                    continue
-
+            if submission:
                 save_row(submission, raw)
-                inserted += 1
 
-            except Exception as e:
-                print("ROW ERROR:", e)
-                errors += 1
+        return "Excel uploaded"
 
-        return f"Inserted/Updated: {inserted} | Errors: {errors}"
-
-    return """
-    <h3>Upload Excel/CSV</h3>
-    <form method="post" enctype="multipart/form-data">
-        <input type="file" name="file">
-        <button>Upload</button>
-    </form>
-    <br><a href="/">Dashboard</a>
-    """
+    return '<form method="post" enctype="multipart/form-data"><input type="file" name="file"><button>Upload</button></form>'
 
 # =========================
-# PDF UPLOAD (MOBILE SAFE + GUARANTEED UPDATE)
+# PDF (FINAL FIX)
 # =========================
 @app.route("/upload_psa", methods=["GET","POST"])
 def upload_psa():
@@ -288,11 +228,11 @@ def upload_psa():
             else:
                 continue
 
-            # 🔥 SIMPLE + RELIABLE MATCH
+            # 🔥 BULLETPROOF MATCH
             cur.execute("""
             UPDATE submissions
             SET status=%s, last_updated=NOW()
-            WHERE submission_number = %s
+            WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g') = %s
             """, (status, sub))
 
             print("CHECK:", sub, status, "UPDATED:", cur.rowcount)
@@ -304,16 +244,9 @@ def upload_psa():
         cur.close()
         conn.close()
 
-        return f"PSA Updated: {updated}"
+        return f"Updated: {updated}"
 
-    return """
-    <h3>Upload PSA PDF</h3>
-    <form method="post" enctype="multipart/form-data">
-        <input type="file" name="file">
-        <button>Upload</button>
-    </form>
-    <br><a href="/">Dashboard</a>
-    """
+    return '<form method="post" enctype="multipart/form-data"><input type="file" name="file"><button>Upload PDF</button></form>'
 
 # =========================
 if __name__ == "__main__":
