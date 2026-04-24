@@ -83,7 +83,7 @@ def save_row(submission, raw):
     conn = get_conn()
     cur = conn.cursor()
 
-    # remove Excel status columns
+    # REMOVE Excel status
     for k in list(raw.keys()):
         if "status" in k.lower():
             del raw[k]
@@ -102,41 +102,28 @@ def save_row(submission, raw):
     conn.close()
 
 # =========================
-# UI TEMPLATE
+# UI WRAPPER
 # =========================
-def page_wrapper(content, title="PSA System"):
+def page(content):
     return f"""
     <html>
     <head>
-        <title>{title}</title>
+        <title>PSA System</title>
         <style>
             body {{ font-family: Arial; margin:0; background:#f4f6f8; }}
-            .topbar {{
-                background:#1f2937; color:white; padding:15px;
-                display:flex; justify-content:space-between;
-            }}
-            .links a {{
-                color:white; margin-left:15px; text-decoration:none;
-            }}
+            .topbar {{ background:#1f2937; color:white; padding:15px; display:flex; justify-content:space-between; }}
+            .links a {{ color:white; margin-left:15px; text-decoration:none; }}
             .container {{ padding:20px; }}
-            table {{
-                width:100%; border-collapse:collapse; background:white;
-                box-shadow:0 2px 8px rgba(0,0,0,0.1);
-            }}
-            th {{
-                background:#111827; color:white; padding:10px;
-                position:sticky; top:0;
-            }}
+            table {{ width:100%; border-collapse:collapse; background:white; }}
+            th {{ background:#111827; color:white; padding:10px; position:sticky; top:0; }}
             td {{ padding:8px; border-bottom:1px solid #ddd; }}
             tr:hover {{ background:#f1f5f9; }}
             .status {{ font-weight:bold; color:#2563eb; }}
-            input {{ padding:8px; }}
-            button {{ padding:8px; }}
         </style>
     </head>
     <body>
     <div class="topbar">
-        <div>PSA Tracking System</div>
+        <div>PSA Tracking</div>
         <div class="links">
             <a href="/">Dashboard</a>
             <a href="/upload">Upload Excel</a>
@@ -197,7 +184,7 @@ def dashboard():
 
     html += "</table>"
 
-    return page_wrapper(html)
+    return page(html)
 
 # =========================
 # SEARCH
@@ -210,8 +197,7 @@ def search():
     cur = conn.cursor()
 
     cur.execute("""
-    SELECT raw_data, status
-    FROM submissions
+    SELECT raw_data, status FROM submissions
     WHERE raw_data::text ILIKE %s
        OR submission_number ILIKE %s
        OR status ILIKE %s
@@ -223,128 +209,111 @@ def search():
     cur.close()
     conn.close()
 
-    html = f"""
-    <form>
-        <input name="q" value="{q}" placeholder="Search...">
-        <button>Search</button>
-    </form><br>
-    """
+    html = f"<form><input name='q' value='{q}'><button>Search</button></form><br>"
 
     for r in rows:
-        data = r[0] or {}
-        html += "<div>" + str(data) + "</div><br>"
+        html += "<div>" + str(r[0]) + "</div><br>"
 
-    return page_wrapper(html, "Search")
+    return page(html)
 
 # =========================
-# EXCEL UPLOAD
+# EXCEL
 # =========================
 @app.route("/upload", methods=["GET","POST"])
 def upload():
     if request.method == "POST":
-        try:
-            file = request.files.get("file")
-            df = read_file(file)
-            df.columns = [str(c).strip() for c in df.columns]
+        file = request.files.get("file")
+        df = read_file(file)
+        df.columns = [str(c).strip() for c in df.columns]
 
-            for _, row in df.iterrows():
-                raw = {c: clean(row[c]) for c in df.columns}
+        for _, row in df.iterrows():
+            raw = {c: clean(row[c]) for c in df.columns}
+            sub = normalize_submission(raw.get("Submission #"))
+            if sub:
+                save_row(sub, raw)
 
-                submission = raw.get("Submission #") or raw.get("Submission Number")
-                submission = normalize_submission(submission)
+        return page("Excel uploaded")
 
-                if submission:
-                    save_row(submission, raw)
-
-            return page_wrapper("Excel uploaded successfully")
-
-        except:
-            return page_wrapper(traceback.format_exc())
-
-    return page_wrapper("""
+    return page("""
     <h3>Upload Excel</h3>
     <form method="post" enctype="multipart/form-data">
-        <input type="file" name="file">
-        <button>Upload</button>
+    <input type="file" name="file">
+    <button>Upload</button>
     </form>
     """)
 
 # =========================
-# PDF UPLOAD (WORKING PARSER)
+# PDF (FIXED PRIORITY)
 # =========================
 @app.route("/upload_psa", methods=["GET","POST"])
 def upload_psa():
     if request.method == "POST":
-        try:
-            file = request.files.get("file")
+        file = request.files.get("file")
 
-            import pdfplumber, tempfile
+        import pdfplumber, tempfile
 
-            temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-            file.save(temp.name)
+        temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+        file.save(temp.name)
 
-            text = ""
+        text = ""
+        with pdfplumber.open(temp.name) as pdf:
+            for p in pdf.pages:
+                t = p.extract_text()
+                if t:
+                    text += t + "\n"
 
-            with pdfplumber.open(temp.name) as pdf:
-                for page in pdf.pages:
-                    t = page.extract_text()
-                    if t:
-                        text += t + "\n"
+        os.unlink(temp.name)
 
-            os.unlink(temp.name)
+        blocks = re.split(r"Sub\s*#", text)
 
-            blocks = re.split(r"Sub\s*#", text)
+        conn = get_conn()
+        cur = conn.cursor()
 
-            conn = get_conn()
-            cur = conn.cursor()
+        updated = 0
 
-            updated = 0
+        for b in blocks:
+            if not b.strip() or not b[0].isdigit():
+                continue
 
-            for b in blocks:
-                if not b.strip() or not b[0].isdigit():
-                    continue
+            match = re.match(r"(\d+)", b)
+            if not match:
+                continue
 
-                match = re.match(r"(\d+)", b)
-                if not match:
-                    continue
+            sub = normalize_submission(match.group(1))
 
-                sub = normalize_submission(match.group(1))
+            # 🔥 FIXED ORDER
+            if "Order Arrived" in b:
+                status = "Order Arrived"
+            elif "Research & ID" in b:
+                status = "Research & ID"
+            elif "Grading" in b:
+                status = "Grading"
+            elif "QA Checks" in b:
+                status = "QA Checks"
+            elif "Complete" in b:
+                status = "Complete"
+            else:
+                continue
 
-                if "Complete" in b:
-                    status = "Complete"
-                elif "QA Checks" in b:
-                    status = "QA Checks"
-                elif "Research & ID" in b:
-                    status = "Research & ID"
-                elif "Grading" in b:
-                    status = "Grading"
-                elif "Order Arrived" in b:
-                    status = "Order Arrived"
-                else:
-                    continue
+            cur.execute("""
+            UPDATE submissions
+            SET status=%s, last_updated=NOW()
+            WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g') = %s
+            """, (status, sub))
 
-                cur.execute("""
-                UPDATE submissions
-                SET status=%s, last_updated=NOW()
-                WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g') = %s
-                """, (status, sub))
+            updated += cur.rowcount
 
-                updated += cur.rowcount
+        conn.commit()
+        cur.close()
+        conn.close()
 
-            conn.commit()
-            cur.close()
-            conn.close()
+        return page(f"Updated: {updated}")
 
-            return page_wrapper(f"PDF processed. Updated: {updated}")
-
-        except:
-            return page_wrapper(traceback.format_exc())
-
-    return page_wrapper("""
+    return page("""
     <h3>Upload PSA PDF</h3>
     <form method="post" enctype="multipart/form-data">
-        <input type="file" name="file">
-        <button>Upload</button>
+    <input type="file" name="file">
+    <button>Upload</button>
     </form>
     """)
 
