@@ -83,7 +83,7 @@ def save_row(submission, raw):
     conn = get_conn()
     cur = conn.cursor()
 
-    # REMOVE EXCEL STATUS
+    # REMOVE any Excel status
     for k in list(raw.keys()):
         if "status" in k.lower():
             del raw[k]
@@ -130,12 +130,7 @@ def dashboard():
 
     ordered = sorted(keys)
 
-    html = """
-    <b>PSA System</b> |
-    <a href="/upload">Upload Excel</a> |
-    <a href="/upload_psa">Upload PSA PDF</a> |
-    <a href="/search">Search</a><br><br>
-    """
+    html = "<b>PSA System</b> | <a href='/upload'>Upload Excel</a> | <a href='/upload_psa'>Upload PSA PDF</a> | <a href='/search'>Search</a><br><br>"
 
     html += "<table border=1><tr>"
     for k in ordered:
@@ -149,6 +144,39 @@ def dashboard():
         html += "</tr>"
 
     html += "</table>"
+    return html
+
+# =========================
+# SEARCH
+# =========================
+@app.route("/search")
+def search():
+    q = request.args.get("q","")
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT raw_data FROM submissions
+    WHERE raw_data::text ILIKE %s
+    LIMIT 100
+    """, (f"%{q}%",))
+
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    html = f"<form><input name='q' value='{q}'><button>Search</button></form><br><table border=1>"
+
+    for r in rows:
+        data = r[0] or {}
+        html += "<tr>"
+        for v in data.values():
+            html += f"<td>{v}</td>"
+        html += "</tr>"
+
+    html += "</table><br><a href='/'>Back</a>"
     return html
 
 # =========================
@@ -176,7 +204,7 @@ def upload():
     return '<form method="post" enctype="multipart/form-data"><input type="file" name="file"><button>Upload</button></form>'
 
 # =========================
-# PDF (FINAL FIX)
+# PDF (FINAL RELIABLE VERSION)
 # =========================
 @app.route("/upload_psa", methods=["GET","POST"])
 def upload_psa():
@@ -198,44 +226,43 @@ def upload_psa():
 
         os.unlink(temp.name)
 
-        blocks = re.split(r"Sub\s*#", text)
+        if not text.strip():
+            return "PDF TEXT EMPTY"
 
         conn = get_conn()
         cur = conn.cursor()
 
         updated = 0
 
-        for b in blocks:
-            if not b.strip() or not b[0].isdigit():
-                continue
+        # FIND ALL submission numbers
+        matches = re.findall(r"\b\d{8}\b", text)
 
-            match = re.match(r"(\d+)", b)
-            if not match:
-                continue
+        for sub in matches:
+            sub = normalize_submission(sub)
 
-            sub = normalize_submission(match.group(1))
+            idx = text.find(sub)
+            chunk = text[max(0, idx-200):idx+200]
 
-            if "Complete" in b:
+            if "Complete" in chunk:
                 status = "Complete"
-            elif "QA Checks" in b:
+            elif "QA Checks" in chunk:
                 status = "QA Checks"
-            elif "Research & ID" in b:
+            elif "Research & ID" in chunk:
                 status = "Research & ID"
-            elif "Grading" in b:
+            elif "Grading" in chunk:
                 status = "Grading"
-            elif "Order Arrived" in b:
+            elif "Order Arrived" in chunk:
                 status = "Order Arrived"
             else:
                 continue
 
-            # 🔥 BULLETPROOF MATCH
             cur.execute("""
             UPDATE submissions
             SET status=%s, last_updated=NOW()
             WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g') = %s
             """, (status, sub))
 
-            print("CHECK:", sub, status, "UPDATED:", cur.rowcount)
+            print("UPDATE:", sub, status, "ROWS:", cur.rowcount)
 
             if cur.rowcount > 0:
                 updated += 1
