@@ -83,7 +83,7 @@ def save_row(submission, raw):
     conn = get_conn()
     cur = conn.cursor()
 
-    # remove Excel status
+    # Remove Excel status columns
     for k in list(raw.keys()):
         if "status" in k.lower():
             del raw[k]
@@ -102,7 +102,7 @@ def save_row(submission, raw):
     conn.close()
 
 # =========================
-# DASHBOARD
+# DASHBOARD (FULL COLUMNS)
 # =========================
 @app.route("/")
 def dashboard():
@@ -115,19 +115,73 @@ def dashboard():
     cur.close()
     conn.close()
 
-    html = "<b>PSA System</b> | <a href='/upload'>Upload Excel</a> | <a href='/upload_psa'>Upload PDF</a><br><br>"
-    html += "<table border=1><tr><th>Submission</th><th>Status</th></tr>"
+    keys = set()
+    clean_rows = []
 
     for r in rows:
         data = r[0] or {}
-        sub = data.get("Submission #") or data.get("Submission Number")
-        html += f"<tr><td>{sub}</td><td>{r[1]}</td></tr>"
+
+        row = {k:v for k,v in data.items() if not str(k).lower().startswith("unnamed")}
+
+        if r[1]:
+            row["PSA Status"] = r[1]
+
+        clean_rows.append(row)
+        keys.update(row.keys())
+
+    ordered = sorted(keys)
+
+    html = "<b>PSA System</b> | <a href='/upload'>Upload Excel</a> | <a href='/upload_psa'>Upload PDF</a> | <a href='/search'>Search</a><br><br>"
+
+    html += "<table border=1><tr>"
+    for k in ordered:
+        html += f"<th>{k}</th>"
+    html += "</tr>"
+
+    for row in clean_rows:
+        html += "<tr>"
+        for k in ordered:
+            html += f"<td>{row.get(k,'')}</td>"
+        html += "</tr>"
 
     html += "</table>"
     return html
 
 # =========================
-# EXCEL
+# SEARCH
+# =========================
+@app.route("/search")
+def search():
+    q = request.args.get("q","")
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT raw_data FROM submissions
+    WHERE raw_data::text ILIKE %s
+    LIMIT 100
+    """, (f"%{q}%",))
+
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    html = f"<form><input name='q' value='{q}'><button>Search</button></form><br><table border=1>"
+
+    for r in rows:
+        data = r[0] or {}
+        html += "<tr>"
+        for v in data.values():
+            html += f"<td>{v}</td>"
+        html += "</tr>"
+
+    html += "</table><br><a href='/'>Back</a>"
+    return html
+
+# =========================
+# EXCEL UPLOAD
 # =========================
 @app.route("/upload", methods=["GET","POST"])
 def upload():
@@ -151,7 +205,7 @@ def upload():
     return '<form method="post" enctype="multipart/form-data"><input type="file" name="file"><button>Upload</button></form>'
 
 # =========================
-# PDF WITH FULL DEBUG
+# PDF UPLOAD (DEBUG + RELIABLE)
 # =========================
 @app.route("/upload_psa", methods=["GET","POST"])
 def upload_psa():
@@ -198,7 +252,6 @@ def upload_psa():
             elif "Order Arrived" in chunk:
                 status = "Order Arrived"
 
-            # check if exists in DB
             cur.execute("""
             SELECT COUNT(*) FROM submissions
             WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g') = %s
@@ -223,9 +276,8 @@ def upload_psa():
         cur.close()
         conn.close()
 
-        # DISPLAY RESULTS
         html = "<h3>PDF Results</h3>"
-        html += "<table border=1><tr><th>Submission</th><th>Status Found</th><th>In DB</th><th>Updated</th></tr>"
+        html += "<table border=1><tr><th>Submission</th><th>Status</th><th>In DB</th><th>Updated</th></tr>"
 
         for r in results:
             html += f"<tr><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td></tr>"
