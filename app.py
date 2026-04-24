@@ -60,9 +60,16 @@ def normalize_submission(val):
     if not val:
         return None
     val = str(val).strip()
-    val = val.split(".")[0]          # remove .0
-    val = re.sub(r"\D", "", val)    # digits only
+    val = val.split(".")[0]
+    val = re.sub(r"\D", "", val)
     return val
+
+def is_picked_up(raw):
+    for k, v in raw.items():
+        if "pick" in str(k).lower():
+            if str(v).strip().lower() in ["yes", "y", "true", "1"]:
+                return True
+    return False
 
 def read_file(file):
     name = (file.filename or "").lower()
@@ -78,16 +85,41 @@ def read_file(file):
     except:
         return pd.read_csv(io.StringIO(raw.decode("latin1")), on_bad_lines="skip")
 
+# =========================
+# SAFE SAVE (WITH LOCK RULE)
+# =========================
 def save_row(submission, raw):
     conn = get_conn()
     cur = conn.cursor()
 
     cur.execute("""
-    INSERT INTO submissions (submission_number, raw_data)
-    VALUES (%s,%s)
+        SELECT status FROM submissions
+        WHERE submission_number = %s
+    """, (submission,))
+    existing = cur.fetchone()
+
+    existing_status = existing[0] if existing else None
+
+    picked_up = is_picked_up(raw)
+
+    # 🔒 CORE LOGIC
+    if picked_up:
+        new_status = "Picked Up"
+    else:
+        new_status = existing_status  # preserve PSA status
+
+    cur.execute("""
+    INSERT INTO submissions (submission_number, raw_data, status)
+    VALUES (%s,%s,%s)
     ON CONFLICT (submission_number)
-    DO UPDATE SET raw_data=EXCLUDED.raw_data, last_updated=NOW()
-    """, (submission, json.dumps(raw)))
+    DO UPDATE SET
+        raw_data = EXCLUDED.raw_data,
+        status = CASE
+            WHEN submissions.status IS NULL THEN EXCLUDED.status
+            ELSE submissions.status
+        END,
+        last_updated = NOW()
+    """, (submission, json.dumps(raw), new_status))
 
     conn.commit()
     cur.close()
@@ -193,9 +225,6 @@ def upload():
     if request.method == "POST":
         file = request.files.get("file")
 
-        if not file:
-            return "No file uploaded"
-
         df = read_file(file)
         df.columns = [str(c).strip() for c in df.columns]
 
@@ -231,15 +260,12 @@ def upload():
     """
 
 # =========================
-# PDF UPLOAD (FINAL FIX)
+# PDF UPLOAD
 # =========================
 @app.route("/upload_psa", methods=["GET","POST"])
 def upload_psa():
     if request.method == "POST":
         file = request.files.get("file")
-
-        if not file:
-            return "No file uploaded"
 
         import pdfplumber
 
@@ -251,9 +277,6 @@ def upload_psa():
                 t = page.extract_text()
                 if t:
                     text += t + "\n"
-
-        if not text.strip():
-            return "No readable text in PDF"
 
         blocks = re.split(r"Sub\s*#", text)
 
@@ -292,10 +315,7 @@ def upload_psa():
             """, (status, sub))
 
             if cur.rowcount > 0:
-                print("UPDATED:", sub, status)
                 updated += 1
-            else:
-                print("NOT FOUND:", sub)
 
         conn.commit()
         cur.close()
