@@ -89,7 +89,6 @@ def row_is_picked_up(raw):
 
 def read_file(file):
     name = (file.filename or "").lower()
-
     if name.endswith(("xlsx","xls")):
         return pd.read_excel(file)
 
@@ -174,14 +173,47 @@ def page(content):
     """
 
 def build_table(rows):
-    html = "<table><tr><th>Submission</th><th>Status</th></tr>"
+    keys = set()
+    clean_rows = []
+
     for r in rows:
-        html += f"<tr><td>{r[0]}</td><td class='status'>{r[1] or 'Submitted'}</td></tr>"
+        data = r[0] or {}
+        row = {}
+
+        for k, v in data.items():
+            if "unnamed" in str(k).lower():
+                continue
+            if k == "S":
+                k = "Submission Date"
+            row[k] = v
+
+        row["PSA Status"] = r[1] or "Submitted"
+
+        clean_rows.append(row)
+        keys.update(row.keys())
+
+    ordered = sorted(keys)
+
+    html = "<table><tr>"
+    for k in ordered:
+        html += f"<th>{k}</th>"
+    html += "</tr>"
+
+    for row in clean_rows:
+        html += "<tr>"
+        for k in ordered:
+            val = row.get(k, "")
+            if k == "PSA Status":
+                html += f"<td class='status'>{val}</td>"
+            else:
+                html += f"<td>{val}</td>"
+        html += "</tr>"
+
     html += "</table>"
     return html
 
 # =========================
-# ADMIN LOGIN
+# ADMIN
 # =========================
 @app.route("/")
 def root():
@@ -194,7 +226,6 @@ def admin_login():
             session["admin"] = True
             return redirect("/admin")
         return page("Wrong password")
-
     return page("<form method='post'><input type='password' name='password'><button>Login</button></form>")
 
 @app.route("/admin/logout")
@@ -202,15 +233,12 @@ def logout():
     session.clear()
     return redirect("/admin/login")
 
-# =========================
-# ADMIN DASHBOARD
-# =========================
 @app.route("/admin")
 @admin_required
 def admin():
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT submission_number,status FROM submissions ORDER BY last_updated DESC")
+    cur.execute("SELECT raw_data,status FROM submissions ORDER BY last_updated DESC")
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -218,7 +246,7 @@ def admin():
     return page("<h2>Admin Dashboard</h2>" + build_table(rows))
 
 # =========================
-# FIXED PDF PARSER
+# PDF PARSER (FIXED)
 # =========================
 @app.route("/admin/upload_psa", methods=["GET","POST"])
 @admin_required
@@ -234,7 +262,7 @@ def upload_psa():
         best = {}
 
         with pdfplumber.open(temp.name) as pdf:
-            for pdf_page in pdf.pages:  # FIXED HERE
+            for pdf_page in pdf.pages:
                 tables = pdf_page.extract_tables()
 
                 for table in tables:
@@ -269,7 +297,7 @@ def upload_psa():
         cur.close()
         conn.close()
 
-        return page("PDF processed successfully")
+        return page("PDF processed")
 
     return page("<form method='post' enctype='multipart/form-data'><input type='file' name='file'><button>Upload</button></form>")
 
