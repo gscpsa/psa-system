@@ -83,7 +83,7 @@ def save_row(submission, raw):
     conn = get_conn()
     cur = conn.cursor()
 
-    # Remove Excel status columns
+    # remove Excel status
     for k in list(raw.keys()):
         if "status" in k.lower():
             del raw[k]
@@ -102,7 +102,7 @@ def save_row(submission, raw):
     conn.close()
 
 # =========================
-# DASHBOARD (FULL COLUMNS)
+# DASHBOARD
 # =========================
 @app.route("/")
 def dashboard():
@@ -120,7 +120,6 @@ def dashboard():
 
     for r in rows:
         data = r[0] or {}
-
         row = {k:v for k,v in data.items() if not str(k).lower().startswith("unnamed")}
 
         if r[1]:
@@ -131,7 +130,7 @@ def dashboard():
 
     ordered = sorted(keys)
 
-    html = "<b>PSA System</b> | <a href='/upload'>Upload Excel</a> | <a href='/upload_psa'>Upload PDF</a> | <a href='/search'>Search</a><br><br>"
+    html = "<b>PSA System</b> | <a href='/upload'>Upload Excel</a> | <a href='/upload_psa'>Upload PDF</a><br><br>"
 
     html += "<table border=1><tr>"
     for k in ordered:
@@ -148,40 +147,7 @@ def dashboard():
     return html
 
 # =========================
-# SEARCH
-# =========================
-@app.route("/search")
-def search():
-    q = request.args.get("q","")
-
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT raw_data FROM submissions
-    WHERE raw_data::text ILIKE %s
-    LIMIT 100
-    """, (f"%{q}%",))
-
-    rows = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    html = f"<form><input name='q' value='{q}'><button>Search</button></form><br><table border=1>"
-
-    for r in rows:
-        data = r[0] or {}
-        html += "<tr>"
-        for v in data.values():
-            html += f"<td>{v}</td>"
-        html += "</tr>"
-
-    html += "</table><br><a href='/'>Back</a>"
-    return html
-
-# =========================
-# EXCEL UPLOAD
+# EXCEL
 # =========================
 @app.route("/upload", methods=["GET","POST"])
 def upload():
@@ -205,7 +171,7 @@ def upload():
     return '<form method="post" enctype="multipart/form-data"><input type="file" name="file"><button>Upload</button></form>'
 
 # =========================
-# PDF UPLOAD (DEBUG + RELIABLE)
+# PDF (RESTORED WORKING LOGIC)
 # =========================
 @app.route("/upload_psa", methods=["GET","POST"])
 def upload_psa():
@@ -227,63 +193,52 @@ def upload_psa():
 
         os.unlink(temp.name)
 
+        blocks = re.split(r"Sub\s*#", text)
+
         conn = get_conn()
         cur = conn.cursor()
 
-        results = []
+        updated = 0
 
-        matches = re.findall(r"\b\d{8}\b", text)
+        for b in blocks:
+            if not b.strip() or not b[0].isdigit():
+                continue
 
-        for sub in matches:
-            sub = normalize_submission(sub)
+            match = re.match(r"(\d+)", b)
+            if not match:
+                continue
 
-            idx = text.find(sub)
-            chunk = text[max(0, idx-200):idx+200]
+            sub = normalize_submission(match.group(1))
 
-            status = None
-            if "Complete" in chunk:
+            if "Complete" in b:
                 status = "Complete"
-            elif "QA Checks" in chunk:
+            elif "QA Checks" in b:
                 status = "QA Checks"
-            elif "Research & ID" in chunk:
+            elif "Research & ID" in b:
                 status = "Research & ID"
-            elif "Grading" in chunk:
+            elif "Grading" in b:
                 status = "Grading"
-            elif "Order Arrived" in chunk:
+            elif "Order Arrived" in b:
                 status = "Order Arrived"
+            else:
+                continue
 
             cur.execute("""
-            SELECT COUNT(*) FROM submissions
+            UPDATE submissions
+            SET status=%s, last_updated=NOW()
             WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g') = %s
-            """, (sub,))
-            exists = cur.fetchone()[0] > 0
+            """, (status, sub))
 
-            updated = False
+            print("UPDATED:", sub, status, cur.rowcount)
 
-            if status and exists:
-                cur.execute("""
-                UPDATE submissions
-                SET status=%s, last_updated=NOW()
-                WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g') = %s
-                """, (status, sub))
-
-                if cur.rowcount > 0:
-                    updated = True
-
-            results.append((sub, status, exists, updated))
+            if cur.rowcount > 0:
+                updated += 1
 
         conn.commit()
         cur.close()
         conn.close()
 
-        html = "<h3>PDF Results</h3>"
-        html += "<table border=1><tr><th>Submission</th><th>Status</th><th>In DB</th><th>Updated</th></tr>"
-
-        for r in results:
-            html += f"<tr><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td></tr>"
-
-        html += "</table><br><a href='/'>Back</a>"
-        return html
+        return f"Updated: {updated}"
 
     return '<form method="post" enctype="multipart/form-data"><input type="file" name="file"><button>Upload PDF</button></form>'
 
