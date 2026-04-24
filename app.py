@@ -7,7 +7,7 @@ from functools import wraps
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "change-this-secret")
 DATABASE_URL = os.getenv("DATABASE_URL")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")  # set in Railway
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 
 # =========================
 # DB
@@ -109,7 +109,7 @@ def page(content):
     <html>
     <body style="font-family:Arial;background:#f4f6f8;margin:0">
     <div style="background:#1f2937;color:white;padding:15px">
-    <b>PSA System</b> |
+    PSA System |
     <a href="/admin" style="color:white">Admin</a> |
     <a href="/portal" style="color:white">Customer Portal</a>
     </div>
@@ -118,9 +118,49 @@ def page(content):
     </html>
     """
 
+def build_table(rows):
+    keys = set()
+    clean_rows = []
+
+    for r in rows:
+        data = r[0] or {}
+        row = {}
+
+        for k, v in data.items():
+            if "unnamed" in k.lower(): continue
+            if k == "S": k = "Submission Date"
+            row[k] = v
+
+        if r[1]:
+            row["PSA Status"] = r[1]
+
+        clean_rows.append(row)
+        keys.update(row.keys())
+
+    ordered = sorted(keys)
+
+    html = "<table border=1><tr>"
+    for k in ordered:
+        html += f"<th>{k}</th>"
+    html += "</tr>"
+
+    for row in clean_rows:
+        html += "<tr>"
+        for k in ordered:
+            val = row.get(k, "")
+            if k == "PSA Status":
+                html += f"<td><b>{val}</b></td>"
+            else:
+                html += f"<td>{val}</td>"
+        html += "</tr>"
+
+    html += "</table>"
+    return html
+
 def status_bar(status):
     steps = ["Order Arrived","Research & ID","Grading","QA Checks","Complete","Picked Up"]
     idx = steps.index(status) if status in steps else -1
+
     html = "<div style='display:flex;gap:6px;margin-top:10px'>"
     for i,s in enumerate(steps):
         color = "#e5e7eb"
@@ -155,7 +195,7 @@ def admin_logout():
     return redirect("/admin/login")
 
 # =========================
-# ADMIN DASHBOARD
+# ADMIN DASHBOARD (FIXED)
 # =========================
 @app.route("/admin")
 @admin_required
@@ -167,12 +207,11 @@ def admin_dashboard():
     cur.close()
     conn.close()
 
-    html = "<h2>Admin Dashboard</h2>"
-    for r in rows:
-        html += f"<div>{r}</div><br>"
+    html = "<h2>Admin Dashboard</h2><br>"
+    html += build_table(rows)
 
     html += """
-    <br>
+    <br><br>
     <a href="/admin/upload">Upload Excel</a><br>
     <a href="/admin/upload_psa">Upload PDF</a><br>
     <a href="/admin/search">Search</a><br>
@@ -182,9 +221,37 @@ def admin_dashboard():
     return page(html)
 
 # =========================
-# ADMIN UPLOADS
+# ADMIN SEARCH
 # =========================
-@app.route("/admin/upload", methods=["GET","POST"])
+@app.route("/admin/search")
+@admin_required
+def search():
+    q = request.args.get("q","")
+
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+    SELECT raw_data, status FROM submissions
+    WHERE raw_data::text ILIKE %s
+    """, (f"%{q}%",))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    html = f"""
+    <form>
+    <input name="q" value="{q}">
+    <button>Search</button>
+    </form><br>
+    """
+
+    html += build_table(rows)
+    return page(html)
+
+# =========================
+# ADMIN UPLOAD
+# =========================
+@app.route("/admin/upload", methods=["POST","GET"])
 @admin_required
 def upload():
     if request.method == "POST":
@@ -194,55 +261,8 @@ def upload():
             sub = normalize_submission(raw.get("Submission #"))
             if sub: save_row(sub, raw)
         return page("Uploaded")
+
     return page('<form method="post" enctype="multipart/form-data"><input type="file" name="file"><button>Upload</button></form>')
-
-@app.route("/admin/upload_psa", methods=["GET","POST"])
-@admin_required
-def upload_psa():
-    if request.method == "POST":
-        import pdfplumber, tempfile
-        f = request.files["file"]
-        temp = tempfile.NamedTemporaryFile(delete=False)
-        f.save(temp.name)
-
-        text = ""
-        with pdfplumber.open(temp.name) as pdf:
-            for p in pdf.pages:
-                t = p.extract_text()
-                if t: text += t
-
-        os.unlink(temp.name)
-
-        blocks = re.split(r"Sub\s*#", text)
-
-        priority = {"Order Arrived":1,"Research & ID":2,"Grading":3,"QA Checks":4,"Complete":5}
-        best = {}
-
-        for b in blocks:
-            if not b or not b[0].isdigit(): continue
-            sub = normalize_submission(re.match(r"\d+", b).group())
-            for s in priority:
-                if s in b:
-                    if sub not in best or priority[s] < priority[best[sub]]:
-                        best[sub] = s
-                    break
-
-        conn = get_conn()
-        cur = conn.cursor()
-
-        for sub,status in best.items():
-            cur.execute("""
-            UPDATE submissions SET status=%s
-            WHERE REGEXP_REPLACE(submission_number,'\\D','','g')=%s
-            """,(status,sub))
-
-        conn.commit()
-        cur.close()
-        conn.close()
-
-        return page(f"Updated {len(best)}")
-
-    return page('<form method="post" enctype="multipart/form-data"><input type="file" name="file"><button>Upload PDF</button></form>')
 
 # =========================
 # CUSTOMER PORTAL
@@ -264,7 +284,7 @@ def portal():
     """)
 
 @app.route("/portal/orders")
-def customer_orders():
+def orders():
     phone = session.get("phone")
     last = session.get("last")
 
