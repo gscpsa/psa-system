@@ -94,6 +94,8 @@ def page(content):
     <div class="topbar">
     PSA Tracking |
     <a href="/">Dashboard</a>
+    <a href="/?sort=new">Newest</a>
+    <a href="/?sort=old">Oldest</a>
     <a href="/upload">Upload Excel</a>
     <a href="/upload_psa">Upload PDF</a>
     <a href="/search">Search</a>
@@ -103,12 +105,21 @@ def page(content):
     </html>
     """
 
-# DASHBOARD
+# DASHBOARD WITH SORT
 @app.route("/")
 def dashboard():
+    sort = request.args.get("sort", "new")
+
+    order = "DESC" if sort == "new" else "ASC"
+
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT raw_data, status FROM submissions")
+
+    cur.execute(f"""
+    SELECT raw_data, status FROM submissions
+    ORDER BY last_updated {order}
+    """)
+
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -118,9 +129,21 @@ def dashboard():
 
     for r in rows:
         data = r[0] or {}
-        row = {k:v for k,v in data.items() if "unnamed" not in k.lower()}
+
+        row = {}
+        for k, v in data.items():
+            if "unnamed" in k.lower():
+                continue
+
+            # 🔥 rename column
+            if k == "S":
+                k = "Submission Date"
+
+            row[k] = v
+
         if r[1]:
             row["PSA Status"] = r[1]
+
         clean_rows.append(row)
         keys.update(row.keys())
 
@@ -134,7 +157,7 @@ def dashboard():
     for row in clean_rows:
         html += "<tr>"
         for k in ordered:
-            val = row.get(k,"")
+            val = row.get(k, "")
             if k == "PSA Status":
                 html += f"<td class='status'>{val}</td>"
             else:
@@ -142,9 +165,10 @@ def dashboard():
         html += "</tr>"
 
     html += "</table>"
+
     return page(html)
 
-# 🔥 FIXED SEARCH
+# SEARCH (same fix applied)
 @app.route("/search")
 def search():
     q = request.args.get("q","")
@@ -168,9 +192,20 @@ def search():
 
     for r in rows:
         data = r[0] or {}
-        row = {k:v for k,v in data.items() if "unnamed" not in k.lower()}
+        row = {}
+
+        for k, v in data.items():
+            if "unnamed" in k.lower():
+                continue
+
+            if k == "S":
+                k = "Submission Date"
+
+            row[k] = v
+
         if r[1]:
             row["PSA Status"] = r[1]
+
         clean_rows.append(row)
         keys.update(row.keys())
 
@@ -202,7 +237,8 @@ def search():
 
     return page(html)
 
-# EXCEL
+# Excel + PDF unchanged (keep your working versions)
+
 @app.route("/upload", methods=["POST","GET"])
 def upload():
     if request.method == "POST":
@@ -215,7 +251,6 @@ def upload():
         return page("Uploaded")
     return page('<form method="post" enctype="multipart/form-data"><input type="file" name="file"><button>Upload</button></form>')
 
-# PDF
 @app.route("/upload_psa", methods=["POST","GET"])
 def upload_psa():
     if request.method == "POST":
@@ -236,14 +271,7 @@ def upload_psa():
 
         blocks = re.split(r"Sub\s*#", text)
 
-        status_priority = {
-            "Order Arrived":1,
-            "Research & ID":2,
-            "Grading":3,
-            "QA Checks":4,
-            "Complete":5
-        }
-
+        priority = {"Order Arrived":1,"Research & ID":2,"Grading":3,"QA Checks":4,"Complete":5}
         best = {}
 
         for b in blocks:
@@ -252,9 +280,9 @@ def upload_psa():
 
             sub = normalize_submission(re.match(r"\d+", b).group())
 
-            for s in status_priority:
+            for s in priority:
                 if s in b:
-                    if sub not in best or status_priority[s] < status_priority[best[sub]]:
+                    if sub not in best or priority[s] < priority[best[sub]]:
                         best[sub] = s
                     break
 
