@@ -92,36 +92,27 @@ def read_file(file):
     except Exception:
         return pd.read_csv(io.StringIO(raw.decode("latin1")), on_bad_lines="skip")
 
-# =========================
-# INTERNAL STATUS DETECTION (FIXED)
-# =========================
 def detect_internal_status(raw):
     full_text = " ".join([f"{k} {v}" for k, v in raw.items()]).lower()
 
-    if "picked up" in full_text:
+    if "picked up" in full_text or "customer picked up" in full_text:
         return "Picked Up"
 
     if (
-        "delivered to us" in full_text or
-        "received by us" in full_text or
-        "arrived at store" in full_text
+        "delivered to us" in full_text
+        or "received by us" in full_text
+        or "arrived at store" in full_text
+        or "delivered back" in full_text
     ):
         return "Delivered to Us"
 
     return None
 
-# =========================
-# SAVE LOGIC (FIXED)
-# =========================
 def save_row(sub, raw):
     conn = get_conn()
     cur = conn.cursor()
 
     internal_status = detect_internal_status(raw)
-
-    for k in list(raw.keys()):
-        if "status" in str(k).lower():
-            del raw[k]
 
     cur.execute("SELECT status FROM submissions WHERE submission_number=%s", (sub,))
     existing = cur.fetchone()
@@ -161,7 +152,7 @@ def save_row(sub, raw):
     conn.close()
 
 # =========================
-# UI (GREEN BRAND)
+# UI
 # =========================
 def page(content, mode="admin"):
     if mode == "admin":
@@ -183,32 +174,141 @@ def page(content, mode="admin"):
     <html>
     <head>
     <style>
-    body {{ font-family: Arial; margin:0; background:#f4f6f8; }}
-    .topbar {{ background:#0f5132; color:white; padding:15px 20px; display:flex; justify-content:space-between; }}
-    .links a {{ color:white; margin-left:15px; text-decoration:none; font-weight:bold; }}
-    .container {{ padding:20px; overflow-x:auto; }}
+        body {{
+            font-family: Arial;
+            margin:0;
+            background:#f4f6f8;
+            color:#111827;
+        }}
 
-    table {{ width:100%; border-collapse:collapse; font-size:12px; background:white; }}
-    th {{ background:#0f5132; color:white; padding:5px; }}
-    td {{ padding:5px; border-bottom:1px solid #ddd; white-space:nowrap; }}
-    tr:hover {{ background:#eef6f2; }}
+        .topbar {{
+            background:#0f5132;
+            color:white;
+            padding:15px 20px;
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+        }}
 
-    .status {{ color:#198754; font-weight:bold; }}
+        .brand {{
+            font-weight:bold;
+            font-size:20px;
+        }}
 
-    .card {{ background:white; padding:15px; margin-bottom:15px; border-radius:8px; }}
+        .links a {{
+            color:white;
+            margin-left:14px;
+            text-decoration:none;
+            font-weight:bold;
+        }}
 
-    .btn {{ background:#198754; color:white; padding:8px 12px; border-radius:6px; text-decoration:none; }}
+        .links a:hover {{
+            color:#d1e7dd;
+        }}
 
-    .bar {{ display:flex; gap:5px; flex-wrap:wrap; margin-top:10px; }}
-    .step {{ padding:5px 8px; border-radius:15px; background:#ddd; font-size:11px; }}
-    .done {{ background:#d1e7dd; color:#0f5132; }}
-    .current {{ background:#198754; color:white; }}
+        .container {{
+            padding:16px;
+            overflow-x:auto;
+        }}
+
+        table {{
+            width:100%;
+            border-collapse:collapse;
+            background:white;
+            font-size:12px;
+            table-layout:auto;
+        }}
+
+        th {{
+            background:#0f5132;
+            color:white;
+            padding:5px;
+            text-align:left;
+            position:sticky;
+            top:0;
+            white-space:nowrap;
+        }}
+
+        td {{
+            padding:5px;
+            border-bottom:1px solid #ddd;
+            white-space:nowrap;
+            max-width:180px;
+            overflow:hidden;
+            text-overflow:ellipsis;
+        }}
+
+        td.notes-col {{
+            white-space:normal;
+            max-width:220px;
+            min-width:160px;
+            overflow-wrap:break-word;
+            word-break:break-word;
+        }}
+
+        tr:hover {{
+            background:#eef6f2;
+        }}
+
+        .status {{
+            font-weight:bold;
+            color:#198754;
+        }}
+
+        .card {{
+            background:white;
+            padding:18px;
+            margin-bottom:15px;
+            border-radius:10px;
+            box-shadow:0 2px 8px rgba(0,0,0,.08);
+        }}
+
+        .btn {{
+            display:inline-block;
+            padding:8px 12px;
+            background:#198754;
+            color:white;
+            text-decoration:none;
+            border-radius:6px;
+            margin:5px 8px 15px 0;
+            font-weight:bold;
+        }}
+
+        input, button {{
+            padding:10px;
+            margin:5px;
+        }}
+
+        .bar {{
+            display:flex;
+            gap:6px;
+            flex-wrap:wrap;
+            margin-top:10px;
+        }}
+
+        .step {{
+            padding:7px 11px;
+            border-radius:20px;
+            background:#e5e7eb;
+            font-size:13px;
+        }}
+
+        .done {{
+            background:#d1e7dd;
+            color:#0f5132;
+            font-weight:bold;
+        }}
+
+        .current {{
+            background:#198754;
+            color:white;
+            font-weight:bold;
+        }}
     </style>
     </head>
-
     <body>
         <div class="topbar">
-            <div><b>Giant Sports Cards</b></div>
+            <div class="brand">Giant Sports Cards</div>
             <div class="links">{nav}</div>
         </div>
         <div class="container">{content}</div>
@@ -216,11 +316,50 @@ def page(content, mode="admin"):
     </html>
     """
 
-# =========================
-# TABLE (FIXED)
-# =========================
+def status_bar(status):
+    steps = [
+        "Submitted",
+        "Order Arrived",
+        "Research & ID",
+        "Grading",
+        "QA Checks",
+        "Complete",
+        "Delivered to Us",
+        "Picked Up"
+    ]
+
+    status = status or "Submitted"
+    idx = steps.index(status) if status in steps else 0
+
+    html = "<div class='bar'>"
+    for i, step in enumerate(steps):
+        cls = "step"
+        if i < idx:
+            cls += " done"
+        if i == idx:
+            cls += " current"
+        html += f"<div class='{cls}'>{step}</div>"
+    html += "</div>"
+    return html
+
+def should_hide_column(column_name):
+    key = str(column_name).strip().lower()
+
+    # Hide duplicate spreadsheet status columns.
+    # The app-owned status is always shown as PSA Status.
+    if key in [
+        "status",
+        "current status",
+        "psa status",
+        "order status",
+        "customer status"
+    ]:
+        return True
+
+    return False
+
 def build_table(rows):
-    keys = set()
+    keys = []
     clean_rows = []
 
     for r in rows:
@@ -228,116 +367,371 @@ def build_table(rows):
         row = {}
 
         for k, v in data.items():
-            key_lower = str(k).lower()
+            key_text = str(k).strip()
 
-            if "unnamed" in key_lower:
+            if "unnamed" in key_text.lower():
                 continue
 
-            # REMOVE Excel status columns
-            if key_lower.strip() in ["status", "current status"]:
+            if should_hide_column(key_text):
                 continue
 
-            display_key = "Submission Date" if str(k).strip() == "S" else str(k)
+            display_key = "Submission Date" if key_text == "S" else key_text
+
             row[display_key] = v
 
-        row["PSA Status"] = r[1]
+            if display_key not in keys:
+                keys.append(display_key)
+
+        row["PSA Status"] = r[1] or "Submitted"
+
+        if "PSA Status" not in keys:
+            keys.append("PSA Status")
+
         clean_rows.append(row)
-        keys.update(row.keys())
 
-    ordered = sorted(keys)
+    if not clean_rows:
+        return "<div class='card'>No records found.</div>"
 
-    html = "<table><tr>" + "".join([f"<th>{k}</th>" for k in ordered]) + "</tr>"
+    html = "<table><tr>"
+    for k in keys:
+        html += f"<th>{k}</th>"
+    html += "</tr>"
 
     for row in clean_rows:
         html += "<tr>"
-        for k in ordered:
+        for k in keys:
             val = row.get(k, "")
+            col_class = "notes-col" if "note" in k.lower() else ""
+
             if k == "PSA Status":
-                html += f"<td class='status'>{val}</td>"
+                html += f"<td class='status {col_class}'>{val}</td>"
             else:
-                html += f"<td>{val}</td>"
+                html += f"<td class='{col_class}'>{val}</td>"
+
         html += "</tr>"
 
     html += "</table>"
     return html
 
 # =========================
-# STATUS BAR
-# =========================
-def status_bar(status):
-    steps = ["Submitted","Order Arrived","Research & ID","Grading","QA Checks","Complete","Delivered to Us","Picked Up"]
-    idx = steps.index(status) if status in steps else 0
-
-    html = "<div class='bar'>"
-    for i, s in enumerate(steps):
-        cls = "step"
-        if i < idx: cls += " done"
-        if i == idx: cls += " current"
-        html += f"<div class='{cls}'>{s}</div>"
-    html += "</div>"
-    return html
-
-# =========================
-# ROUTES
+# ADMIN ROUTES
 # =========================
 @app.route("/")
-def root(): return redirect("/admin")
+def root():
+    return redirect("/admin")
 
-@app.route("/admin/login", methods=["GET","POST"])
-def login():
-    if request.method=="POST":
-        if request.form.get("password")==ADMIN_PASSWORD:
-            session["admin"]=True
+@app.route("/admin/login", methods=["GET", "POST"])
+def admin_login():
+    if request.method == "POST":
+        if request.form.get("password") == ADMIN_PASSWORD:
+            session["admin"] = True
             return redirect("/admin")
-    return page("<form method='post'><input type='password' name='password'><button>Login</button></form>")
+
+        return page("<div class='card'>Wrong password. <a href='/admin/login'>Try again</a></div>")
+
+    return page("""
+    <div class="card">
+        <h2>Admin Login</h2>
+        <form method="post">
+            <input type="password" name="password" placeholder="Admin password">
+            <button>Login</button>
+        </form>
+    </div>
+    """)
+
+@app.route("/admin/logout")
+def admin_logout():
+    session.pop("admin", None)
+    return redirect("/admin/login")
 
 @app.route("/admin")
 @admin_required
-def admin():
-    conn=get_conn(); cur=conn.cursor()
-    cur.execute("SELECT raw_data,status FROM submissions ORDER BY last_updated DESC")
-    rows=cur.fetchall()
-    cur.close(); conn.close()
-    return page(build_table(rows))
+def admin_dashboard():
+    sort = request.args.get("sort", "new")
+    order = "ASC" if sort == "old" else "DESC"
 
-@app.route("/admin/upload", methods=["POST"])
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(f"SELECT raw_data, status FROM submissions ORDER BY last_updated {order}")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    html = """
+    <h2>Admin Dashboard</h2>
+    <a class="btn" href="/admin?sort=new">Newest First</a>
+    <a class="btn" href="/admin?sort=old">Oldest First</a>
+    <a class="btn" href="/admin/search">Search</a>
+    <a class="btn" href="/admin/upload">Upload Excel</a>
+    <a class="btn" href="/admin/upload_psa">Upload PSA PDF</a>
+    <a class="btn" href="/portal">Customer Portal</a>
+    <br><br>
+    """
+
+    html += build_table(rows)
+    return page(html)
+
+@app.route("/admin/search")
 @admin_required
-def upload():
-    df = read_file(request.files["file"])
-    for _, row in df.iterrows():
-        raw = {c: clean(row[c]) for c in df.columns}
-        sub = normalize_submission(raw.get("Submission #"))
-        if sub:
-            save_row(sub, raw)
-    return "OK"
+def admin_search():
+    q = request.args.get("q", "")
 
-@app.route("/portal", methods=["GET","POST"])
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+    SELECT raw_data, status
+    FROM submissions
+    WHERE raw_data::text ILIKE %s
+       OR submission_number ILIKE %s
+       OR status ILIKE %s
+    ORDER BY last_updated DESC
+    """, (f"%{q}%", f"%{q}%", f"%{q}%"))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    html = f"""
+    <h2>Admin Search</h2>
+    <form>
+        <input name="q" value="{q}" placeholder="Search name, phone, submission, status">
+        <button>Search</button>
+    </form>
+    <br>
+    """
+
+    html += build_table(rows)
+    return page(html)
+
+@app.route("/admin/upload", methods=["GET", "POST"])
+@admin_required
+def admin_upload():
+    if request.method == "POST":
+        try:
+            file = request.files.get("file")
+
+            if not file:
+                return page("<div class='card'>No file uploaded.</div>")
+
+            df = read_file(file)
+            df.columns = [str(c).strip() for c in df.columns]
+
+            count = 0
+            skipped = 0
+
+            for _, row in df.iterrows():
+                raw = {c: clean(row[c]) for c in df.columns}
+                sub = normalize_submission(raw.get("Submission #") or raw.get("Submission Number"))
+
+                if sub:
+                    save_row(sub, raw)
+                    count += 1
+                else:
+                    skipped += 1
+
+            return page(f"""
+            <div class="card">
+                <h2>Excel uploaded</h2>
+                <p>Rows processed: {count}</p>
+                <p>Rows skipped: {skipped}</p>
+                <a href="/admin">Back to Admin</a>
+            </div>
+            """)
+
+        except Exception:
+            return page(f"<pre>{traceback.format_exc()}</pre>")
+
+    return page("""
+    <div class="card">
+        <h2>Upload Excel / CSV</h2>
+        <form method="post" enctype="multipart/form-data">
+            <input type="file" name="file">
+            <button>Upload Excel</button>
+        </form>
+    </div>
+    """)
+
+@app.route("/admin/upload_psa", methods=["GET", "POST"])
+@admin_required
+def admin_upload_psa():
+    if request.method == "POST":
+        try:
+            import pdfplumber
+            import tempfile
+
+            file = request.files.get("file")
+
+            if not file:
+                return page("<div class='card'>No PDF uploaded.</div>")
+
+            temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+            file.save(temp.name)
+
+            priority = {
+                "Order Arrived": 1,
+                "Research & ID": 2,
+                "Grading": 3,
+                "QA Checks": 4,
+                "Assembly": 4,
+                "Complete": 5
+            }
+
+            best = {}
+
+            with pdfplumber.open(temp.name) as pdf:
+                for pdf_page in pdf.pages:
+                    tables = pdf_page.extract_tables() or []
+
+                    for table in tables:
+                        for row in table:
+                            row_text = " ".join([str(c or "") for c in row])
+
+                            sub_match = re.search(r"Sub\s*#\s*(\d+)", row_text)
+
+                            if not sub_match:
+                                continue
+
+                            sub = normalize_submission(sub_match.group(1))
+
+                            for status_name in priority:
+                                if status_name in row_text:
+                                    mapped = "QA Checks" if status_name == "Assembly" else status_name
+
+                                    if sub not in best or priority[mapped] > priority.get(best[sub], 0):
+                                        best[sub] = mapped
+
+                                    break
+
+            os.unlink(temp.name)
+
+            conn = get_conn()
+            cur = conn.cursor()
+
+            updated = 0
+            skipped = 0
+
+            for sub, status in best.items():
+                cur.execute("""
+                UPDATE submissions
+                SET status=%s, last_updated=NOW()
+                WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+                  AND COALESCE(status, '') NOT IN ('Picked Up', 'Delivered to Us')
+                """, (status, sub))
+
+                if cur.rowcount:
+                    updated += 1
+                else:
+                    skipped += 1
+
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            return page(f"""
+            <div class="card">
+                <h2>PDF processed</h2>
+                <p>Statuses found: {len(best)}</p>
+                <p>Updated: {updated}</p>
+                <p>Skipped: {skipped}</p>
+                <a href="/admin">Back to Admin</a>
+            </div>
+            """)
+
+        except Exception:
+            return page(f"<pre>{traceback.format_exc()}</pre>")
+
+    return page("""
+    <div class="card">
+        <h2>Upload PSA PDF</h2>
+        <form method="post" enctype="multipart/form-data">
+            <input type="file" name="file">
+            <button>Upload PDF</button>
+        </form>
+    </div>
+    """)
+
+# =========================
+# CUSTOMER PORTAL
+# =========================
+@app.route("/portal", methods=["GET", "POST"])
 def portal():
-    if request.method=="POST":
-        session["phone"]=normalize_phone(request.form.get("phone"))
-        session["last"]=request.form.get("last","").lower()
+    if request.method == "POST":
+        session["phone"] = normalize_phone(request.form.get("phone"))
+        session["last"] = clean(request.form.get("last")).lower()
         return redirect("/portal/orders")
-    return page("<form method='post'><input name='phone'><input name='last'><button>Go</button></form>", mode="portal")
+
+    return page("""
+    <div class="card" style="max-width:420px">
+        <h2>Customer Portal</h2>
+        <p>Enter your phone number and last name.</p>
+        <form method="post">
+            <input name="phone" placeholder="Phone number" style="width:95%"><br>
+            <input name="last" placeholder="Last name" style="width:95%"><br>
+            <button>View My Orders</button>
+        </form>
+    </div>
+    """, mode="portal")
 
 @app.route("/portal/orders")
-def orders():
-    phone=normalize_phone(session.get("phone"))
-    last=(session.get("last") or "").lower()
+def portal_orders():
+    phone = normalize_phone(session.get("phone"))
+    last = clean(session.get("last")).lower()
 
-    conn=get_conn(); cur=conn.cursor()
-    cur.execute("SELECT raw_data,status FROM submissions")
-    rows=cur.fetchall()
-    cur.close(); conn.close()
+    if not phone or not last:
+        return redirect("/portal")
 
-    html=""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT raw_data, status FROM submissions ORDER BY last_updated DESC")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    html = "<h2>Your Orders</h2>"
+    grouped = {}
+
     for r in rows:
-        data=r[0]; status=r[1]
-        name=str(get_field(data,["Customer Name","Name"])).lower()
-        contact=normalize_phone(get_field(data,["Phone"]))
-        if phone in contact and last in name:
-            html+=f"<div class='card'><b>{name}</b><br>Status:{status}{status_bar(status)}</div>"
+        data = r[0] or {}
+        name = str(get_field(data, ["Customer Name", "Name"])).lower()
+        contact = normalize_phone(get_field(data, ["Contact Info", "Phone", "Phone Number"]))
+        sub = normalize_submission(get_field(data, ["Submission #", "Submission Number"]))
 
+        phone_match = bool(contact) and (phone in contact or contact in phone)
+        name_match = bool(last) and last in name
+
+        if phone_match and name_match and sub and sub not in grouped:
+            grouped[sub] = (data, r[1] or "Submitted")
+
+    if not grouped:
+        html += "<div class='card'>No matching orders found. Check phone number and last name.</div>"
+        return page(html, mode="portal")
+
+    for sub, (data, status) in grouped.items():
+        customer_name = get_field(data, ["Customer Name", "Name"])
+        cards = get_field(data, ["# Of Cards", "# of Cards", "Cards"])
+        service = get_field(data, ["Service Type", "Service"])
+        date = get_field(data, ["S", "Submission Date", "Date"])
+        display_status = status or "Submitted"
+
+        html += f"""
+        <div class="card">
+            <h3>{customer_name}</h3>
+            <p><b>Submission #:</b> {sub}</p>
+            <p><b>Status:</b> <span class="status">{display_status}</span></p>
+            <p><b>Cards:</b> {cards}</p>
+            <p><b>Service:</b> {service}</p>
+            <p><b>Submission Date:</b> {date}</p>
+            {status_bar(display_status)}
+        </div>
+        """
+
+    html += "<a href='/portal/logout'>Log out</a>"
     return page(html, mode="portal")
 
-if __name__=="__main__":
+@app.route("/portal/logout")
+def portal_logout():
+    session.pop("phone", None)
+    session.pop("last", None)
+    return redirect("/portal")
+
+if __name__ == "__main__":
     app.run()
