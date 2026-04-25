@@ -220,6 +220,14 @@ def page(content, mode="admin"):
     return f"""
     <html>
     <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="/manifest.json">
+    <script>
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js');
+    }
+    </script>
+    
     <style>
         body {{
             font-family: Arial;
@@ -986,6 +994,27 @@ def portal_logout():
     session.pop("phone", None)
     session.pop("last", None)
     return redirect("/portal")
+
+
+@app.route("/manifest.json")
+def manifest():
+    return {
+        "name": "PSA Tracker",
+        "short_name": "PSA",
+        "start_url": "/portal",
+        "display": "standalone",
+        "background_color": "#0f5132",
+        "theme_color": "#0f5132"
+    }
+
+@app.route("/sw.js")
+def sw():
+    return '''
+self.addEventListener('install', e => {
+  self.skipWaiting();
+});
+self.addEventListener('fetch', function(event) {});
+''', 200, {'Content-Type': 'application/javascript'}
 
 if __name__ == "__main__":
     app.run()
