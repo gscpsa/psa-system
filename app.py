@@ -114,7 +114,9 @@ def normalize_psa_status(status):
     if s == "qa checks":
         return "QA Checks"
     if s == "assembly":
-        return "QA Checks"
+        return "Assembly"
+    if s == "shipping soon":
+        return "Shipping Soon"
     if s == "complete":
         return "Complete"
 
@@ -127,9 +129,11 @@ def status_rank(status):
         "Research & ID": 2,
         "Grading": 3,
         "QA Checks": 4,
-        "Complete": 5,
-        "Delivered to Us": 6,
-        "Picked Up": 7,
+        "Assembly": 5,
+        "Shipping Soon": 6,
+        "Complete": 7,
+        "Delivered to Us": 8,
+        "Picked Up": 9,
     }
     return ranks.get(status or "Submitted", 0)
 
@@ -361,6 +365,8 @@ def status_bar(status):
         "Research & ID",
         "Grading",
         "QA Checks",
+        "Assembly",
+        "Shipping Soon",
         "Complete",
         "Delivered to Us",
         "Picked Up"
@@ -661,7 +667,7 @@ def admin_upload_psa():
             pages_read = 0
 
             status_regex = re.compile(
-                r"(Order\s+Arrived|Research\s*&\s*ID|Grading|QA\s+Checks|Assembly|Complete)",
+                r"(Order\s+Arrived|Research\s*&\s*ID|Grading|QA\s+Checks|Assembly|Shipping\s+Soon|Complete)",
                 re.IGNORECASE
             )
 
