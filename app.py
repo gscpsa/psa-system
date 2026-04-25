@@ -685,8 +685,9 @@ def admin_upload_psa():
 
                             status = max(statuses_found, key=status_rank)
 
-                            if sub not in best or status_rank(status) > status_rank(best[sub]):
-                                best[sub] = status
+                            # Allow PSA PDF uploads to correct an earlier wrong PSA status.
+                            # Final internal statuses are still protected by the SQL WHERE clause below.
+                            best[sub] = status
             finally:
                 try:
                     os.unlink(temp.name)
