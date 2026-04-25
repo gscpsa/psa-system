@@ -486,6 +486,35 @@ def admin_logout():
     session.pop("admin", None)
     return redirect("/admin/login")
 
+
+@app.route("/admin/clear_submissions")
+@admin_required
+def clear_submissions():
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM submissions")
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return page("""
+        <div class="card">
+            <h2>All submission data cleared</h2>
+            <p>Excel and PSA PDF submission records have been removed.</p>
+            <p>You can now re-upload the Excel file and PSA PDF from a clean database.</p>
+            <a class="btn" href="/admin">Back to Admin</a>
+        </div>
+        """)
+    except Exception:
+        return page(f"""
+        <div class="card">
+            <h2>Error Clearing Submission Data</h2>
+            <pre>{traceback.format_exc()}</pre>
+            <a class="btn" href="/admin">Back to Admin</a>
+        </div>
+        """)
+
 @app.route("/admin")
 @admin_required
 def admin_dashboard():
