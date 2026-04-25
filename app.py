@@ -639,13 +639,47 @@ def admin_upload_psa():
                 except Exception:
                     pass
 
-            matches = re.findall(
-    r"Sub\s*#\s*(\d+)[\s\S]{0,80}?(Order Arrived|Research\s*&\s*ID|Grading|QA Checks|Assembly|Complete)",
-    full_text,
-    re.IGNORECASE
-)
+            # STEP 1: split into blocks per submission
+blocks = re.split(r"Sub\s*#\s*", full_text, flags=re.IGNORECASE)
 
-            best = {}
+best = {}
+
+for block in blocks:
+    block = block.strip()
+
+    # skip empty chunks
+    if not block:
+        continue
+
+    # STEP 2: extract submission number (first number in block)
+    sub_match = re.match(r"(\d+)", block)
+    if not sub_match:
+        continue
+
+    sub = normalize_submission(sub_match.group(1))
+
+    # STEP 3: define all statuses (order matters for priority)
+    statuses = [
+        "Complete",
+        "Assembly",
+        "QA Checks",
+        "Grading",
+        "Research & ID",
+        "Order Arrived"
+    ]
+
+    found_status = None
+
+    # STEP 4: find status ONLY inside this block
+    for status_text in statuses:
+        if re.search(status_text, block, re.IGNORECASE):
+            found_status = normalize_psa_status(status_text)
+            break
+
+    # STEP 5: store best status
+    if found_status:
+        if sub not in best or status_rank(found_status) > status_rank(best[sub]):
+            best[sub] = found_status
 
             for sub, raw_status in matches:
                 sub = normalize_submission(sub)
