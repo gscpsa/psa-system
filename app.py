@@ -39,7 +39,14 @@ def setup():
 
 @app.errorhandler(Exception)
 def error_handler(e):
-    return f"<pre>{traceback.format_exc()}</pre>"
+    return page(f"""
+    <div class="card">
+        <h2>Application Error</h2>
+        <p>The app hit an internal error. Details below:</p>
+        <pre>{traceback.format_exc()}</pre>
+        <a href="/admin">Back to Admin</a>
+    </div>
+    """)
 
 # =========================
 # SECURITY
@@ -326,6 +333,14 @@ def page(content, mode="admin"):
             color:white;
             font-weight:bold;
         }}
+        pre {{
+            background:#111827;
+            color:white;
+            padding:12px;
+            overflow:auto;
+            border-radius:8px;
+            font-size:12px;
+        }}
     </style>
     </head>
     <body>
@@ -566,7 +581,13 @@ def admin_upload():
             """)
 
         except Exception:
-            return page(f"<pre>{traceback.format_exc()}</pre>")
+            return page(f"""
+            <div class="card">
+                <h2>Excel Upload Error</h2>
+                <pre>{traceback.format_exc()}</pre>
+                <a href="/admin/upload">Try again</a>
+            </div>
+            """)
 
     return page("""
     <div class="card">
@@ -591,15 +612,32 @@ def admin_upload_psa():
             if not file:
                 return page("<div class='card'>No PDF uploaded.</div>")
 
+            filename = (file.filename or "").lower()
+
+            if not filename.endswith(".pdf"):
+                return page(f"""
+                <div class="card">
+                    <h2>Wrong File Type</h2>
+                    <p>You uploaded: <b>{filename}</b></p>
+                    <p>This uploader only accepts PDF files from PSA.</p>
+                    <p>If you uploaded a PSD/image by mistake, export or print the PSA Orders page as a PDF first.</p>
+                    <a href="/admin/upload_psa">Back to PDF Upload</a>
+                </div>
+                """)
+
             temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
             file.save(temp.name)
 
-            with pdfplumber.open(temp.name) as pdf:
-                full_text = ""
-                for pdf_page in pdf.pages:
-                    full_text += "\n" + (pdf_page.extract_text() or "")
-
-            os.unlink(temp.name)
+            try:
+                with pdfplumber.open(temp.name) as pdf:
+                    full_text = ""
+                    for pdf_page in pdf.pages:
+                        full_text += "\n" + (pdf_page.extract_text() or "")
+            finally:
+                try:
+                    os.unlink(temp.name)
+                except Exception:
+                    pass
 
             entries = re.findall(
                 r"(Sub\s*#\s*\d+.*?)(?=Sub\s*#\s*\d+|$)",
@@ -656,9 +694,16 @@ def admin_upload_psa():
             cur.close()
             conn.close()
 
+            warning = ""
+            if len(best) == 0:
+                warning = """
+                <p><b>Warning:</b> No PSA statuses were found. This usually means the PDF is not the PSA Orders page, or the PDF is image-only / unreadable text.</p>
+                """
+
             return page(f"""
             <div class="card">
                 <h2>PDF processed</h2>
+                {warning}
                 <p>Statuses found: {len(best)}</p>
                 <p>Updated: {updated}</p>
                 <p>Skipped: {skipped}</p>
@@ -667,13 +712,20 @@ def admin_upload_psa():
             """)
 
         except Exception:
-            return page(f"<pre>{traceback.format_exc()}</pre>")
+            return page(f"""
+            <div class="card">
+                <h2>PDF Upload Error</h2>
+                <p>The file could not be processed.</p>
+                <pre>{traceback.format_exc()}</pre>
+                <a href="/admin/upload_psa">Try again</a>
+            </div>
+            """)
 
     return page("""
     <div class="card">
         <h2>Upload PSA PDF</h2>
         <form method="post" enctype="multipart/form-data">
-            <input type="file" name="file">
+            <input type="file" name="file" accept=".pdf,application/pdf">
             <button>Upload PDF</button>
         </form>
     </div>
