@@ -803,6 +803,23 @@ def admin_upload_psa():
                     skipped += 1
 
             conn.commit()
+
+            verification_rows = []
+
+            for sub, parsed_status in list(best.items())[:100]:
+                cur.execute("""
+                SELECT status FROM submissions
+                WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+                """, (sub,))
+
+                row = cur.fetchone()
+                db_status = row[0] if row else "NOT FOUND"
+                match = "MATCH" if db_status == parsed_status else "MISMATCH"
+
+                verification_rows.append(
+                    f"<tr><td>{sub}</td><td>{parsed_status}</td><td>{db_status}</td><td>{match}</td></tr>"
+                )
+
             cur.close()
             conn.close()
 
@@ -812,6 +829,8 @@ def admin_upload_psa():
                 <p><b>Warning:</b> No PSA statuses were found. This usually means the PDF is not the PSA Orders page, or the PDF is image-only / unreadable text.</p>
                 """
 
+            verification_html = "".join(verification_rows)
+
             return page(f"""
             <div class="card">
                 <h2>PDF processed</h2>
@@ -820,6 +839,18 @@ def admin_upload_psa():
                 <p>Statuses found: {len(best)}</p>
                 <p>Updated: {updated}</p>
                 <p>Skipped: {skipped}</p>
+
+                <h3>Verification Sample First 100</h3>
+                <table>
+                    <tr>
+                        <th>Submission #</th>
+                        <th>PDF Parsed Status</th>
+                        <th>Database Status After Upload</th>
+                        <th>Result</th>
+                    </tr>
+                    {verification_html}
+                </table>
+
                 <a href="/admin">Back to Admin</a>
             </div>
             """)
