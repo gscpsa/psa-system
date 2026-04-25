@@ -639,37 +639,38 @@ def admin_upload_psa():
                 except Exception:
                     pass
 
-            entries = re.findall(
-                r"(Sub\s*#\s*\d+.*?)(?=Sub\s*#\s*\d+|$)",
-                full_text,
-                re.IGNORECASE | re.DOTALL
-            )
-
+            # ===== FIXED PSA PARSER =====
+            # Split the PDF text into one block per submission so a status from
+            # the next row cannot shift onto the previous submission.
             best = {}
+            blocks = re.split(r"Sub\s*#\s*", full_text, flags=re.IGNORECASE)
 
-            for entry in entries:
-                sub_match = re.search(r"Sub\s*#\s*(\d+)", entry, re.IGNORECASE)
+            for block in blocks:
+                block = block.strip()
+                if not block:
+                    continue
 
+                sub_match = re.match(r"(\d+)", block)
                 if not sub_match:
                     continue
 
                 sub = normalize_submission(sub_match.group(1))
 
-                for status_text in [
-                    "Complete",
-                    "Assembly",
-                    "QA Checks",
-                    "Grading",
-                    "Research & ID",
-                    "Order Arrived"
-                ]:
-                    if re.search(status_text, entry, re.IGNORECASE):
-                        status = normalize_psa_status(status_text)
+                if re.search(r"Complete", block, re.IGNORECASE):
+                    status = "Complete"
+                elif re.search(r"Assembly|QA Checks", block, re.IGNORECASE):
+                    status = "QA Checks"
+                elif re.search(r"Grading", block, re.IGNORECASE):
+                    status = "Grading"
+                elif re.search(r"Research\s*&\s*ID", block, re.IGNORECASE):
+                    status = "Research & ID"
+                elif re.search(r"Order Arrived", block, re.IGNORECASE):
+                    status = "Order Arrived"
+                else:
+                    continue
 
-                        if status and (sub not in best or status_rank(status) > status_rank(best[sub])):
-                            best[sub] = status
-
-                        break
+                if sub not in best or status_rank(status) > status_rank(best[sub]):
+                    best[sub] = status
 
             conn = get_conn()
             cur = conn.cursor()
