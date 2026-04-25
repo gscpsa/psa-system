@@ -92,6 +92,37 @@ def read_file(file):
     except Exception:
         return pd.read_csv(io.StringIO(raw.decode("latin1")), on_bad_lines="skip")
 
+def normalize_psa_status(status):
+    s = re.sub(r"\s+", " ", str(status or "")).strip().lower()
+
+    if s == "order arrived":
+        return "Order Arrived"
+    if s == "research & id":
+        return "Research & ID"
+    if s == "grading":
+        return "Grading"
+    if s == "qa checks":
+        return "QA Checks"
+    if s == "assembly":
+        return "QA Checks"
+    if s == "complete":
+        return "Complete"
+
+    return None
+
+def status_rank(status):
+    ranks = {
+        "Submitted": 0,
+        "Order Arrived": 1,
+        "Research & ID": 2,
+        "Grading": 3,
+        "QA Checks": 4,
+        "Complete": 5,
+        "Delivered to Us": 6,
+        "Picked Up": 7,
+    }
+    return ranks.get(status or "Submitted", 0)
+
 def detect_internal_status(raw):
     full_text = " ".join([f"{k} {v}" for k, v in raw.items()]).lower()
 
@@ -114,7 +145,10 @@ def save_row(sub, raw):
 
     internal_status = detect_internal_status(raw)
 
-    cur.execute("SELECT status FROM submissions WHERE submission_number=%s", (sub,))
+    cur.execute("""
+    SELECT status FROM submissions
+    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+    """, (sub,))
     existing = cur.fetchone()
     existing_status = existing[0] if existing else None
 
@@ -122,7 +156,7 @@ def save_row(sub, raw):
         cur.execute("""
         UPDATE submissions
         SET raw_data=%s, last_updated=NOW()
-        WHERE submission_number=%s
+        WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
         """, (json.dumps(raw), sub))
 
     elif internal_status:
@@ -180,7 +214,6 @@ def page(content, mode="admin"):
             background:#f4f6f8;
             color:#111827;
         }}
-
         .topbar {{
             background:#0f5132;
             color:white;
@@ -189,28 +222,23 @@ def page(content, mode="admin"):
             justify-content:space-between;
             align-items:center;
         }}
-
         .brand {{
             font-weight:bold;
             font-size:20px;
         }}
-
         .links a {{
             color:white;
             margin-left:14px;
             text-decoration:none;
             font-weight:bold;
         }}
-
         .links a:hover {{
             color:#d1e7dd;
         }}
-
         .container {{
             padding:16px;
             overflow-x:auto;
         }}
-
         table {{
             width:100%;
             border-collapse:collapse;
@@ -218,7 +246,6 @@ def page(content, mode="admin"):
             font-size:12px;
             table-layout:auto;
         }}
-
         th {{
             background:#0f5132;
             color:white;
@@ -228,7 +255,6 @@ def page(content, mode="admin"):
             top:0;
             white-space:nowrap;
         }}
-
         td {{
             padding:5px;
             border-bottom:1px solid #ddd;
@@ -237,7 +263,6 @@ def page(content, mode="admin"):
             overflow:hidden;
             text-overflow:ellipsis;
         }}
-
         td.notes-col {{
             white-space:normal;
             max-width:220px;
@@ -245,16 +270,13 @@ def page(content, mode="admin"):
             overflow-wrap:break-word;
             word-break:break-word;
         }}
-
         tr:hover {{
             background:#eef6f2;
         }}
-
         .status {{
             font-weight:bold;
             color:#198754;
         }}
-
         .card {{
             background:white;
             padding:18px;
@@ -262,7 +284,6 @@ def page(content, mode="admin"):
             border-radius:10px;
             box-shadow:0 2px 8px rgba(0,0,0,.08);
         }}
-
         .btn {{
             display:inline-block;
             padding:8px 12px;
@@ -273,32 +294,27 @@ def page(content, mode="admin"):
             margin:5px 8px 15px 0;
             font-weight:bold;
         }}
-
         input, button {{
             padding:10px;
             margin:5px;
         }}
-
         .bar {{
             display:flex;
             gap:6px;
             flex-wrap:wrap;
             margin-top:10px;
         }}
-
         .step {{
             padding:7px 11px;
             border-radius:20px;
             background:#e5e7eb;
             font-size:13px;
         }}
-
         .done {{
             background:#d1e7dd;
             color:#0f5132;
             font-weight:bold;
         }}
-
         .current {{
             background:#198754;
             color:white;
@@ -345,8 +361,6 @@ def status_bar(status):
 def should_hide_column(column_name):
     key = str(column_name).strip().lower()
 
-    # Hide duplicate spreadsheet status columns.
-    # The app-owned status is always shown as PSA Status.
     if key in [
         "status",
         "current status",
@@ -376,7 +390,6 @@ def build_table(rows):
                 continue
 
             display_key = "Submission Date" if key_text == "S" else key_text
-
             row[display_key] = v
 
             if display_key not in keys:
@@ -407,7 +420,6 @@ def build_table(rows):
                 html += f"<td class='status {col_class}'>{val}</td>"
             else:
                 html += f"<td class='{col_class}'>{val}</td>"
-
         html += "</tr>"
 
     html += "</table>"
@@ -571,37 +583,31 @@ def admin_upload_psa():
                 "Research & ID": 2,
                 "Grading": 3,
                 "QA Checks": 4,
-                "Assembly": 4,
                 "Complete": 5
             }
 
             best = {}
 
             with pdfplumber.open(temp.name) as pdf:
+                full_text = ""
                 for pdf_page in pdf.pages:
-                    tables = pdf_page.extract_tables() or []
-
-                    for table in tables:
-                        for row in table:
-                            row_text = " ".join([str(c or "") for c in row])
-
-                            sub_match = re.search(r"Sub\s*#\s*(\d+)", row_text)
-
-                            if not sub_match:
-                                continue
-
-                            sub = normalize_submission(sub_match.group(1))
-
-                            for status_name in priority:
-                                if status_name in row_text:
-                                    mapped = "QA Checks" if status_name == "Assembly" else status_name
-
-                                    if sub not in best or priority[mapped] > priority.get(best[sub], 0):
-                                        best[sub] = mapped
-
-                                    break
+                    full_text += "\n" + (pdf_page.extract_text() or "")
 
             os.unlink(temp.name)
+
+            matches = re.findall(
+                r"Sub\s*#\s*(\d+).*?(Order Arrived|Research\s*&\s*ID|Grading|QA Checks|Assembly|Complete)",
+                full_text,
+                re.IGNORECASE | re.DOTALL
+            )
+
+            for sub, raw_status in matches:
+                status = normalize_psa_status(raw_status)
+                if not status:
+                    continue
+
+                if sub not in best or status_rank(status) > status_rank(best[sub]):
+                    best[sub] = status
 
             conn = get_conn()
             cur = conn.cursor()
