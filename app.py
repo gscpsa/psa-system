@@ -662,30 +662,39 @@ def admin_upload_psa():
                 except Exception:
                     pass
 
-            matches = re.findall(
-                r"Sub\s*#\s*(\d+)\s+(Order Arrived|Research\s*&\s*ID|Grading|QA Checks|Assembly|Complete)",
-                full_text,
-                re.IGNORECASE
-            )
+           # ===== BULLETPROOF PARSER =====
+blocks = re.split(r"Sub\s*#\s*", full_text, flags=re.IGNORECASE)
 
-            best = {}
+best = {}
 
-            for sub, raw_status in matches:
-                sub = normalize_submission(sub)
-                status = normalize_psa_status(raw_status)
+for block in blocks:
+    block = block.strip()
+    if not block:
+        continue
 
-                if not status:
-                    continue
+    sub_match = re.match(r"(\d+)", block)
+    if not sub_match:
+        continue
 
+    sub = normalize_submission(sub_match.group(1))
+
+    statuses = [
+        "Complete",
+        "Assembly",
+        "QA Checks",
+        "Grading",
+        "Research & ID",
+        "Order Arrived"
+    ]
+
+    for status_text in statuses:
+        if re.search(status_text, block, re.IGNORECASE):
+            status = normalize_psa_status(status_text)
+
+            if status:
                 if sub not in best or status_rank(status) > status_rank(best[sub]):
                     best[sub] = status
-
-            conn = get_conn()
-            cur = conn.cursor()
-
-            updated = 0
-            skipped = 0
-
+            break
             for sub, status in best.items():
                 cur.execute("""
                 UPDATE submissions
