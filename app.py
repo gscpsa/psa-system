@@ -633,7 +633,6 @@ def admin_upload():
 def admin_upload_psa():
     if request.method == "POST":
         try:
-            import pdfplumber
             import tempfile
 
             file = request.files.get("file")
@@ -660,63 +659,124 @@ def admin_upload_psa():
             best = {}
             pages_read = 0
 
-            # Status words we accept from PSA, mapped by normalize_psa_status().
-            status_pattern = r"Order Arrived|Research\s*&\s*ID|Grading|QA Checks|Assembly|Complete"
+            status_regex = re.compile(
+                r"(Order\s+Arrived|Research\s*&\s*ID|Grading|QA\s+Checks|Assembly|Complete)",
+                re.IGNORECASE
+            )
+
+            def find_status(text_value):
+                match = status_regex.search(text_value or "")
+                if not match:
+                    return None
+                return normalize_psa_status(match.group(1))
+
+            def parse_text(text):
+                nonlocal best
+
+                lines = [line.strip() for line in (text or "").splitlines()]
+                i = 0
+
+                while i < len(lines):
+                    line = lines[i]
+                    sub = None
+                    search_parts = []
+
+                    # Normal case:
+                    # Sub #14577350
+                    # Research & ID
+                    sub_match = re.search(r"Sub\s*#\s*(\d+)", line, re.IGNORECASE)
+
+                    if sub_match:
+                        sub = normalize_submission(sub_match.group(1))
+
+                        after_sub_text = line[sub_match.end():].strip()
+                        if after_sub_text:
+                            search_parts.append(after_sub_text)
+
+                        j = i + 1
+                        while j < len(lines) and len(search_parts) < 5:
+                            next_line = lines[j].strip()
+
+                            # Stop if the next submission starts before a status is found.
+                            if re.search(r"Sub\s*#\s*\d+", next_line, re.IGNORECASE):
+                                break
+
+                            if next_line:
+                                search_parts.append(next_line)
+
+                            j += 1
+
+                    # Split case:
+                    # • Sub
+                    # #14550482
+                    # Research & ID
+                    elif re.search(r"\bSub\b\s*$", line, re.IGNORECASE) and i + 1 < len(lines):
+                        number_match = re.search(r"#\s*(\d+)", lines[i + 1], re.IGNORECASE)
+
+                        if number_match:
+                            sub = normalize_submission(number_match.group(1))
+
+                            j = i + 2
+                            while j < len(lines) and len(search_parts) < 5:
+                                next_line = lines[j].strip()
+
+                                if re.search(r"Sub\s*#\s*\d+", next_line, re.IGNORECASE):
+                                    break
+
+                                if next_line:
+                                    search_parts.append(next_line)
+
+                                j += 1
+
+                    if sub:
+                        status = None
+
+                        # The actual PSA row status is the first valid status after the submission number.
+                        for part in search_parts:
+                            status = find_status(part)
+                            if status:
+                                break
+
+                        if status:
+                            best[sub] = status
+
+                    i += 1
 
             try:
-                with pdfplumber.open(temp.name) as pdf:
-                    for pdf_page in pdf.pages:
-                        pages_read += 1
+                # Fast path: PyMuPDF reads this PSA PDF much more reliably than pdfplumber.
+                # Fallback keeps the route working if PyMuPDF is not installed on the host.
+                try:
+                    import fitz
 
-                        # Read every page, but protect the app if one page fails extraction.
+                    doc = fitz.open(temp.name)
+                    pages_read = len(doc)
+
+                    for pdf_page in doc:
                         try:
-                            text = pdf_page.extract_text() or ""
+                            text = pdf_page.get_text("text") or ""
                         except Exception:
                             continue
 
-                        if not text:
-                            continue
+                        if text:
+                            parse_text(text)
 
-                        # Strict parser: split the page into one block per submission.
-                        # This prevents row bleed, where the next submission's status lands on the previous submission.
-                        blocks = re.split(r"(?=Sub\s*#\s*\d+)", text, flags=re.IGNORECASE)
+                    doc.close()
 
-                        for block in blocks:
-                            sub_match = re.search(r"Sub\s*#\s*(\d+)", block, re.IGNORECASE)
-                            if not sub_match:
+                except Exception:
+                    import pdfplumber
+
+                    with pdfplumber.open(temp.name) as pdf:
+                        for pdf_page in pdf.pages:
+                            pages_read += 1
+
+                            try:
+                                text = pdf_page.extract_text() or ""
+                            except Exception:
                                 continue
 
-                            sub = normalize_submission(sub_match.group(1))
+                            if text:
+                                parse_text(text)
 
-                            # Read only the line immediately after the Sub # line.
-                            # This prevents later rows in the PDF text from incorrectly changing this submission's status.
-                            lines = block.splitlines()
-                            status = None
-
-                            for i, line in enumerate(lines):
-                                if re.search(r"Sub\s*#\s*\d+", line, re.IGNORECASE):
-                                    if i + 1 < len(lines):
-                                        next_line = lines[i + 1].strip()
-
-                                        for status_text in [
-                                            "Order Arrived",
-                                            "Research & ID",
-                                            "Grading",
-                                            "QA Checks",
-                                            "Assembly",
-                                            "Complete"
-                                        ]:
-                                            if status_text.lower() in next_line.lower():
-                                                status = normalize_psa_status(status_text)
-                                                break
-                                    break
-
-                            if not status:
-                                continue
-
-                            # Allow PSA PDF uploads to correct an earlier wrong PSA status.
-                            # Final internal statuses are still protected by the SQL WHERE clause below.
-                            best[sub] = status
             finally:
                 try:
                     os.unlink(temp.name)
@@ -733,7 +793,7 @@ def admin_upload_psa():
                 cur.execute("""
                 UPDATE submissions
                 SET status=%s, last_updated=NOW()
-                WHERE REGEXP_REPLACE(submission_number, '\D', '', 'g')=%s
+                WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
                   AND COALESCE(status, '') NOT IN ('Picked Up', 'Delivered to Us')
                 """, (status, sub))
 
@@ -783,7 +843,6 @@ def admin_upload_psa():
         </form>
     </div>
     """)
-
 # =========================
 # CUSTOMER PORTAL
 # =========================
