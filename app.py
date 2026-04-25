@@ -606,6 +606,7 @@ def admin_upload_psa():
         try:
             import pdfplumber
             import tempfile
+            import time
 
             file = request.files.get("file")
 
@@ -628,49 +629,69 @@ def admin_upload_psa():
             temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
             file.save(temp.name)
 
+            best = {}
+            pages_read = 0
+            parse_warning = ""
+            started = time.time()
+
+            # Status words we accept from PSA, mapped by normalize_psa_status().
+            status_pattern = r"Order Arrived|Research\s*&\s*ID|Grading|QA Checks|Assembly|Complete"
+
             try:
                 with pdfplumber.open(temp.name) as pdf:
-                    full_text = ""
                     for pdf_page in pdf.pages:
-                        full_text += "\n" + (pdf_page.extract_text() or "")
+                        pages_read += 1
+
+                        # Prevent the web request from hanging forever on very large PDFs.
+                        if time.time() - started > 22:
+                            parse_warning = "<p><b>Warning:</b> PDF processing stopped early to prevent a timeout. If counts look low, upload a smaller PDF export.</p>"
+                            break
+
+                        text = pdf_page.extract_text() or ""
+                        if not text:
+                            continue
+
+                        # Strict parser: pair each Sub # only with a status found before the next Sub #.
+                        # This prevents the old off-by-one shift where the next row's status landed on the previous submission.
+                        entries = re.findall(
+                            rf"(Sub\s*#\s*\d+(?:(?!Sub\s*#).)*?(?:{status_pattern}))",
+                            text,
+                            re.IGNORECASE | re.DOTALL
+                        )
+
+                        for entry in entries:
+                            sub_match = re.search(r"Sub\s*#\s*(\d+)", entry, re.IGNORECASE)
+                            if not sub_match:
+                                continue
+
+                            sub = normalize_submission(sub_match.group(1))
+
+                            statuses_found = []
+                            for status_text in [
+                                "Order Arrived",
+                                "Research & ID",
+                                "Grading",
+                                "QA Checks",
+                                "Assembly",
+                                "Complete"
+                            ]:
+                                if re.search(status_text, entry, re.IGNORECASE):
+                                    normalized = normalize_psa_status(status_text)
+                                    if normalized:
+                                        statuses_found.append(normalized)
+
+                            if not statuses_found:
+                                continue
+
+                            status = max(statuses_found, key=status_rank)
+
+                            if sub not in best or status_rank(status) > status_rank(best[sub]):
+                                best[sub] = status
             finally:
                 try:
                     os.unlink(temp.name)
                 except Exception:
                     pass
-
-            # ===== FIXED PSA PARSER =====
-            # Split the PDF text into one block per submission so a status from
-            # the next row cannot shift onto the previous submission.
-            best = {}
-            blocks = re.split(r"Sub\s*#\s*", full_text, flags=re.IGNORECASE)
-
-            for block in blocks:
-                block = block.strip()
-                if not block:
-                    continue
-
-                sub_match = re.match(r"(\d+)", block)
-                if not sub_match:
-                    continue
-
-                sub = normalize_submission(sub_match.group(1))
-
-                if re.search(r"Complete", block, re.IGNORECASE):
-                    status = "Complete"
-                elif re.search(r"Assembly|QA Checks", block, re.IGNORECASE):
-                    status = "QA Checks"
-                elif re.search(r"Grading", block, re.IGNORECASE):
-                    status = "Grading"
-                elif re.search(r"Research\s*&\s*ID", block, re.IGNORECASE):
-                    status = "Research & ID"
-                elif re.search(r"Order Arrived", block, re.IGNORECASE):
-                    status = "Order Arrived"
-                else:
-                    continue
-
-                if sub not in best or status_rank(status) > status_rank(best[sub]):
-                    best[sub] = status
 
             conn = get_conn()
             cur = conn.cursor()
@@ -695,9 +716,9 @@ def admin_upload_psa():
             cur.close()
             conn.close()
 
-            warning = ""
+            warning = parse_warning
             if len(best) == 0:
-                warning = """
+                warning += """
                 <p><b>Warning:</b> No PSA statuses were found. This usually means the PDF is not the PSA Orders page, or the PDF is image-only / unreadable text.</p>
                 """
 
@@ -705,6 +726,7 @@ def admin_upload_psa():
             <div class="card">
                 <h2>PDF processed</h2>
                 {warning}
+                <p>Pages read: {pages_read}</p>
                 <p>Statuses found: {len(best)}</p>
                 <p>Updated: {updated}</p>
                 <p>Skipped: {skipped}</p>
