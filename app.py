@@ -640,10 +640,10 @@ def admin_upload_psa():
                     pass
 
             matches = re.findall(
-                r"Sub\s*#\s*(\d+)\s+(Order Arrived|Research\s*&\s*ID|Grading|QA Checks|Assembly|Complete)",
-                full_text,
-                re.IGNORECASE
-            )
+    r"Sub\s*#\s*(\d+)[\s\S]{0,80}?(Order Arrived|Research\s*&\s*ID|Grading|QA Checks|Assembly|Complete)",
+    full_text,
+    re.IGNORECASE
+)
 
             best = {}
 
