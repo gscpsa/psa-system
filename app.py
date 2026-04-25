@@ -92,6 +92,9 @@ def read_file(file):
     except Exception:
         return pd.read_csv(io.StringIO(raw.decode("latin1")), on_bad_lines="skip")
 
+# =========================
+# STATUS LOGIC
+# =========================
 def normalize_psa_status(status):
     s = re.sub(r"\s+", " ", str(status or "")).strip().lower()
 
@@ -125,6 +128,9 @@ def status_rank(status):
 
 def detect_internal_status(raw):
     full_text = " ".join([f"{k} {v}" for k, v in raw.items()]).lower()
+
+    if "not picked up" in full_text or "not picked-up" in full_text:
+        return None
 
     if "picked up" in full_text or "customer picked up" in full_text:
         return "Picked Up"
@@ -361,16 +367,13 @@ def status_bar(status):
 def should_hide_column(column_name):
     key = str(column_name).strip().lower()
 
-    if key in [
+    return key in [
         "status",
         "current status",
         "psa status",
         "order status",
         "customer status"
-    ]:
-        return True
-
-    return False
+    ]
 
 def build_table(rows):
     keys = []
@@ -425,6 +428,18 @@ def build_table(rows):
     html += "</table>"
     return html
 
+def get_sort_date(row):
+    data = row[0] or {}
+    date_value = get_field(data, ["Submission Date", "S", "Date"])
+
+    try:
+        if date_value:
+            return pd.to_datetime(date_value)
+    except Exception:
+        pass
+
+    return pd.Timestamp.min
+
 # =========================
 # ADMIN ROUTES
 # =========================
@@ -460,14 +475,15 @@ def admin_logout():
 @admin_required
 def admin_dashboard():
     sort = request.args.get("sort", "new")
-    order = "ASC" if sort == "old" else "DESC"
 
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute(f"SELECT raw_data, status FROM submissions ORDER BY last_updated {order}")
+    cur.execute("SELECT raw_data, status FROM submissions")
     rows = cur.fetchall()
     cur.close()
     conn.close()
+
+    rows = sorted(rows, key=get_sort_date, reverse=(sort != "old"))
 
     html = """
     <h2>Admin Dashboard</h2>
@@ -578,16 +594,6 @@ def admin_upload_psa():
             temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
             file.save(temp.name)
 
-            priority = {
-                "Order Arrived": 1,
-                "Research & ID": 2,
-                "Grading": 3,
-                "QA Checks": 4,
-                "Complete": 5
-            }
-
-            best = {}
-
             with pdfplumber.open(temp.name) as pdf:
                 full_text = ""
                 for pdf_page in pdf.pages:
@@ -595,19 +601,37 @@ def admin_upload_psa():
 
             os.unlink(temp.name)
 
-            matches = re.findall(
-                r"Sub\s*#\s*(\d+).*?(Order Arrived|Research\s*&\s*ID|Grading|QA Checks|Assembly|Complete)",
+            entries = re.findall(
+                r"(Sub\s*#\s*\d+.*?)(?=Sub\s*#\s*\d+|$)",
                 full_text,
                 re.IGNORECASE | re.DOTALL
             )
 
-            for sub, raw_status in matches:
-                status = normalize_psa_status(raw_status)
-                if not status:
+            best = {}
+
+            for entry in entries:
+                sub_match = re.search(r"Sub\s*#\s*(\d+)", entry, re.IGNORECASE)
+
+                if not sub_match:
                     continue
 
-                if sub not in best or status_rank(status) > status_rank(best[sub]):
-                    best[sub] = status
+                sub = normalize_submission(sub_match.group(1))
+
+                for status_text in [
+                    "Complete",
+                    "Assembly",
+                    "QA Checks",
+                    "Grading",
+                    "Research & ID",
+                    "Order Arrived"
+                ]:
+                    if re.search(status_text, entry, re.IGNORECASE):
+                        status = normalize_psa_status(status_text)
+
+                        if status and (sub not in best or status_rank(status) > status_rank(best[sub])):
+                            best[sub] = status
+
+                        break
 
             conn = get_conn()
             cur = conn.cursor()
