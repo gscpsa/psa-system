@@ -677,43 +677,37 @@ def admin_upload_psa():
                         if not text:
                             continue
 
-                        # Strict parser: pair each Sub # only with a status found before the next Sub #.
-                        # This prevents the old off-by-one shift where the next row's status landed on the previous submission.
-                        entries = re.findall(
-                            rf"(Sub\s*#\s*\d+(?:(?!Sub\s*#).)*?(?:{status_pattern}))",
-                            text,
-                            re.IGNORECASE | re.DOTALL
-                        )
+                        # Strict parser: split the page into one isolated block per Sub #.
+                        # This prevents row bleed where the next submission's status lands on the previous submission.
+                        blocks = re.split(r"(?=Sub\s*#\s*\d+)", text, flags=re.IGNORECASE)
 
-                        for entry in entries:
-                            sub_match = re.search(r"Sub\s*#\s*(\d+)", entry, re.IGNORECASE)
+                        for block in blocks:
+                            sub_match = re.search(r"Sub\s*#\s*(\d+)", block, re.IGNORECASE)
                             if not sub_match:
                                 continue
 
                             sub = normalize_submission(sub_match.group(1))
 
-                            statuses_found = []
-                            for status_text in [
-                                "Order Arrived",
-                                "Research & ID",
-                                "Grading",
-                                "QA Checks",
-                                "Assembly",
-                                "Complete"
+                            status = None
+                            for status_text, status_regex in [
+                                ("Order Arrived", r"Order\s+Arrived"),
+                                ("Research & ID", r"Research\s*&\s*ID"),
+                                ("Grading", r"Grading"),
+                                ("QA Checks", r"QA\s+Checks"),
+                                ("Assembly", r"Assembly"),
+                                ("Complete", r"Complete"),
                             ]:
-                                if re.search(status_text, entry, re.IGNORECASE):
-                                    normalized = normalize_psa_status(status_text)
-                                    if normalized:
-                                        statuses_found.append(normalized)
+                                if re.search(status_regex, block, re.IGNORECASE):
+                                    status = normalize_psa_status(status_text)
+                                    break
 
-                            if not statuses_found:
+                            if not status:
                                 continue
-
-                            status = max(statuses_found, key=status_rank)
 
                             # Allow PSA PDF uploads to correct an earlier wrong PSA status.
                             # Final internal statuses are still protected by the SQL WHERE clause below.
                             best[sub] = status
+
             finally:
                 try:
                     os.unlink(temp.name)
