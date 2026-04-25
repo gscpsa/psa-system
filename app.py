@@ -9,6 +9,9 @@ app.secret_key = os.getenv("SECRET_KEY", "change-this-secret")
 DATABASE_URL = os.getenv("DATABASE_URL")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 
+# =========================
+# DATABASE
+# =========================
 def get_conn():
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
@@ -36,14 +39,11 @@ def setup():
 
 @app.errorhandler(Exception)
 def error_handler(e):
-    return page(f"""
-    <div class="card">
-        <h2>Application Error</h2>
-        <pre>{traceback.format_exc()}</pre>
-        <a href="/admin">Back to Admin</a>
-    </div>
-    """)
+    return f"<pre>{traceback.format_exc()}</pre>"
 
+# =========================
+# SECURITY
+# =========================
 def admin_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
@@ -52,6 +52,9 @@ def admin_required(f):
         return f(*args, **kwargs)
     return wrapper
 
+# =========================
+# HELPERS
+# =========================
 def clean(v):
     try:
         if pd.isna(v):
@@ -89,66 +92,38 @@ def read_file(file):
     except Exception:
         return pd.read_csv(io.StringIO(raw.decode("latin1")), on_bad_lines="skip")
 
-def normalize_psa_status(status):
-    s = re.sub(r"\s+", " ", str(status or "")).strip().lower()
-
-    if s == "order arrived":
-        return "Order Arrived"
-    if s == "research & id":
-        return "Research & ID"
-    if s == "grading":
-        return "Grading"
-    if s == "qa checks":
-        return "QA Checks"
-    if s == "assembly":
-        return "QA Checks"
-    if s == "complete":
-        return "Complete"
-
-    return None
-
-def status_rank(status):
-    ranks = {
-        "Submitted": 0,
-        "Order Arrived": 1,
-        "Research & ID": 2,
-        "Grading": 3,
-        "QA Checks": 4,
-        "Complete": 5,
-        "Delivered to Us": 6,
-        "Picked Up": 7,
-    }
-    return ranks.get(status or "Submitted", 0)
-
+# =========================
+# INTERNAL STATUS DETECTION (FIXED)
+# =========================
 def detect_internal_status(raw):
     full_text = " ".join([f"{k} {v}" for k, v in raw.items()]).lower()
 
-    if "not picked up" in full_text or "not picked-up" in full_text:
-        return None
-
-    if "picked up" in full_text or "customer picked up" in full_text:
+    if "picked up" in full_text:
         return "Picked Up"
 
     if (
-        "delivered to us" in full_text
-        or "received by us" in full_text
-        or "arrived at store" in full_text
-        or "delivered back" in full_text
+        "delivered to us" in full_text or
+        "received by us" in full_text or
+        "arrived at store" in full_text
     ):
         return "Delivered to Us"
 
     return None
 
+# =========================
+# SAVE LOGIC (FIXED)
+# =========================
 def save_row(sub, raw):
     conn = get_conn()
     cur = conn.cursor()
 
     internal_status = detect_internal_status(raw)
 
-    cur.execute("""
-    SELECT status FROM submissions
-    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-    """, (sub,))
+    for k in list(raw.keys()):
+        if "status" in str(k).lower():
+            del raw[k]
+
+    cur.execute("SELECT status FROM submissions WHERE submission_number=%s", (sub,))
     existing = cur.fetchone()
     existing_status = existing[0] if existing else None
 
@@ -156,7 +131,7 @@ def save_row(sub, raw):
         cur.execute("""
         UPDATE submissions
         SET raw_data=%s, last_updated=NOW()
-        WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+        WHERE submission_number=%s
         """, (json.dumps(raw), sub))
 
     elif internal_status:
@@ -185,6 +160,9 @@ def save_row(sub, raw):
     cur.close()
     conn.close()
 
+# =========================
+# UI (GREEN BRAND)
+# =========================
 def page(content, mode="admin"):
     if mode == "admin":
         nav = """
@@ -205,131 +183,32 @@ def page(content, mode="admin"):
     <html>
     <head>
     <style>
-        body {{
-            font-family: Arial;
-            margin:0;
-            background:#f4f6f8;
-            color:#111827;
-        }}
-        .topbar {{
-            background:#0f5132;
-            color:white;
-            padding:15px 20px;
-            display:flex;
-            justify-content:space-between;
-            align-items:center;
-        }}
-        .brand {{
-            font-weight:bold;
-            font-size:20px;
-        }}
-        .links a {{
-            color:white;
-            margin-left:14px;
-            text-decoration:none;
-            font-weight:bold;
-        }}
-        .links a:hover {{
-            color:#d1e7dd;
-        }}
-        .container {{
-            padding:16px;
-            overflow-x:auto;
-        }}
-        table {{
-            width:100%;
-            border-collapse:collapse;
-            background:white;
-            font-size:12px;
-            table-layout:auto;
-        }}
-        th {{
-            background:#0f5132;
-            color:white;
-            padding:5px;
-            text-align:left;
-            position:sticky;
-            top:0;
-            white-space:nowrap;
-        }}
-        td {{
-            padding:5px;
-            border-bottom:1px solid #ddd;
-            white-space:nowrap;
-            max-width:180px;
-            overflow:hidden;
-            text-overflow:ellipsis;
-        }}
-        td.notes-col {{
-            white-space:normal;
-            max-width:220px;
-            min-width:160px;
-            overflow-wrap:break-word;
-            word-break:break-word;
-        }}
-        tr:hover {{
-            background:#eef6f2;
-        }}
-        .status {{
-            font-weight:bold;
-            color:#198754;
-        }}
-        .card {{
-            background:white;
-            padding:18px;
-            margin-bottom:15px;
-            border-radius:10px;
-            box-shadow:0 2px 8px rgba(0,0,0,.08);
-        }}
-        .btn {{
-            display:inline-block;
-            padding:8px 12px;
-            background:#198754;
-            color:white;
-            text-decoration:none;
-            border-radius:6px;
-            margin:5px 8px 15px 0;
-            font-weight:bold;
-        }}
-        input, button {{
-            padding:10px;
-            margin:5px;
-        }}
-        .bar {{
-            display:flex;
-            gap:6px;
-            flex-wrap:wrap;
-            margin-top:10px;
-        }}
-        .step {{
-            padding:7px 11px;
-            border-radius:20px;
-            background:#e5e7eb;
-            font-size:13px;
-        }}
-        .done {{
-            background:#d1e7dd;
-            color:#0f5132;
-            font-weight:bold;
-        }}
-        .current {{
-            background:#198754;
-            color:white;
-            font-weight:bold;
-        }}
-        pre {{
-            background:#111827;
-            color:white;
-            padding:12px;
-            overflow:auto;
-            border-radius:8px;
-            font-size:12px;
-        }}
+    body {{ font-family: Arial; margin:0; background:#f4f6f8; }}
+    .topbar {{ background:#0f5132; color:white; padding:15px 20px; display:flex; justify-content:space-between; }}
+    .links a {{ color:white; margin-left:15px; text-decoration:none; font-weight:bold; }}
+    .container {{ padding:20px; overflow-x:auto; }}
+
+    table {{ width:100%; border-collapse:collapse; font-size:12px; background:white; }}
+    th {{ background:#0f5132; color:white; padding:5px; }}
+    td {{ padding:5px; border-bottom:1px solid #ddd; white-space:nowrap; }}
+    tr:hover {{ background:#eef6f2; }}
+
+    .status {{ color:#198754; font-weight:bold; }}
+
+    .card {{ background:white; padding:15px; margin-bottom:15px; border-radius:8px; }}
+
+    .btn {{ background:#198754; color:white; padding:8px 12px; border-radius:6px; text-decoration:none; }}
+
+    .bar {{ display:flex; gap:5px; flex-wrap:wrap; margin-top:10px; }}
+    .step {{ padding:5px 8px; border-radius:15px; background:#ddd; font-size:11px; }}
+    .done {{ background:#d1e7dd; color:#0f5132; }}
+    .current {{ background:#198754; color:white; }}
     </style>
     </head>
+
     <body>
         <div class="topbar">
-            <div class="brand">Giant Sports Cards</div>
+            <div><b>Giant Sports Cards</b></div>
             <div class="links">{nav}</div>
         </div>
         <div class="container">{content}</div>
@@ -337,44 +216,11 @@ def page(content, mode="admin"):
     </html>
     """
 
-def status_bar(status):
-    steps = [
-        "Submitted",
-        "Order Arrived",
-        "Research & ID",
-        "Grading",
-        "QA Checks",
-        "Complete",
-        "Delivered to Us",
-        "Picked Up"
-    ]
-
-    status = status or "Submitted"
-    idx = steps.index(status) if status in steps else 0
-
-    html = "<div class='bar'>"
-    for i, step in enumerate(steps):
-        cls = "step"
-        if i < idx:
-            cls += " done"
-        if i == idx:
-            cls += " current"
-        html += f"<div class='{cls}'>{step}</div>"
-    html += "</div>"
-    return html
-
-def should_hide_column(column_name):
-    key = str(column_name).strip().lower()
-    return key in [
-        "status",
-        "current status",
-        "psa status",
-        "order status",
-        "customer status"
-    ]
-
+# =========================
+# TABLE (FIXED)
+# =========================
 def build_table(rows):
-    keys = []
+    keys = set()
     clean_rows = []
 
     for r in rows:
@@ -382,110 +228,116 @@ def build_table(rows):
         row = {}
 
         for k, v in data.items():
-            key_text = str(k).strip()
+            key_lower = str(k).lower()
 
-            if "unnamed" in key_text.lower():
+            if "unnamed" in key_lower:
                 continue
 
-            if should_hide_column(key_text):
+            # REMOVE Excel status columns
+            if key_lower.strip() in ["status", "current status"]:
                 continue
 
-            display_key = "Submission Date" if key_text == "S" else key_text
+            display_key = "Submission Date" if str(k).strip() == "S" else str(k)
             row[display_key] = v
 
-            if display_key not in keys:
-                keys.append(display_key)
-
-        row["PSA Status"] = r[1] or "Submitted"
-
-        if "PSA Status" not in keys:
-            keys.append("PSA Status")
-
+        row["PSA Status"] = r[1]
         clean_rows.append(row)
+        keys.update(row.keys())
 
-    if not clean_rows:
-        return "<div class='card'>No records found.</div>"
+    ordered = sorted(keys)
 
-    html = "<table><tr>"
-    for k in keys:
-        html += f"<th>{k}</th>"
-    html += "</tr>"
+    html = "<table><tr>" + "".join([f"<th>{k}</th>" for k in ordered]) + "</tr>"
 
     for row in clean_rows:
         html += "<tr>"
-        for k in keys:
+        for k in ordered:
             val = row.get(k, "")
-            col_class = "notes-col" if "note" in k.lower() else ""
-
             if k == "PSA Status":
-                html += f"<td class='status {col_class}'>{val}</td>"
+                html += f"<td class='status'>{val}</td>"
             else:
-                html += f"<td class='{col_class}'>{val}</td>"
+                html += f"<td>{val}</td>"
         html += "</tr>"
 
     html += "</table>"
     return html
 
-def get_sort_date(row):
-    data = row[0] or {}
-    date_value = get_field(data, ["Submission Date", "S", "Date"])
+# =========================
+# STATUS BAR
+# =========================
+def status_bar(status):
+    steps = ["Submitted","Order Arrived","Research & ID","Grading","QA Checks","Complete","Delivered to Us","Picked Up"]
+    idx = steps.index(status) if status in steps else 0
 
-    try:
-        if date_value:
-            return pd.to_datetime(date_value)
-    except Exception:
-        pass
+    html = "<div class='bar'>"
+    for i, s in enumerate(steps):
+        cls = "step"
+        if i < idx: cls += " done"
+        if i == idx: cls += " current"
+        html += f"<div class='{cls}'>{s}</div>"
+    html += "</div>"
+    return html
 
-    return pd.Timestamp.min
-
+# =========================
+# ROUTES
+# =========================
 @app.route("/")
-def root():
-    return redirect("/admin")
+def root(): return redirect("/admin")
 
-@app.route("/admin/login", methods=["GET", "POST"])
-def admin_login():
-    if request.method == "POST":
-        if request.form.get("password") == ADMIN_PASSWORD:
-            session["admin"] = True
+@app.route("/admin/login", methods=["GET","POST"])
+def login():
+    if request.method=="POST":
+        if request.form.get("password")==ADMIN_PASSWORD:
+            session["admin"]=True
             return redirect("/admin")
-
-        return page("<div class='card'>Wrong password. <a href='/admin/login'>Try again</a></div>")
-
-    return page("""
-    <div class="card">
-        <h2>Admin Login</h2>
-        <form method="post">
-            <input type="password" name="password" placeholder="Admin password">
-            <button>Login</button>
-        </form>
-    </div>
-    """)
-
-@app.route("/admin/logout")
-def admin_logout():
-    session.pop("admin", None)
-    return redirect("/admin/login")
+    return page("<form method='post'><input type='password' name='password'><button>Login</button></form>")
 
 @app.route("/admin")
 @admin_required
-def admin_dashboard():
-    sort = request.args.get("sort", "new")
+def admin():
+    conn=get_conn(); cur=conn.cursor()
+    cur.execute("SELECT raw_data,status FROM submissions ORDER BY last_updated DESC")
+    rows=cur.fetchall()
+    cur.close(); conn.close()
+    return page(build_table(rows))
 
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT raw_data, status FROM submissions")
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
+@app.route("/admin/upload", methods=["POST"])
+@admin_required
+def upload():
+    df = read_file(request.files["file"])
+    for _, row in df.iterrows():
+        raw = {c: clean(row[c]) for c in df.columns}
+        sub = normalize_submission(raw.get("Submission #"))
+        if sub:
+            save_row(sub, raw)
+    return "OK"
 
-    rows = sorted(rows, key=get_sort_date, reverse=(sort != "old"))
+@app.route("/portal", methods=["GET","POST"])
+def portal():
+    if request.method=="POST":
+        session["phone"]=normalize_phone(request.form.get("phone"))
+        session["last"]=request.form.get("last","").lower()
+        return redirect("/portal/orders")
+    return page("<form method='post'><input name='phone'><input name='last'><button>Go</button></form>", mode="portal")
 
-    html = """
-    <h2>Admin Dashboard</h2>
-    <a class="btn" href="/admin?sort=new">Newest First</a>
-    <a class="btn" href="/admin?sort=old">Oldest First</a>
-    <a class="btn" href="/admin/search">Search</a>
-    <a class="btn" href="/admin/upload">Upload Excel</a>
-    <a class="btn" href="/admin/upload_psa">Upload PSA PDF</a>
-    <a class="btn" href="/portal">Customer Portal</a>
-    <
+@app.route("/portal/orders")
+def orders():
+    phone=normalize_phone(session.get("phone"))
+    last=(session.get("last") or "").lower()
+
+    conn=get_conn(); cur=conn.cursor()
+    cur.execute("SELECT raw_data,status FROM submissions")
+    rows=cur.fetchall()
+    cur.close(); conn.close()
+
+    html=""
+    for r in rows:
+        data=r[0]; status=r[1]
+        name=str(get_field(data,["Customer Name","Name"])).lower()
+        contact=normalize_phone(get_field(data,["Phone"]))
+        if phone in contact and last in name:
+            html+=f"<div class='card'><b>{name}</b><br>Status:{status}{status_bar(status)}</div>"
+
+    return page(html, mode="portal")
+
+if __name__=="__main__":
+    app.run()
