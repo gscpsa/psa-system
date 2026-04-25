@@ -34,7 +34,7 @@ def init_db():
 def setup():
     try:
         init_db()
-    except Exception:
+    except:
         pass
 
 @app.errorhandler(Exception)
@@ -59,14 +59,14 @@ def clean(v):
     try:
         if pd.isna(v):
             return ""
-    except Exception:
+    except:
         pass
     return str(v).strip()
 
 def normalize_submission(v):
     if not v:
         return None
-    return re.sub(r"\D", "", str(v).split(".")[0])
+    return re.sub(r"\D", "", str(v))
 
 def normalize_phone(v):
     return re.sub(r"\D", "", str(v or ""))
@@ -74,70 +74,68 @@ def normalize_phone(v):
 def get_field(data, names):
     for n in names:
         for k, v in data.items():
-            if str(k).lower().strip() == n.lower().strip():
+            if str(k).lower().strip() == n.lower():
                 return v
     return ""
 
-def row_is_picked_up(raw):
+def detect_excel_status(raw):
+    delivered = False
+    picked = False
+
     for k, v in raw.items():
         key = str(k).lower()
         val = str(v).lower()
-        if "pick" in key or "status" in key:
-            if "picked up" in val or "customer picked up" in val:
-                return True
-    return False
 
-def read_file(file):
-    name = (file.filename or "").lower()
-    if name.endswith(("xlsx", "xls")):
-        return pd.read_excel(file)
+        if "deliver" in key and "deliver" in val:
+            delivered = True
+        if "pick" in key and "pick" in val:
+            picked = True
 
-    raw = file.read()
-    file.seek(0)
+    if picked:
+        return "Picked Up"
+    if delivered:
+        return "Delivered to Us"
+    return None
 
-    try:
-        return pd.read_csv(io.StringIO(raw.decode("utf-8")), on_bad_lines="skip")
-    except Exception:
-        return pd.read_csv(io.StringIO(raw.decode("latin1")), on_bad_lines="skip")
-
+# =========================
+# SAVE LOGIC (FIXED)
+# =========================
 def save_row(sub, raw):
     conn = get_conn()
     cur = conn.cursor()
 
-    picked_up = row_is_picked_up(raw)
+    excel_status = detect_excel_status(raw)
 
-    # remove Excel-provided status keys (avoid confusion)
     for k in list(raw.keys()):
         if "status" in str(k).lower():
             del raw[k]
 
-    if picked_up:
+    if excel_status:
         cur.execute("""
         INSERT INTO submissions (submission_number, status, raw_data)
-        VALUES (%s, 'Picked Up', %s)
+        VALUES (%s,%s,%s)
         ON CONFLICT (submission_number)
         DO UPDATE SET
-            status='Picked Up',
+            status=%s,
             raw_data=EXCLUDED.raw_data,
             last_updated=NOW()
-        """, (sub, json.dumps(raw)))
+        """,(sub,excel_status,json.dumps(raw),excel_status))
     else:
         cur.execute("""
-        INSERT INTO submissions (submission_number, status, raw_data)
-        VALUES (%s, 'Submitted', %s)
+        INSERT INTO submissions (submission_number, raw_data)
+        VALUES (%s,%s)
         ON CONFLICT (submission_number)
         DO UPDATE SET
             raw_data=EXCLUDED.raw_data,
-            status=COALESCE(submissions.status, 'Submitted'),
             last_updated=NOW()
-        """, (sub, json.dumps(raw)))
+        """,(sub,json.dumps(raw)))
 
     conn.commit()
     cur.close()
     conn.close()
 
 # =========================
-# UI (ADMIN vs PORTAL)
+# UI
 # =========================
 def page(content, mode="admin"):
     if mode == "admin":
@@ -157,91 +155,78 @@ def page(content, mode="admin"):
 
     return f"""
     <html>
-    <head>
-    <style>
-        body {{ font-family: Arial; margin:0; background:#f4f6f8; color:#111827; }}
-        .topbar {{ background:#1f2937; color:white; padding:15px; display:flex; justify-content:space-between; align-items:center; }}
-        .links a {{ color:white; margin-left:12px; text-decoration:none; font-weight:bold; }}
-        .container {{ padding:20px; }}
-        table {{ width:100%; border-collapse:collapse; background:white; box-shadow:0 2px 8px rgba(0,0,0,.08); }}
-        th {{ background:#111827; color:white; padding:10px; text-align:left; position:sticky; top:0; }}
-        td {{ padding:8px; border-bottom:1px solid #ddd; }}
-        tr:hover {{ background:#f1f5f9; }}
-        .status {{ font-weight:bold; color:#2563eb; }}
-        .card {{ background:white; padding:18px; margin-bottom:15px; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.08); }}
-        .btn {{ display:inline-block; padding:8px 12px; background:#1f2937; color:white; text-decoration:none; border-radius:6px; margin:5px 8px 15px 0; }}
-        input, button {{ padding:10px; margin:5px; }}
-        .bar {{ display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }}
-        .step {{ padding:7px 11px; border-radius:20px; background:#e5e7eb; font-size:13px; }}
-        .done {{ background:#bfdbfe; color:#1e40af; font-weight:bold; }}
-        .current {{ background:#2563eb; color:white; font-weight:bold; }}
-    </style>
-    </head>
-    <body>
-        <div class="topbar">
-            <div><b>PSA Tracking System</b></div>
-            <div class="links">{nav}</div>
-        </div>
-        <div class="container">{content}</div>
+    <body style="font-family:Arial;background:#f4f6f8;margin:0">
+    <div style="background:#1f2937;color:white;padding:15px">
+        PSA Tracking
+        <span style="float:right">{nav}</span>
+    </div>
+    <div style="padding:20px">{content}</div>
     </body>
     </html>
     """
 
-def build_table(rows):
-    keys = set()
-    clean_rows = []
-
-    for r in rows:
-        data = r[0] or {}
-        row = {}
-
-        for k, v in data.items():
-            if "unnamed" in str(k).lower():
-                continue
-            display_key = "Submission Date" if str(k).strip() == "S" else str(k)
-            row[display_key] = v
-
-        row["PSA Status"] = r[1] or "Submitted"
-        clean_rows.append(row)
-        keys.update(row.keys())
-
-    if not clean_rows:
-        return "<div class='card'>No records found.</div>"
-
-    ordered = sorted(keys)
-
-    html = "<table><tr>"
-    for k in ordered:
-        html += f"<th>{k}</th>"
-    html += "</tr>"
-
-    for row in clean_rows:
-        html += "<tr>"
-        for k in ordered:
-            val = row.get(k, "")
-            if k == "PSA Status":
-                html += f"<td class='status'>{val}</td>"
-            else:
-                html += f"<td>{val}</td>"
-        html += "</tr>"
-
-    html += "</table>"
-    return html
-
+# =========================
+# STATUS BAR
+# =========================
 def status_bar(status):
-    steps = ["Submitted", "Order Arrived", "Research & ID", "Grading", "QA Checks", "Complete", "Picked Up"]
+    steps = [
+        "Submitted","Order Arrived","Research & ID",
+        "Grading","QA Checks","Complete",
+        "Delivered to Us","Picked Up"
+    ]
+
     status = status or "Submitted"
     idx = steps.index(status) if status in steps else 0
 
-    html = "<div class='bar'>"
-    for i, step in enumerate(steps):
-        cls = "step"
+    html = "<div style='display:flex;gap:6px;flex-wrap:wrap'>"
+    for i,s in enumerate(steps):
+        color = "#e5e7eb"
         if i < idx:
-            cls += " done"
+            color = "#bfdbfe"
         if i == idx:
-            cls += " current"
-        html += f"<div class='{cls}'>{step}</div>"
+            color = "#2563eb;color:white"
+        html += f"<div style='padding:6px 10px;background:{color};border-radius:20px'>{s}</div>"
     html += "</div>"
+    return html
+
+# =========================
+# TABLE (FULL COLUMNS)
+# =========================
+def build_table(rows):
+    keys=set()
+    cleaned=[]
+
+    for r in rows:
+        data=r[0] or {}
+        row={}
+
+        for k,v in data.items():
+            if "unnamed" in str(k).lower():
+                continue
+            if k=="S":
+                k="Submission Date"
+            row[k]=v
+
+        row["PSA Status"]=r[1] or "Submitted"
+        cleaned.append(row)
+        keys.update(row.keys())
+
+    ordered=sorted(keys)
+
+    html="<table border=1 style='width:100%;background:white'>"
+    html+="<tr>"+"".join([f"<th>{k}</th>" for k in ordered])+"</tr>"
+
+    for row in cleaned:
+        html+="<tr>"
+        for k in ordered:
+            val=row.get(k,"")
+            if k=="PSA Status":
+                html+=f"<td style='color:blue;font-weight:bold'>{val}</td>"
+            else:
+                html+=f"<td>{val}</td>"
+        html+="</tr>"
+
+    html+="</table>"
     return html
 
 # =========================
@@ -251,290 +236,167 @@ def status_bar(status):
 def root():
     return redirect("/admin")
 
-@app.route("/admin/login", methods=["GET", "POST"])
-def admin_login():
-    if request.method == "POST":
-        if request.form.get("password") == ADMIN_PASSWORD:
-            session["admin"] = True
+@app.route("/admin/login",methods=["GET","POST"])
+def login():
+    if request.method=="POST":
+        if request.form.get("password")==ADMIN_PASSWORD:
+            session["admin"]=True
             return redirect("/admin")
-        return page("<div class='card'>Wrong password. <a href='/admin/login'>Try again</a></div>")
+        return page("Wrong password")
 
-    return page("""
-    <div class="card">
-        <h2>Admin Login</h2>
-        <form method="post">
-            <input type="password" name="password" placeholder="Admin password">
-            <button>Login</button>
-        </form>
-    </div>
-    """)
-
-@app.route("/admin/logout")
-def admin_logout():
-    session.clear()
-    return redirect("/admin/login")
+    return page("<form method='post'><input type='password' name='password'><button>Login</button></form>")
 
 @app.route("/admin")
 @admin_required
-def admin_dashboard():
-    sort = request.args.get("sort", "new")
-    order = "ASC" if sort == "old" else "DESC"
+def admin():
+    sort=request.args.get("sort","new")
+    order="DESC" if sort=="new" else "ASC"
 
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(f"SELECT raw_data, status FROM submissions ORDER BY last_updated {order}")
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
+    conn=get_conn()
+    cur=conn.cursor()
+    cur.execute(f"SELECT raw_data,status FROM submissions ORDER BY last_updated {order}")
+    rows=cur.fetchall()
+    cur.close(); conn.close()
 
-    html = """
+    html="""
     <h2>Admin Dashboard</h2>
-    <a class="btn" href="/admin?sort=new">Newest First</a>
-    <a class="btn" href="/admin?sort=old">Oldest First</a>
-    <a class="btn" href="/admin/search">Search</a>
-    <a class="btn" href="/admin/upload">Upload Excel</a>
-    <a class="btn" href="/admin/upload_psa">Upload PSA PDF</a>
-    <a class="btn" href="/portal">Customer Portal</a>
-    <br><br>
+    <a href="/admin?sort=new">Newest</a>
+    <a href="/admin?sort=old">Oldest</a><br><br>
     """
-    html += build_table(rows)
+    html+=build_table(rows)
+
     return page(html)
 
-@app.route("/admin/search")
+# =========================
+# EXCEL UPLOAD
+# =========================
+@app.route("/admin/upload",methods=["GET","POST"])
 @admin_required
-def admin_search():
-    q = request.args.get("q", "")
+def upload():
+    if request.method=="POST":
+        df=read_file(request.files["file"])
+        df.columns=[str(c).strip() for c in df.columns]
 
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("""
-    SELECT raw_data, status
-    FROM submissions
-    WHERE raw_data::text ILIKE %s
-       OR submission_number ILIKE %s
-       OR status ILIKE %s
-    ORDER BY last_updated DESC
-    """, (f"%{q}%", f"%{q}%", f"%{q}%"))
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
+        for _,row in df.iterrows():
+            raw={c:clean(row[c]) for c in df.columns}
+            sub=normalize_submission(raw.get("Submission #") or raw.get("Submission Number"))
+            if sub:
+                save_row(sub,raw)
 
-    html = f"""
-    <h2>Admin Search</h2>
-    <form>
-        <input name="q" value="{q}" placeholder="Search name, phone, submission, status">
-        <button>Search</button>
-    </form>
-    <br>
-    """
-    html += build_table(rows)
-    return page(html)
+        return page("Excel uploaded")
 
-@app.route("/admin/upload", methods=["GET", "POST"])
+    return page("<form method='post' enctype='multipart/form-data'><input type='file' name='file'><button>Upload</button></form>")
+
+# =========================
+# PDF PARSER
+# =========================
+@app.route("/admin/upload_psa",methods=["GET","POST"])
 @admin_required
-def admin_upload():
-    if request.method == "POST":
-        try:
-            file = request.files.get("file")
-            if not file:
-                return page("<div class='card'>No file uploaded.</div>")
+def upload_psa():
+    if request.method=="POST":
+        import pdfplumber, tempfile
 
-            df = read_file(file)
-            df.columns = [str(c).strip() for c in df.columns]
+        f=request.files["file"]
+        temp=tempfile.NamedTemporaryFile(delete=False)
+        f.save(temp.name)
 
-            count = 0
-            skipped = 0
+        PRIORITY={"Order Arrived":1,"Research & ID":2,"Grading":3,"QA Checks":4,"Complete":5}
+        best={}
 
-            for _, row in df.iterrows():
-                raw = {c: clean(row[c]) for c in df.columns}
-                sub = normalize_submission(raw.get("Submission #") or raw.get("Submission Number"))
+        with pdfplumber.open(temp.name) as pdf:
+            for pdf_page in pdf.pages:
+                tables=pdf_page.extract_tables()
 
-                if sub:
-                    save_row(sub, raw)
-                    count += 1
-                else:
-                    skipped += 1
+                for table in tables:
+                    for row in table:
+                        text=" ".join([str(c or "") for c in row])
 
-            return page(f"""
-            <div class="card">
-                <h2>Excel uploaded</h2>
-                <p>Rows processed: {count}</p>
-                <p>Rows skipped: {skipped}</p>
-                <a href="/admin">Back to Admin</a>
-            </div>
-            """)
-        except Exception:
-            return page(f"<pre>{traceback.format_exc()}</pre>")
+                        m=re.search(r"Sub\s*#(\d+)",text)
+                        if not m:
+                            continue
 
-    return page("""
-    <div class="card">
-        <h2>Upload Excel / CSV</h2>
-        <form method="post" enctype="multipart/form-data">
-            <input type="file" name="file">
-            <button>Upload Excel</button>
-        </form>
-    </div>
-    """)
+                        sub=m.group(1)
 
-@app.route("/admin/upload_psa", methods=["GET", "POST"])
-@admin_required
-def admin_upload_psa():
-    if request.method == "POST":
-        try:
-            import pdfplumber, tempfile
+                        for s in PRIORITY:
+                            if s in text:
+                                if sub not in best or PRIORITY[s]>PRIORITY[best[sub]]:
+                                    best[sub]=s
 
-            file = request.files.get("file")
-            if not file:
-                return page("<div class='card'>No PDF uploaded.</div>")
+        os.unlink(temp.name)
 
-            temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-            file.save(temp.name)
+        conn=get_conn()
+        cur=conn.cursor()
 
-            priority = {
-                "Order Arrived": 1,
-                "Research & ID": 2,
-                "Grading": 3,
-                "QA Checks": 4,
-                "Complete": 5,
-                "Assembly": 4
-            }
+        for sub,status in best.items():
+            cur.execute("""
+            UPDATE submissions
+            SET status=%s
+            WHERE submission_number=%s
+            AND COALESCE(status,'')!='Picked Up'
+            """,(status,sub))
 
-            best = {}
+        conn.commit()
+        cur.close()
+        conn.close()
 
-            with pdfplumber.open(temp.name) as pdf:
-                for pdf_page in pdf.pages:
-                    tables = pdf_page.extract_tables() or []
-                    for table in tables:
-                        for row in table:
-                            row_text = " ".join([str(c or "") for c in row])
+        return page("PDF processed")
 
-                            sub_match = re.search(r"Sub\s*#\s*(\d+)", row_text)
-                            if not sub_match:
-                                continue
-
-                            sub = normalize_submission(sub_match.group(1))
-
-                            for status_name, rank in priority.items():
-                                if status_name in row_text:
-                                    mapped = "QA Checks" if status_name == "Assembly" else status_name
-                                    if sub not in best or priority[mapped] > priority.get(best.get(sub, ""), 0):
-                                        best[sub] = mapped
-                                    break
-
-            os.unlink(temp.name)
-
-            conn = get_conn()
-            cur = conn.cursor()
-
-            updated = 0
-            skipped = 0
-
-            for sub, status in best.items():
-                cur.execute("""
-                UPDATE submissions
-                SET status=%s, last_updated=NOW()
-                WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-                  AND COALESCE(status, '') != 'Picked Up'
-                """, (status, sub))
-
-                if cur.rowcount:
-                    updated += 1
-                else:
-                    skipped += 1
-
-            conn.commit()
-            cur.close()
-            conn.close()
-
-            return page(f"""
-            <div class="card">
-                <h2>PDF processed</h2>
-                <p>Statuses found: {len(best)}</p>
-                <p>Updated: {updated}</p>
-                <p>Skipped: {skipped}</p>
-                <a href="/admin">Back to Admin</a>
-            </div>
-            """)
-        except Exception:
-            return page(f"<pre>{traceback.format_exc()}</pre>")
-
-    return page("""
-    <div class="card">
-        <h2>Upload PSA PDF</h2>
-        <form method="post" enctype="multipart/form-data">
-            <input type="file" name="file">
-            <button>Upload PDF</button>
-        </form>
-    </div>
-    """)
+    return page("<form method='post' enctype='multipart/form-data'><input type='file' name='file'><button>Upload PDF</button></form>")
 
 # =========================
 # CUSTOMER PORTAL
 # =========================
-@app.route("/portal", methods=["GET", "POST"])
+@app.route("/portal",methods=["GET","POST"])
 def portal():
-    if request.method == "POST":
-        session["phone"] = normalize_phone(request.form.get("phone"))
-        session["last"] = clean(request.form.get("last")).lower()
+    if request.method=="POST":
+        session["phone"]=normalize_phone(request.form.get("phone"))
+        session["last"]=request.form.get("last","").lower()
         return redirect("/portal/orders")
 
     return page("""
-    <div class="card" style="max-width:420px">
-        <h2>Customer Portal</h2>
-        <p>Enter your phone and last name</p>
-        <form method="post">
-            <input name="phone" placeholder="Phone number" style="width:95%"><br>
-            <input name="last" placeholder="Last name" style="width:95%"><br>
-            <button>View My Orders</button>
-        </form>
-    </div>
-    """, mode="portal")
+    <h2>Customer Portal</h2>
+    <form method="post">
+        <input name="phone" placeholder="Phone"><br><br>
+        <input name="last" placeholder="Last Name"><br><br>
+        <button>View Orders</button>
+    </form>
+    """,mode="portal")
 
 @app.route("/portal/orders")
-def portal_orders():
-    phone = normalize_phone(session.get("phone"))
-    last = clean(session.get("last")).lower()
+def orders():
+    phone=normalize_phone(session.get("phone"))
+    last=(session.get("last") or "").lower()
 
-    if not phone or not last:
-        return redirect("/portal")
+    conn=get_conn()
+    cur=conn.cursor()
+    cur.execute("SELECT raw_data,status FROM submissions")
+    rows=cur.fetchall()
+    cur.close(); conn.close()
 
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT raw_data, status FROM submissions ORDER BY last_updated DESC")
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-
-    html = "<h2>Your Orders</h2>"
-    found = False
+    html="<h2>Your Orders</h2>"
 
     for r in rows:
-        data = r[0] or {}
-        name = str(get_field(data, ["Customer Name", "Name"])).lower()
-        contact = normalize_phone(get_field(data, ["Phone", "Contact Info", "Phone Number"]))
-        sub = normalize_submission(get_field(data, ["Submission #", "Submission Number"]))
+        data=r[0] or {}
+        status=r[1]
 
-        if (phone in contact or contact in phone) and last in name and sub:
-            found = True
-            status = r[1] or "Submitted"
-            html += f"""
-            <div class="card">
-                <h3>Submission #{sub}</h3>
-                <p>Status: <span class="status">{status}</span></p>
+        name=str(get_field(data,["Customer Name","Name"])).lower()
+        contact=normalize_phone(get_field(data,["Phone","Contact Info"]))
+        sub=get_field(data,["Submission #"])
+
+        if (phone in contact or contact in phone) and last in name:
+            html+=f"""
+            <div style='background:white;padding:15px;margin-bottom:10px'>
+                <b>{name}</b><br>
+                Submission: {sub}<br>
+                Cards: {get_field(data,["Cards","# of Cards"])}<br>
+                Service: {get_field(data,["Service","Service Type"])}<br>
+                Status: {status}
                 {status_bar(status)}
             </div>
             """
 
-    if not found:
-        html += "<div class='card'>No matching orders found</div>"
-
-    return page(html, mode="portal")
-
-@app.route("/portal/logout")
-def portal_logout():
-    session.clear()
-    return redirect("/portal")
+    return page(html,mode="portal")
 
 # =========================
-if __name__ == "__main__":
+if __name__=="__main__":
     app.run()
