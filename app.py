@@ -606,7 +606,6 @@ def admin_upload_psa():
         try:
             import pdfplumber
             import tempfile
-            import time
 
             file = request.files.get("file")
 
@@ -631,8 +630,6 @@ def admin_upload_psa():
 
             best = {}
             pages_read = 0
-            parse_warning = ""
-            started = time.time()
 
             # Status words we accept from PSA, mapped by normalize_psa_status().
             status_pattern = r"Order Arrived|Research\s*&\s*ID|Grading|QA Checks|Assembly|Complete"
@@ -642,12 +639,12 @@ def admin_upload_psa():
                     for pdf_page in pdf.pages:
                         pages_read += 1
 
-                        # Prevent the web request from hanging forever on very large PDFs.
-                        if time.time() - started > 22:
-                            parse_warning = "<p><b>Warning:</b> PDF processing stopped early to prevent a timeout. If counts look low, upload a smaller PDF export.</p>"
-                            break
+                        # Read every page, but protect the app if one page fails extraction.
+                        try:
+                            text = pdf_page.extract_text() or ""
+                        except Exception:
+                            continue
 
-                        text = pdf_page.extract_text() or ""
                         if not text:
                             continue
 
@@ -704,7 +701,7 @@ def admin_upload_psa():
                 cur.execute("""
                 UPDATE submissions
                 SET status=%s, last_updated=NOW()
-                WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+                WHERE REGEXP_REPLACE(submission_number, '\D', '', 'g')=%s
                   AND COALESCE(status, '') NOT IN ('Picked Up', 'Delivered to Us')
                 """, (status, sub))
 
@@ -717,7 +714,7 @@ def admin_upload_psa():
             cur.close()
             conn.close()
 
-            warning = parse_warning
+            warning = ""
             if len(best) == 0:
                 warning += """
                 <p><b>Warning:</b> No PSA statuses were found. This usually means the PDF is not the PSA Orders page, or the PDF is image-only / unreadable text.</p>
