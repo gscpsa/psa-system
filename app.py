@@ -9,6 +9,9 @@ app.secret_key = os.getenv("SECRET_KEY", "change-this-secret")
 DATABASE_URL = os.getenv("DATABASE_URL")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 
+# =========================
+# DB
+# =========================
 def get_conn():
     return psycopg2.connect(DATABASE_URL, sslmode="require")
 
@@ -38,6 +41,9 @@ def setup():
 def err(e):
     return f"<pre>{traceback.format_exc()}</pre>"
 
+# =========================
+# SECURITY
+# =========================
 def admin_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
@@ -46,6 +52,9 @@ def admin_required(f):
         return f(*args, **kwargs)
     return wrapper
 
+# =========================
+# HELPERS
+# =========================
 def clean(v):
     try:
         if pd.isna(v):
@@ -80,7 +89,6 @@ def row_is_picked_up(raw):
 
 def read_file(file):
     name = (file.filename or "").lower()
-
     if name.endswith(("xlsx", "xls")):
         return pd.read_excel(file)
 
@@ -98,6 +106,7 @@ def save_row(sub, raw):
 
     picked_up = row_is_picked_up(raw)
 
+    # remove Excel-provided status keys (avoid confusion)
     for k in list(raw.keys()):
         if "status" in str(k).lower():
             del raw[k]
@@ -127,7 +136,25 @@ def save_row(sub, raw):
     cur.close()
     conn.close()
 
-def page(content):
+# =========================
+# UI (ADMIN vs PORTAL)
+# =========================
+def page(content, mode="admin"):
+    if mode == "admin":
+        nav = """
+        <a href="/admin">Admin</a>
+        <a href="/admin/search">Search</a>
+        <a href="/admin/upload">Upload Excel</a>
+        <a href="/admin/upload_psa">Upload PDF</a>
+        <a href="/portal">Customer Portal</a>
+        <a href="/admin/logout">Logout</a>
+        """
+    else:
+        nav = """
+        <a href="/portal">Home</a>
+        <a href="/portal/logout">Logout</a>
+        """
+
     return f"""
     <html>
     <head>
@@ -153,14 +180,7 @@ def page(content):
     <body>
         <div class="topbar">
             <div><b>PSA Tracking System</b></div>
-            <div class="links">
-                <a href="/admin">Admin</a>
-                <a href="/admin/search">Search</a>
-                <a href="/admin/upload">Upload Excel</a>
-                <a href="/admin/upload_psa">Upload PDF</a>
-                <a href="/portal">Customer Portal</a>
-                <a href="/admin/logout">Logout</a>
-            </div>
+            <div class="links">{nav}</div>
         </div>
         <div class="container">{content}</div>
     </body>
@@ -224,6 +244,9 @@ def status_bar(status):
     html += "</div>"
     return html
 
+# =========================
+# ADMIN
+# =========================
 @app.route("/")
 def root():
     return redirect("/admin")
@@ -381,7 +404,6 @@ def admin_upload_psa():
             with pdfplumber.open(temp.name) as pdf:
                 for pdf_page in pdf.pages:
                     tables = pdf_page.extract_tables() or []
-
                     for table in tables:
                         for row in table:
                             row_text = " ".join([str(c or "") for c in row])
@@ -395,8 +417,7 @@ def admin_upload_psa():
                             for status_name, rank in priority.items():
                                 if status_name in row_text:
                                     mapped = "QA Checks" if status_name == "Assembly" else status_name
-                                    mapped_rank = priority[mapped]
-                                    if sub not in best or mapped_rank > priority[best[sub]]:
+                                    if sub not in best or priority[mapped] > priority.get(best.get(sub, ""), 0):
                                         best[sub] = mapped
                                     break
 
@@ -428,9 +449,9 @@ def admin_upload_psa():
             return page(f"""
             <div class="card">
                 <h2>PDF processed</h2>
-                <p>Statuses found in PDF: {len(best)}</p>
-                <p>Status updates applied: {updated}</p>
-                <p>Skipped picked-up or unmatched: {skipped}</p>
+                <p>Statuses found: {len(best)}</p>
+                <p>Updated: {updated}</p>
+                <p>Skipped: {skipped}</p>
                 <a href="/admin">Back to Admin</a>
             </div>
             """)
@@ -447,6 +468,9 @@ def admin_upload_psa():
     </div>
     """)
 
+# =========================
+# CUSTOMER PORTAL
+# =========================
 @app.route("/portal", methods=["GET", "POST"])
 def portal():
     if request.method == "POST":
@@ -457,17 +481,17 @@ def portal():
     return page("""
     <div class="card" style="max-width:420px">
         <h2>Customer Portal</h2>
-        <p>Enter the phone number and last name used on your submission.</p>
+        <p>Enter your phone and last name</p>
         <form method="post">
             <input name="phone" placeholder="Phone number" style="width:95%"><br>
             <input name="last" placeholder="Last name" style="width:95%"><br>
             <button>View My Orders</button>
         </form>
     </div>
-    """)
+    """, mode="portal")
 
 @app.route("/portal/orders")
-def customer_orders():
+def portal_orders():
     phone = normalize_phone(session.get("phone"))
     last = clean(session.get("last")).lower()
 
@@ -481,52 +505,36 @@ def customer_orders():
     cur.close()
     conn.close()
 
-    grouped = {}
+    html = "<h2>Your Orders</h2>"
+    found = False
 
     for r in rows:
         data = r[0] or {}
         name = str(get_field(data, ["Customer Name", "Name"])).lower()
-        contact = normalize_phone(get_field(data, ["Contact Info", "Phone", "Phone Number"]))
+        contact = normalize_phone(get_field(data, ["Phone", "Contact Info", "Phone Number"]))
         sub = normalize_submission(get_field(data, ["Submission #", "Submission Number"]))
 
-        phone_match = bool(contact) and (phone in contact or contact in phone)
-        name_match = bool(last) and last in name
+        if (phone in contact or contact in phone) and last in name and sub:
+            found = True
+            status = r[1] or "Submitted"
+            html += f"""
+            <div class="card">
+                <h3>Submission #{sub}</h3>
+                <p>Status: <span class="status">{status}</span></p>
+                {status_bar(status)}
+            </div>
+            """
 
-        if phone_match and name_match and sub:
-            if sub not in grouped:
-                grouped[sub] = (data, r[1] or "Submitted")
+    if not found:
+        html += "<div class='card'>No matching orders found</div>"
 
-    html = "<h2>Your Orders</h2>"
-
-    if not grouped:
-        html += "<div class='card'>No matching orders found. Check phone number and last name.</div>"
-        return page(html)
-
-    for sub, (data, status) in grouped.items():
-        service = get_field(data, ["Service Type", "Service"])
-        cards = get_field(data, ["# Of Cards", "# of Cards", "Cards"])
-        date = get_field(data, ["S", "Submission Date", "Date"])
-        display_status = status or "Submitted"
-
-        html += f"""
-        <div class="card">
-            <h3>Submission #{sub}</h3>
-            <p><b>Status:</b> <span class="status">{display_status}</span></p>
-            <p><b>Service:</b> {service}</p>
-            <p><b>Cards:</b> {cards}</p>
-            <p><b>Submission Date:</b> {date}</p>
-            {status_bar(display_status)}
-        </div>
-        """
-
-    html += "<a href='/portal/logout'>Log out</a>"
-    return page(html)
+    return page(html, mode="portal")
 
 @app.route("/portal/logout")
 def portal_logout():
-    session.pop("phone", None)
-    session.pop("last", None)
+    session.clear()
     return redirect("/portal")
 
+# =========================
 if __name__ == "__main__":
     app.run()
