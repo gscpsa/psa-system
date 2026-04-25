@@ -803,6 +803,38 @@ def admin_upload_psa():
                     skipped += 1
 
             conn.commit()
+
+            verification_rows = []
+            mismatch_count = 0
+            checked_count = 0
+
+            # Show the first 150 parsed submissions so verification is clearly visible after upload.
+            for sub, parsed_status in list(best.items())[:150]:
+                cur.execute("""
+                SELECT status FROM submissions
+                WHERE REGEXP_REPLACE(submission_number, '\D', '', 'g')=%s
+                """, (sub,))
+
+                row = cur.fetchone()
+                db_status = row[0] if row else "NOT FOUND"
+                is_match = (db_status == parsed_status)
+                match = "MATCH" if is_match else "MISMATCH"
+
+                checked_count += 1
+                if not is_match:
+                    mismatch_count += 1
+
+                result_style = "color:#198754;font-weight:bold;" if is_match else "color:#dc3545;font-weight:bold;"
+
+                verification_rows.append(
+                    f"<tr>"
+                    f"<td>{sub}</td>"
+                    f"<td>{parsed_status}</td>"
+                    f"<td>{db_status}</td>"
+                    f"<td style='{result_style}'>{match}</td>"
+                    f"</tr>"
+                )
+
             cur.close()
             conn.close()
 
@@ -812,15 +844,43 @@ def admin_upload_psa():
                 <p><b>Warning:</b> No PSA statuses were found. This usually means the PDF is not the PSA Orders page, or the PDF is image-only / unreadable text.</p>
                 """
 
+            if verification_rows:
+                verification_html = "".join(verification_rows)
+            else:
+                verification_html = """
+                <tr>
+                    <td colspan="4">No verification rows were created because no matching parsed submissions were found.</td>
+                </tr>
+                """
+
             return page(f"""
-            <div class="card">
+            <div class="card" style="border:3px solid #198754;">
                 <h2>PDF processed</h2>
                 {warning}
-                <p>Pages read: {pages_read}</p>
-                <p>Statuses found: {len(best)}</p>
-                <p>Updated: {updated}</p>
-                <p>Skipped: {skipped}</p>
-                <a href="/admin">Back to Admin</a>
+                <p><b>Pages read:</b> {pages_read}</p>
+                <p><b>Statuses found:</b> {len(best)}</p>
+                <p><b>Updated:</b> {updated}</p>
+                <p><b>Skipped:</b> {skipped}</p>
+
+                <hr>
+
+                <h2 style="color:#0f5132;">VERIFICATION RESULTS</h2>
+                <p><b>Verification rows shown:</b> {checked_count}</p>
+                <p><b>Mismatches in sample:</b> {mismatch_count}</p>
+                <p>This compares what the PDF parser read against what is actually stored in the database after upload.</p>
+
+                <table>
+                    <tr>
+                        <th>Submission #</th>
+                        <th>PDF Parsed Status</th>
+                        <th>Database Status After Upload</th>
+                        <th>Result</th>
+                    </tr>
+                    {verification_html}
+                </table>
+
+                <br>
+                <a class="btn" href="/admin">Back to Admin</a>
             </div>
             """)
 
