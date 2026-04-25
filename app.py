@@ -677,8 +677,8 @@ def admin_upload_psa():
                         if not text:
                             continue
 
-                        # Strict parser: split the page into one isolated block per Sub #.
-                        # This prevents row bleed where the next submission's status lands on the previous submission.
+                        # Strict parser: split the page into one block per submission.
+                        # This prevents row bleed, where the next submission's status lands on the previous submission.
                         blocks = re.split(r"(?=Sub\s*#\s*\d+)", text, flags=re.IGNORECASE)
 
                         for block in blocks:
@@ -689,15 +689,15 @@ def admin_upload_psa():
                             sub = normalize_submission(sub_match.group(1))
 
                             status = None
-                            for status_text, status_regex in [
-                                ("Order Arrived", r"Order\s+Arrived"),
-                                ("Research & ID", r"Research\s*&\s*ID"),
-                                ("Grading", r"Grading"),
-                                ("QA Checks", r"QA\s+Checks"),
-                                ("Assembly", r"Assembly"),
-                                ("Complete", r"Complete"),
+                            for status_text in [
+                                "Order Arrived",
+                                "Research & ID",
+                                "Grading",
+                                "QA Checks",
+                                "Assembly",
+                                "Complete"
                             ]:
-                                if re.search(status_regex, block, re.IGNORECASE):
+                                if re.search(status_text, block, re.IGNORECASE):
                                     status = normalize_psa_status(status_text)
                                     break
 
@@ -707,7 +707,6 @@ def admin_upload_psa():
                             # Allow PSA PDF uploads to correct an earlier wrong PSA status.
                             # Final internal statuses are still protected by the SQL WHERE clause below.
                             best[sub] = status
-
             finally:
                 try:
                     os.unlink(temp.name)
