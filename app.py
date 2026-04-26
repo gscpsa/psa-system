@@ -664,6 +664,7 @@ def admin_upload_psa():
             file.save(temp.name)
 
             best = {}
+            ac_map = {}
             pages_read = 0
 
             status_regex = re.compile(
@@ -746,6 +747,11 @@ def admin_upload_psa():
 
                         if status:
                             best[sub] = status
+                            # Extract Arrived / Completed
+                            block_text = " ".join(search_parts)
+                            ac_match = re.search(r"(Completed\s+[A-Za-z]{3}\s+\d{1,2},\s+\d{4}|[A-Za-z]{3}\s+\d{1,2},\s+\d{4})", block_text)
+                            if ac_match:
+                                ac_map[sub] = ac_match.group(0)
 
                     i += 1
 
@@ -799,7 +805,14 @@ def admin_upload_psa():
             for sub, status in best.items():
                 cur.execute("""
                 UPDATE submissions
-                SET status=%s, last_updated=NOW()
+                SET status=%s,
+                    raw_data = jsonb_set(
+                        COALESCE(raw_data, '{}'::jsonb),
+                        '{Arrived / Completed}',
+                        to_jsonb(%s::text),
+                        true
+                    ),
+                    last_updated=NOW()
                 WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
                   AND COALESCE(status, '') NOT IN ('Picked Up', 'Delivered to Us')
                 """, (status, sub))
