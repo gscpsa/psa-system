@@ -754,9 +754,17 @@ def admin_upload_psa():
                             best[sub] = status
                             # Extract Arrived / Completed
                             block_text = " ".join(search_parts)
-                            ac_match = re.search(r"(Completed\s+[A-Za-z]{3}\s+\d{1,2},\s+\d{4}|[A-Za-z]{3}\s+\d{1,2},\s+\d{4})", block_text)
-                            if ac_match:
-                                ac_map[sub] = ac_match.group(0)
+
+                            # Fix broken PDF line breaks (Apr 22, \n 2026)
+                            block_text = re.sub(r",\s+(\d{4})", r", \1", block_text)
+
+                            matches = re.findall(
+                                r"(Completed\s+[A-Za-z]{3}\s+\d{1,2},\s+\d{4}|Est\.\s+by\s+[A-Za-z]{3}\s+\d{1,2},\s+\d{4}|[A-Za-z]{3}\s+\d{1,2},\s+\d{4})",
+                                block_text
+                            )
+
+                            if matches:
+                                ac_map[sub] = " | ".join(matches)
 
                     i += 1
 
