@@ -400,6 +400,7 @@ def should_hide_column(column_name):
 def build_table(rows):
     keys = []
     clean_rows = []
+    force_keys = ["Arrived / Completed"]
 
     for r in rows:
         data = r[0] or {}
@@ -426,6 +427,10 @@ def build_table(rows):
             keys.append("PSA Status")
 
         clean_rows.append(row)
+
+    for forced_key in force_keys:
+        if forced_key not in keys:
+            keys.append(forced_key)
 
     if not clean_rows:
         return "<div class='card'>No records found.</div>"
@@ -815,7 +820,7 @@ def admin_upload_psa():
                     last_updated=NOW()
                 WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
                   AND COALESCE(status, '') NOT IN ('Picked Up', 'Delivered to Us')
-                """, (status, sub))
+                """, (status, ac_map.get(sub, ""), sub))
 
                 if cur.rowcount:
                     updated += 1
@@ -984,6 +989,7 @@ def portal_orders():
         cards = get_field(data, ["# Of Cards", "# of Cards", "Cards"])
         service = get_field(data, ["Service Type", "Service"])
         date = get_field(data, ["S", "Submission Date", "Date"])
+        arrived_completed = get_field(data, ["Arrived / Completed"])
         display_status = status or "Submitted"
 
         html += f"""
@@ -991,6 +997,7 @@ def portal_orders():
             <h3>{customer_name}</h3>
             <p><b>Submission #:</b> {sub}</p>
             <p><b>Status:</b> <span class="status">{display_status}</span></p>
+            <p><b>Arrived / Completed:</b> {arrived_completed}</p>
             <p><b>Cards:</b> {cards}</p>
             <p><b>Service:</b> {service}</p>
             <p><b>Submission Date:</b> {date}</p>
