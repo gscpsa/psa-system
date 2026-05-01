@@ -415,7 +415,7 @@ def build_table(rows):
             if should_hide_column(key_text):
                 continue
 
-            display_key = "Submission Date" if key_text in ["S", "fand"] else key_text
+            display_key = "Submission Date" if key_text in ["S", "ƒand"] else key_text
             row[display_key] = v
 
             if display_key not in keys:
@@ -457,7 +457,7 @@ def build_table(rows):
 
 def get_sort_date(row):
     data = row[0] or {}
-    date_value = get_field(data, ["Submission Date", "S", "fand", "Date"])
+    date_value = get_field(data, ["Submission Date", "S", "ƒand", "Date"])
 
     try:
         if date_value:
@@ -996,7 +996,7 @@ def portal_orders():
         customer_name = get_field(data, ["Customer Name", "Name"])
         cards = get_field(data, ["# Of Cards", "# of Cards", "Cards"])
         service = get_field(data, ["Service Type", "Service"])
-        date = get_field(data, ["S", "fand", "Submission Date", "Date"])
+        date = get_field(data, ["S", "ƒand", "Submission Date", "Date"])
         arrived_completed = get_field(data, ["Arrived / Completed"])
         display_status = status or "Submitted"
 
