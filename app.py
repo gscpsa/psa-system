@@ -415,7 +415,7 @@ def build_table(rows):
             if should_hide_column(key_text):
                 continue
 
-            display_key = "Submission Date" if key_text == "S" else key_text
+            display_key = "Submission Date" if key_text in ["S", "fand"] else key_text
             row[display_key] = v
 
             if display_key not in keys:
@@ -457,7 +457,7 @@ def build_table(rows):
 
 def get_sort_date(row):
     data = row[0] or {}
-    date_value = get_field(data, ["Submission Date", "S", "Date"])
+    date_value = get_field(data, ["Submission Date", "S", "fand", "Date"])
 
     try:
         if date_value:
@@ -707,7 +707,7 @@ def admin_upload_psa():
                             search_parts.append(after_sub_text)
 
                         j = i + 1
-                        while j < len(lines) and len(search_parts) < 12:
+                        while j < len(lines):
                             next_line = lines[j].strip()
 
                             # Stop if the next submission starts before a status is found.
@@ -730,7 +730,7 @@ def admin_upload_psa():
                             sub = normalize_submission(number_match.group(1))
 
                             j = i + 2
-                            while j < len(lines) and len(search_parts) < 12:
+                            while j < len(lines):
                                 next_line = lines[j].strip()
 
                                 if re.search(r"Sub\s*#\s*\d+", next_line, re.IGNORECASE):
@@ -996,7 +996,7 @@ def portal_orders():
         customer_name = get_field(data, ["Customer Name", "Name"])
         cards = get_field(data, ["# Of Cards", "# of Cards", "Cards"])
         service = get_field(data, ["Service Type", "Service"])
-        date = get_field(data, ["S", "Submission Date", "Date"])
+        date = get_field(data, ["S", "fand", "Submission Date", "Date"])
         arrived_completed = get_field(data, ["Arrived / Completed"])
         display_status = status or "Submitted"
 
