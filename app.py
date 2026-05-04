@@ -225,254 +225,299 @@ def page(content, mode="admin"):
     <html>
     <head>
     <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+
     <style>
-        * {{
-            box-sizing: border-box;
-        }}
+    * {{
+        box-sizing: border-box;
+    }}
 
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-            margin:0;
-            background: linear-gradient(135deg, #0f5132 0%, #198754 45%, #e8f5ee 100%);
-            color:#111827;
-            min-height:100vh;
-        }}
+    body {{
+        margin:0;
+        font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+        background:
+            radial-gradient(circle at top left, rgba(0,255,156,0.18), transparent 32%),
+            radial-gradient(circle at top right, rgba(0,207,255,0.16), transparent 28%),
+            linear-gradient(135deg, #07130f 0%, #0b0f0d 48%, #020403 100%);
+        color:#f8fafc;
+        min-height:100vh;
+    }}
 
+    .topbar {{
+        padding:18px 26px;
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        border-bottom:1px solid rgba(255,255,255,0.08);
+        background:rgba(0,0,0,0.22);
+        backdrop-filter:blur(14px);
+        position:sticky;
+        top:0;
+        z-index:20;
+    }}
+
+    .brand {{
+        font-size:22px;
+        font-weight:800;
+        letter-spacing:1px;
+        color:#00ff9c;
+        text-transform:uppercase;
+        text-shadow:0 0 18px rgba(0,255,156,0.35);
+    }}
+
+    .links {{
+        display:flex;
+        gap:10px;
+        flex-wrap:wrap;
+        justify-content:flex-end;
+    }}
+
+    .links a {{
+        color:#d1d5db;
+        text-decoration:none;
+        font-size:13px;
+        font-weight:700;
+        padding:8px 10px;
+        border-radius:999px;
+        background:rgba(255,255,255,0.05);
+        border:1px solid rgba(255,255,255,0.07);
+        transition:0.18s ease;
+    }}
+
+    .links a:hover {{
+        color:#ffffff;
+        background:rgba(0,255,156,0.12);
+        border-color:rgba(0,255,156,0.35);
+        transform:translateY(-1px);
+    }}
+
+    .container {{
+        width:100%;
+        padding:28px;
+        overflow-x:auto;
+    }}
+
+    body:has(.card form) .container {{
+        display:flex;
+        justify-content:center;
+        align-items:center;
+        min-height:calc(100vh - 85px);
+    }}
+
+    .card {{
+        background:rgba(255,255,255,0.075);
+        border:1px solid rgba(255,255,255,0.12);
+        padding:28px;
+        margin-bottom:18px;
+        border-radius:20px;
+        box-shadow:0 28px 80px rgba(0,0,0,0.48);
+        backdrop-filter:blur(18px);
+        color:#f8fafc;
+    }}
+
+    body:has(.card form) .card {{
+        width:100%;
+        max-width:430px;
+    }}
+
+    h2 {{
+        margin:0 0 10px 0;
+        color:#ffffff;
+        letter-spacing:-0.02em;
+    }}
+
+    h3 {{
+        color:#ffffff;
+    }}
+
+    p {{
+        color:#cbd5e1;
+        line-height:1.45;
+    }}
+
+    a {{
+        color:#00ff9c;
+    }}
+
+    input {{
+        width:100%;
+        padding:13px 14px;
+        margin:7px 0 12px 0;
+        border-radius:12px;
+        border:1px solid rgba(255,255,255,0.14);
+        background:rgba(255,255,255,0.065);
+        color:#ffffff;
+        font-size:15px;
+        outline:none;
+        transition:0.18s ease;
+    }}
+
+    input::placeholder {{
+        color:#94a3b8;
+    }}
+
+    input:focus {{
+        border-color:#00ff9c;
+        background:rgba(255,255,255,0.095);
+        box-shadow:0 0 0 4px rgba(0,255,156,0.14);
+    }}
+
+    button {{
+        width:100%;
+        padding:13px 15px;
+        border:none;
+        border-radius:12px;
+        background:linear-gradient(90deg, #00ff9c, #00cfff);
+        color:#03120c;
+        font-weight:900;
+        font-size:15px;
+        cursor:pointer;
+        transition:0.18s ease;
+        box-shadow:0 14px 32px rgba(0,255,156,0.22);
+    }}
+
+    button:hover {{
+        transform:translateY(-2px);
+        box-shadow:0 18px 42px rgba(0,255,156,0.34);
+    }}
+
+    .btn {{
+        display:inline-block;
+        padding:10px 13px;
+        background:rgba(0,255,156,0.13);
+        color:#ffffff;
+        text-decoration:none;
+        border-radius:999px;
+        margin:5px 8px 15px 0;
+        font-weight:800;
+        border:1px solid rgba(0,255,156,0.32);
+        transition:0.18s ease;
+    }}
+
+    .btn:hover {{
+        background:rgba(0,255,156,0.22);
+        transform:translateY(-1px);
+    }}
+
+    table {{
+        width:100%;
+        border-collapse:separate;
+        border-spacing:0;
+        background:rgba(255,255,255,0.94);
+        color:#111827;
+        font-size:12px;
+        table-layout:auto;
+        border-radius:14px;
+        overflow:hidden;
+        box-shadow:0 20px 60px rgba(0,0,0,0.22);
+    }}
+
+    th {{
+        background:#0f5132;
+        color:white;
+        padding:8px;
+        text-align:left;
+        position:sticky;
+        top:0;
+        white-space:nowrap;
+        z-index:2;
+    }}
+
+    td {{
+        padding:7px 8px;
+        border-bottom:1px solid #e5e7eb;
+        white-space:nowrap;
+        max-width:180px;
+        overflow:hidden;
+        text-overflow:ellipsis;
+        background:white;
+    }}
+
+    td.notes-col {{
+        white-space:normal;
+        max-width:220px;
+        min-width:160px;
+        overflow-wrap:break-word;
+        word-break:break-word;
+    }}
+
+    tr:hover td {{
+        background:#eef6f2;
+    }}
+
+    .status {{
+        font-weight:900;
+        color:#198754;
+    }}
+
+    .bar {{
+        display:flex;
+        gap:6px;
+        flex-wrap:wrap;
+        margin-top:12px;
+    }}
+
+    .step {{
+        padding:7px 11px;
+        border-radius:999px;
+        background:rgba(255,255,255,0.13);
+        border:1px solid rgba(255,255,255,0.12);
+        color:#d1d5db;
+        font-size:13px;
+    }}
+
+    .done {{
+        background:rgba(0,255,156,0.16);
+        color:#00ff9c;
+        font-weight:800;
+        border-color:rgba(0,255,156,0.34);
+    }}
+
+    .current {{
+        background:linear-gradient(90deg, #00ff9c, #00cfff);
+        color:#03120c;
+        font-weight:900;
+        border-color:transparent;
+    }}
+
+    pre {{
+        background:#020617;
+        color:#e5e7eb;
+        padding:12px;
+        overflow:auto;
+        border-radius:12px;
+        font-size:12px;
+        border:1px solid rgba(255,255,255,0.10);
+    }}
+
+    @media (max-width: 760px) {{
         .topbar {{
-            background:rgba(15,81,50,.96);
-            color:white;
-            padding:18px 24px;
-            display:flex;
-            justify-content:space-between;
-            align-items:center;
-            box-shadow:0 8px 24px rgba(0,0,0,.18);
-        }}
-
-        .brand {{
-            font-weight:800;
-            font-size:22px;
-            letter-spacing:.2px;
+            align-items:flex-start;
+            gap:14px;
+            flex-direction:column;
+            padding:16px;
         }}
 
         .links {{
-            display:flex;
-            gap:12px;
-            flex-wrap:wrap;
-            justify-content:flex-end;
-        }}
-
-        .links a {{
-            color:white;
-            text-decoration:none;
-            font-weight:700;
-            font-size:14px;
-            opacity:.92;
-            padding:8px 10px;
-            border-radius:999px;
-            background:rgba(255,255,255,.08);
-        }}
-
-        .links a:hover {{
-            opacity:1;
-            background:rgba(255,255,255,.16);
+            justify-content:flex-start;
         }}
 
         .container {{
-            padding:28px;
-            overflow-x:auto;
-            min-height:calc(100vh - 74px);
+            padding:18px;
         }}
 
-        table {{
-            width:100%;
-            border-collapse:collapse;
-            background:white;
-            font-size:12px;
-            table-layout:auto;
-            border-radius:14px;
-            overflow:hidden;
-            box-shadow:0 16px 38px rgba(0,0,0,.14);
+        .brand {{
+            font-size:19px;
         }}
-
-        th {{
-            background:#0f5132;
-            color:white;
-            padding:8px;
-            text-align:left;
-            position:sticky;
-            top:0;
-            white-space:nowrap;
-        }}
-
-        td {{
-            padding:8px;
-            border-bottom:1px solid #e5e7eb;
-            white-space:nowrap;
-            max-width:180px;
-            overflow:hidden;
-            text-overflow:ellipsis;
-        }}
-
-        td.notes-col {{
-            white-space:normal;
-            max-width:220px;
-            min-width:160px;
-            overflow-wrap:break-word;
-            word-break:break-word;
-        }}
-
-        tr:hover {{
-            background:#eef6f2;
-        }}
-
-        .status {{
-            font-weight:bold;
-            color:#198754;
-        }}
-
-        .card {{
-            background:white;
-            padding:28px;
-            margin:0 auto 18px auto;
-            border-radius:18px;
-            box-shadow:0 18px 45px rgba(0,0,0,.18);
-            border:1px solid rgba(255,255,255,.6);
-        }}
-
-        .container > .card:only-child {{
-            max-width:460px;
-            margin-top:42px;
-        }}
-
-        h2 {{
-            margin-top:0;
-            margin-bottom:10px;
-            font-size:28px;
-            letter-spacing:-.4px;
-        }}
-
-        h3 {{
-            margin-top:0;
-            font-size:21px;
-        }}
-
-        p {{
-            color:#4b5563;
-            line-height:1.45;
-        }}
-
-        .btn {{
-            display:inline-block;
-            padding:10px 14px;
-            background:#198754;
-            color:white;
-            text-decoration:none;
-            border-radius:9px;
-            margin:5px 8px 15px 0;
-            font-weight:bold;
-            box-shadow:0 8px 18px rgba(25,135,84,.22);
-        }}
-
-        .btn:hover {{
-            background:#157347;
-        }}
-
-        input, button {{
-            padding:12px;
-            margin:6px 0;
-            border-radius:9px;
-            font-size:15px;
-        }}
-
-        input {{
-            width:100%;
-            border:1px solid #d1d5db;
-            background:#fbfbfb;
-        }}
-
-        input:focus {{
-            border-color:#198754;
-            outline:none;
-            box-shadow:0 0 0 3px rgba(25,135,84,.16);
-            background:white;
-        }}
-
-        button {{
-            width:100%;
-            border:none;
-            background:#198754;
-            color:white;
-            font-weight:800;
-            cursor:pointer;
-            box-shadow:0 10px 22px rgba(25,135,84,.28);
-        }}
-
-        button:hover {{
-            background:#157347;
-            transform:translateY(-1px);
-        }}
-
-        .bar {{
-            display:flex;
-            gap:6px;
-            flex-wrap:wrap;
-            margin-top:10px;
-        }}
-
-        .step {{
-            padding:7px 11px;
-            border-radius:20px;
-            background:#e5e7eb;
-            font-size:13px;
-        }}
-
-        .done {{
-            background:#d1e7dd;
-            color:#0f5132;
-            font-weight:bold;
-        }}
-
-        .current {{
-            background:#198754;
-            color:white;
-            font-weight:bold;
-        }}
-
-        pre {{
-            background:#111827;
-            color:white;
-            padding:12px;
-            overflow:auto;
-            border-radius:8px;
-            font-size:12px;
-        }}
-
-        @media (max-width: 700px) {{
-            .topbar {{
-                align-items:flex-start;
-                flex-direction:column;
-                gap:12px;
-            }}
-
-            .links {{
-                justify-content:flex-start;
-            }}
-
-            .container {{
-                padding:18px;
-            }}
-
-            .card {{
-                padding:22px;
-            }}
-        }}
+    }}
     </style>
     </head>
+
     <body>
         <div class="topbar">
             <div class="brand">Giant Sports Cards</div>
             <div class="links">{nav}</div>
         </div>
+
         <div class="container">{content}</div>
     </body>
     </html>
@@ -535,7 +580,7 @@ def build_table(rows):
             if should_hide_column(key_text):
                 continue
 
-            display_key = "Submission Date" if key_text == "S" else key_text
+            display_key = "Submission Date" if key_text in ["S", "ƒand"] else key_text
             row[display_key] = v
 
             if display_key not in keys:
@@ -577,7 +622,7 @@ def build_table(rows):
 
 def get_sort_date(row):
     data = row[0] or {}
-    date_value = get_field(data, ["Submission Date", "S", "Date"])
+    date_value = get_field(data, ["Submission Date", "S", "ƒand", "Date"])
 
     try:
         if date_value:
@@ -1116,7 +1161,7 @@ def portal_orders():
         customer_name = get_field(data, ["Customer Name", "Name"])
         cards = get_field(data, ["# Of Cards", "# of Cards", "Cards"])
         service = get_field(data, ["Service Type", "Service"])
-        date = get_field(data, ["S", "Submission Date", "Date"])
+        date = get_field(data, ["S", "ƒand", "Submission Date", "Date"])
         arrived_completed = get_field(data, ["Arrived / Completed"])
         display_status = status or "Submitted"
 
