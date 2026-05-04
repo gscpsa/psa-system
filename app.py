@@ -259,9 +259,9 @@ def page(content, mode="admin"):
         font-size:22px;
         font-weight:800;
         letter-spacing:1px;
-        color:#00ff9c;
+        color:#e5e7eb;
         text-transform:uppercase;
-        text-shadow:0 0 18px rgba(0,255,156,0.35);
+        
     }}
 
     .links {{
@@ -335,7 +335,7 @@ def page(content, mode="admin"):
     }}
 
     a {{
-        color:#00ff9c;
+        color:#e5e7eb;
     }}
 
     input {{
@@ -356,7 +356,7 @@ def page(content, mode="admin"):
     }}
 
     input:focus {{
-        border-color:#00ff9c;
+        border-color:#e5e7eb;
         background:rgba(255,255,255,0.095);
         box-shadow:0 0 0 4px rgba(0,255,156,0.14);
     }}
@@ -366,35 +366,35 @@ def page(content, mode="admin"):
         padding:13px 15px;
         border:none;
         border-radius:12px;
-        background:linear-gradient(90deg, #00ff9c, #00cfff);
+        background:linear-gradient(90deg, #e5e7eb, #198754);
         color:#03120c;
         font-weight:900;
         font-size:15px;
         cursor:pointer;
         transition:0.18s ease;
-        box-shadow:0 14px 32px rgba(0,255,156,0.22);
+        box-shadow:0 14px 32px rgba(0,0,0,0.3);
     }}
 
     button:hover {{
         transform:translateY(-2px);
-        box-shadow:0 18px 42px rgba(0,255,156,0.34);
+        box-shadow:0 18px 42px rgba(0,0,0,0.35);
     }}
 
     .btn {{
         display:inline-block;
         padding:10px 13px;
-        background:rgba(0,255,156,0.13);
+        background:rgba(255,255,255,0.08);
         color:#ffffff;
         text-decoration:none;
         border-radius:999px;
         margin:5px 8px 15px 0;
         font-weight:800;
-        border:1px solid rgba(0,255,156,0.32);
+        border:1px solid rgba(255,255,255,0.15);
         transition:0.18s ease;
     }}
 
     .btn:hover {{
-        background:rgba(0,255,156,0.22);
+        background:rgba(0,0,0,0.3);
         transform:translateY(-1px);
     }}
 
@@ -467,13 +467,13 @@ def page(content, mode="admin"):
 
     .done {{
         background:rgba(0,255,156,0.16);
-        color:#00ff9c;
+        color:#e5e7eb;
         font-weight:800;
-        border-color:rgba(0,255,156,0.34);
+        border-color:rgba(0,0,0,0.35);
     }}
 
     .current {{
-        background:linear-gradient(90deg, #00ff9c, #00cfff);
+        background:linear-gradient(90deg, #e5e7eb, #198754);
         color:#03120c;
         font-weight:900;
         border-color:transparent;
