@@ -205,6 +205,7 @@ def save_row(sub, raw):
 # =========================
 # UI
 # =========================
+
 def page(content, mode="admin"):
     if mode == "admin":
         nav = """
@@ -226,259 +227,121 @@ def page(content, mode="admin"):
     <head>
     <meta name='viewport' content='width=device-width, initial-scale=1.0'>
     <style>
-        * {{
-            box-sizing:border-box;
-        }}
+    body {{
+        margin:0;
+        font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto;
+        background:#0b0f0d;
+    }}
 
-        body {{
-            font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-            margin:0;
-            min-height:100vh;
-            background:
-                linear-gradient(rgba(0,0,0,0.42), rgba(0,0,0,0.56)),
-                url("/static/images/bg.png");
-            background-size:cover;
-            background-position:center;
-            background-attachment:fixed;
-            color:#111827;
-        }}
+    .topbar {{
+        background:#0f5132;
+        color:white;
+        padding:14px 20px;
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+    }}
 
-        .topbar {{
-            background:rgba(15,81,50,0.94);
-            color:white;
-            padding:16px 22px;
-            display:flex;
-            justify-content:space-between;
-            align-items:center;
-            box-shadow:0 8px 30px rgba(0,0,0,0.22);
-            backdrop-filter:blur(8px);
-        }}
+    .brand {{
+        display:flex;
+        align-items:center;
+        gap:10px;
+        font-weight:800;
+    }}
 
-        .brand {{
-            font-weight:800;
-            font-size:21px;
-            letter-spacing:.3px;
-        }}
+    .brand img {{
+        width:36px;
+    }}
 
-        .links {{
-            display:flex;
-            flex-wrap:wrap;
-            gap:8px;
-            justify-content:flex-end;
-        }}
+    .links a {{
+        color:white;
+        text-decoration:none;
+        margin-left:12px;
+        font-weight:600;
+        font-size:13px;
+    }}
 
-        .links a {{
-            color:white;
-            text-decoration:none;
-            font-weight:700;
-            font-size:13px;
-            padding:8px 10px;
-            border-radius:999px;
-            background:rgba(255,255,255,0.10);
-        }}
+    .hero {{
+        height:420px;
+        background:
+            linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.55)),
+            url("/static/images/bg.png");
+        background-size:cover;
+        background-position:center;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+    }}
 
-        .links a:hover {{
-            background:rgba(255,255,255,0.18);
-        }}
+    .hero-card {{
+        background:white;
+        padding:30px;
+        border-radius:16px;
+        max-width:420px;
+        width:100%;
+    }}
 
-        .container {{
-            padding:24px;
-            overflow-x:auto;
-        }}
+    .container {{
+        padding:20px;
+    }}
 
-        .card {{
-            background:rgba(255,255,255,0.94);
-            color:#111827;
-            padding:24px;
-            margin-bottom:16px;
-            border-radius:18px;
-            box-shadow:0 22px 60px rgba(0,0,0,.28);
-            border:1px solid rgba(255,255,255,0.55);
-        }}
+    .card {{
+        background:white;
+        padding:20px;
+        border-radius:12px;
+        margin-bottom:15px;
+    }}
 
-        body:has(.card form) .container {{
-            min-height:calc(100vh - 76px);
-            display:flex;
-            align-items:center;
-            justify-content:center;
-        }}
+    .footer {{
+        background:#0f5132;
+        color:white;
+        padding:20px;
+        display:flex;
+        justify-content:space-around;
+        text-align:center;
+    }}
 
-        body:has(.card form) .card {{
-            width:100%;
-            max-width:430px;
-        }}
+    input {{
+        width:100%;
+        padding:12px;
+        margin-bottom:12px;
+        border-radius:8px;
+        border:1px solid #ccc;
+    }}
 
-        h2 {{
-            margin-top:0;
-            margin-bottom:10px;
-            color:#111827;
-        }}
-
-        h3 {{
-            color:#111827;
-        }}
-
-        p {{
-            color:#4b5563;
-            line-height:1.45;
-        }}
-
-        table {{
-            width:100%;
-            border-collapse:collapse;
-            background:white;
-            font-size:12px;
-            table-layout:auto;
-            border-radius:12px;
-            overflow:hidden;
-            box-shadow:0 10px 30px rgba(0,0,0,.18);
-        }}
-
-        th {{
-            background:#0f5132;
-            color:white;
-            padding:7px;
-            text-align:left;
-            position:sticky;
-            top:0;
-            white-space:nowrap;
-        }}
-
-        td {{
-            padding:6px;
-            border-bottom:1px solid #ddd;
-            white-space:nowrap;
-            max-width:180px;
-            overflow:hidden;
-            text-overflow:ellipsis;
-        }}
-
-        td.notes-col {{
-            white-space:normal;
-            max-width:220px;
-            min-width:160px;
-            overflow-wrap:break-word;
-            word-break:break-word;
-        }}
-
-        tr:hover {{
-            background:#eef6f2;
-        }}
-
-        .status {{
-            font-weight:bold;
-            color:#198754;
-        }}
-
-        .btn {{
-            display:inline-block;
-            padding:9px 13px;
-            background:#198754;
-            color:white;
-            text-decoration:none;
-            border-radius:999px;
-            margin:5px 8px 15px 0;
-            font-weight:bold;
-            box-shadow:0 6px 16px rgba(25,135,84,.22);
-        }}
-
-        .btn:hover {{
-            background:#157347;
-        }}
-
-        input {{
-            width:100%;
-            padding:12px;
-            margin:7px 0 12px;
-            border-radius:10px;
-            border:1px solid #d1d5db;
-            font-size:15px;
-        }}
-
-        input:focus {{
-            border-color:#198754;
-            outline:none;
-            box-shadow:0 0 0 3px rgba(25,135,84,.18);
-        }}
-
-        button {{
-            width:100%;
-            padding:12px;
-            border:none;
-            border-radius:10px;
-            background:#198754;
-            color:white;
-            font-weight:800;
-            font-size:15px;
-            cursor:pointer;
-        }}
-
-        button:hover {{
-            background:#157347;
-        }}
-
-        .bar {{
-            display:flex;
-            gap:6px;
-            flex-wrap:wrap;
-            margin-top:10px;
-        }}
-
-        .step {{
-            padding:7px 11px;
-            border-radius:20px;
-            background:#e5e7eb;
-            font-size:13px;
-        }}
-
-        .done {{
-            background:#d1e7dd;
-            color:#0f5132;
-            font-weight:bold;
-        }}
-
-        .current {{
-            background:#198754;
-            color:white;
-            font-weight:bold;
-        }}
-
-        pre {{
-            background:#111827;
-            color:white;
-            padding:12px;
-            overflow:auto;
-            border-radius:8px;
-            font-size:12px;
-        }}
-
-        @media (max-width:760px) {{
-            .topbar {{
-                flex-direction:column;
-                align-items:flex-start;
-                gap:12px;
-            }}
-
-            .links {{
-                justify-content:flex-start;
-            }}
-
-            .container {{
-                padding:16px;
-            }}
-        }}
+    button {{
+        width:100%;
+        padding:12px;
+        border:none;
+        border-radius:8px;
+        background:#198754;
+        color:white;
+        font-weight:700;
+    }}
     </style>
     </head>
+
     <body>
-        <div class="topbar">
-            <div class="brand">Giant Sports Cards</div>
-            <div class="links">{nav}</div>
+
+    <div class="topbar">
+        <div class="brand">
+            <img src="/static/images/logo.png">
+            Giant Sports Cards
         </div>
-        <div class="container">{content}</div>
+        <div class="links">{nav}</div>
+    </div>
+
+    {"<div class='hero'>" + content + "</div>" if mode == "portal" else "<div class='container'>" + content + "</div>"}
+
+    <div class="footer">
+        <div>Secure & Reliable</div>
+        <div>Real-Time Updates</div>
+        <div>Expert Care</div>
+    </div>
+
     </body>
     </html>
     """
-
 def status_bar(status):
     steps = [
         "Submitted",
