@@ -225,299 +225,255 @@ def page(content, mode="admin"):
     <html>
     <head>
     <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-
     <style>
-    * {{
-        box-sizing: border-box;
-    }}
+        * {{
+            box-sizing:border-box;
+        }}
 
-    body {{
-        margin:0;
-        font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-        background:
-            radial-gradient(circle at top left, rgba(0,255,156,0.18), transparent 32%),
-            radial-gradient(circle at top right, rgba(0,207,255,0.16), transparent 28%),
-            linear-gradient(135deg, #07130f 0%, #0b0f0d 48%, #020403 100%);
-        color:#f8fafc;
-        min-height:100vh;
-    }}
+        body {{
+            font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            margin:0;
+            min-height:100vh;
+            background:
+                linear-gradient(rgba(0,0,0,0.42), rgba(0,0,0,0.56)),
+                url("/static/images/bg.png");
+            background-size:cover;
+            background-position:center;
+            background-attachment:fixed;
+            color:#111827;
+        }}
 
-    .topbar {{
-        padding:18px 26px;
-        display:flex;
-        justify-content:space-between;
-        align-items:center;
-        border-bottom:1px solid rgba(255,255,255,0.08);
-        background:rgba(0,0,0,0.22);
-        backdrop-filter:blur(14px);
-        position:sticky;
-        top:0;
-        z-index:20;
-    }}
-
-    .brand {{
-        font-size:22px;
-        font-weight:800;
-        letter-spacing:1px;
-        color:#e5e7eb;
-        text-transform:uppercase;
-        
-    }}
-
-    .links {{
-        display:flex;
-        gap:10px;
-        flex-wrap:wrap;
-        justify-content:flex-end;
-    }}
-
-    .links a {{
-        color:#d1d5db;
-        text-decoration:none;
-        font-size:13px;
-        font-weight:700;
-        padding:8px 10px;
-        border-radius:999px;
-        background:rgba(255,255,255,0.05);
-        border:1px solid rgba(255,255,255,0.07);
-        transition:0.18s ease;
-    }}
-
-    .links a:hover {{
-        color:#ffffff;
-        background:rgba(0,255,156,0.12);
-        border-color:rgba(0,255,156,0.35);
-        transform:translateY(-1px);
-    }}
-
-    .container {{
-        width:100%;
-        padding:28px;
-        overflow-x:auto;
-    }}
-
-    body:has(.card form) .container {{
-        display:flex;
-        justify-content:center;
-        align-items:center;
-        min-height:calc(100vh - 85px);
-    }}
-
-    .card {{
-        background:rgba(255,255,255,0.075);
-        border:1px solid rgba(255,255,255,0.12);
-        padding:28px;
-        margin-bottom:18px;
-        border-radius:20px;
-        box-shadow:0 28px 80px rgba(0,0,0,0.48);
-        backdrop-filter:blur(18px);
-        color:#f8fafc;
-    }}
-
-    body:has(.card form) .card {{
-        width:100%;
-        max-width:430px;
-    }}
-
-    h2 {{
-        margin:0 0 10px 0;
-        color:#ffffff;
-        letter-spacing:-0.02em;
-    }}
-
-    h3 {{
-        color:#ffffff;
-    }}
-
-    p {{
-        color:#cbd5e1;
-        line-height:1.45;
-    }}
-
-    a {{
-        color:#e5e7eb;
-    }}
-
-    input {{
-        width:100%;
-        padding:13px 14px;
-        margin:7px 0 12px 0;
-        border-radius:12px;
-        border:1px solid rgba(255,255,255,0.14);
-        background:rgba(255,255,255,0.065);
-        color:#ffffff;
-        font-size:15px;
-        outline:none;
-        transition:0.18s ease;
-    }}
-
-    input::placeholder {{
-        color:#94a3b8;
-    }}
-
-    input:focus {{
-        border-color:#e5e7eb;
-        background:rgba(255,255,255,0.095);
-        box-shadow:0 0 0 4px rgba(0,255,156,0.14);
-    }}
-
-    button {{
-        width:100%;
-        padding:13px 15px;
-        border:none;
-        border-radius:12px;
-        background:linear-gradient(90deg, #e5e7eb, #198754);
-        color:#03120c;
-        font-weight:900;
-        font-size:15px;
-        cursor:pointer;
-        transition:0.18s ease;
-        box-shadow:0 14px 32px rgba(0,0,0,0.3);
-    }}
-
-    button:hover {{
-        transform:translateY(-2px);
-        box-shadow:0 18px 42px rgba(0,0,0,0.35);
-    }}
-
-    .btn {{
-        display:inline-block;
-        padding:10px 13px;
-        background:rgba(255,255,255,0.08);
-        color:#ffffff;
-        text-decoration:none;
-        border-radius:999px;
-        margin:5px 8px 15px 0;
-        font-weight:800;
-        border:1px solid rgba(255,255,255,0.15);
-        transition:0.18s ease;
-    }}
-
-    .btn:hover {{
-        background:rgba(0,0,0,0.3);
-        transform:translateY(-1px);
-    }}
-
-    table {{
-        width:100%;
-        border-collapse:separate;
-        border-spacing:0;
-        background:rgba(255,255,255,0.94);
-        color:#111827;
-        font-size:12px;
-        table-layout:auto;
-        border-radius:14px;
-        overflow:hidden;
-        box-shadow:0 20px 60px rgba(0,0,0,0.22);
-    }}
-
-    th {{
-        background:#0f5132;
-        color:white;
-        padding:8px;
-        text-align:left;
-        position:sticky;
-        top:0;
-        white-space:nowrap;
-        z-index:2;
-    }}
-
-    td {{
-        padding:7px 8px;
-        border-bottom:1px solid #e5e7eb;
-        white-space:nowrap;
-        max-width:180px;
-        overflow:hidden;
-        text-overflow:ellipsis;
-        background:white;
-    }}
-
-    td.notes-col {{
-        white-space:normal;
-        max-width:220px;
-        min-width:160px;
-        overflow-wrap:break-word;
-        word-break:break-word;
-    }}
-
-    tr:hover td {{
-        background:#eef6f2;
-    }}
-
-    .status {{
-        font-weight:900;
-        color:#198754;
-    }}
-
-    .bar {{
-        display:flex;
-        gap:6px;
-        flex-wrap:wrap;
-        margin-top:12px;
-    }}
-
-    .step {{
-        padding:7px 11px;
-        border-radius:999px;
-        background:rgba(255,255,255,0.13);
-        border:1px solid rgba(255,255,255,0.12);
-        color:#d1d5db;
-        font-size:13px;
-    }}
-
-    .done {{
-        background:rgba(0,255,156,0.16);
-        color:#e5e7eb;
-        font-weight:800;
-        border-color:rgba(0,0,0,0.35);
-    }}
-
-    .current {{
-        background:linear-gradient(90deg, #e5e7eb, #198754);
-        color:#03120c;
-        font-weight:900;
-        border-color:transparent;
-    }}
-
-    pre {{
-        background:#020617;
-        color:#e5e7eb;
-        padding:12px;
-        overflow:auto;
-        border-radius:12px;
-        font-size:12px;
-        border:1px solid rgba(255,255,255,0.10);
-    }}
-
-    @media (max-width: 760px) {{
         .topbar {{
-            align-items:flex-start;
-            gap:14px;
-            flex-direction:column;
-            padding:16px;
-        }}
-
-        .links {{
-            justify-content:flex-start;
-        }}
-
-        .container {{
-            padding:18px;
+            background:rgba(15,81,50,0.94);
+            color:white;
+            padding:16px 22px;
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            box-shadow:0 8px 30px rgba(0,0,0,0.22);
+            backdrop-filter:blur(8px);
         }}
 
         .brand {{
-            font-size:19px;
+            font-weight:800;
+            font-size:21px;
+            letter-spacing:.3px;
         }}
-    }}
+
+        .links {{
+            display:flex;
+            flex-wrap:wrap;
+            gap:8px;
+            justify-content:flex-end;
+        }}
+
+        .links a {{
+            color:white;
+            text-decoration:none;
+            font-weight:700;
+            font-size:13px;
+            padding:8px 10px;
+            border-radius:999px;
+            background:rgba(255,255,255,0.10);
+        }}
+
+        .links a:hover {{
+            background:rgba(255,255,255,0.18);
+        }}
+
+        .container {{
+            padding:24px;
+            overflow-x:auto;
+        }}
+
+        .card {{
+            background:rgba(255,255,255,0.94);
+            color:#111827;
+            padding:24px;
+            margin-bottom:16px;
+            border-radius:18px;
+            box-shadow:0 22px 60px rgba(0,0,0,.28);
+            border:1px solid rgba(255,255,255,0.55);
+        }}
+
+        body:has(.card form) .container {{
+            min-height:calc(100vh - 76px);
+            display:flex;
+            align-items:center;
+            justify-content:center;
+        }}
+
+        body:has(.card form) .card {{
+            width:100%;
+            max-width:430px;
+        }}
+
+        h2 {{
+            margin-top:0;
+            margin-bottom:10px;
+            color:#111827;
+        }}
+
+        h3 {{
+            color:#111827;
+        }}
+
+        p {{
+            color:#4b5563;
+            line-height:1.45;
+        }}
+
+        table {{
+            width:100%;
+            border-collapse:collapse;
+            background:white;
+            font-size:12px;
+            table-layout:auto;
+            border-radius:12px;
+            overflow:hidden;
+            box-shadow:0 10px 30px rgba(0,0,0,.18);
+        }}
+
+        th {{
+            background:#0f5132;
+            color:white;
+            padding:7px;
+            text-align:left;
+            position:sticky;
+            top:0;
+            white-space:nowrap;
+        }}
+
+        td {{
+            padding:6px;
+            border-bottom:1px solid #ddd;
+            white-space:nowrap;
+            max-width:180px;
+            overflow:hidden;
+            text-overflow:ellipsis;
+        }}
+
+        td.notes-col {{
+            white-space:normal;
+            max-width:220px;
+            min-width:160px;
+            overflow-wrap:break-word;
+            word-break:break-word;
+        }}
+
+        tr:hover {{
+            background:#eef6f2;
+        }}
+
+        .status {{
+            font-weight:bold;
+            color:#198754;
+        }}
+
+        .btn {{
+            display:inline-block;
+            padding:9px 13px;
+            background:#198754;
+            color:white;
+            text-decoration:none;
+            border-radius:999px;
+            margin:5px 8px 15px 0;
+            font-weight:bold;
+            box-shadow:0 6px 16px rgba(25,135,84,.22);
+        }}
+
+        .btn:hover {{
+            background:#157347;
+        }}
+
+        input {{
+            width:100%;
+            padding:12px;
+            margin:7px 0 12px;
+            border-radius:10px;
+            border:1px solid #d1d5db;
+            font-size:15px;
+        }}
+
+        input:focus {{
+            border-color:#198754;
+            outline:none;
+            box-shadow:0 0 0 3px rgba(25,135,84,.18);
+        }}
+
+        button {{
+            width:100%;
+            padding:12px;
+            border:none;
+            border-radius:10px;
+            background:#198754;
+            color:white;
+            font-weight:800;
+            font-size:15px;
+            cursor:pointer;
+        }}
+
+        button:hover {{
+            background:#157347;
+        }}
+
+        .bar {{
+            display:flex;
+            gap:6px;
+            flex-wrap:wrap;
+            margin-top:10px;
+        }}
+
+        .step {{
+            padding:7px 11px;
+            border-radius:20px;
+            background:#e5e7eb;
+            font-size:13px;
+        }}
+
+        .done {{
+            background:#d1e7dd;
+            color:#0f5132;
+            font-weight:bold;
+        }}
+
+        .current {{
+            background:#198754;
+            color:white;
+            font-weight:bold;
+        }}
+
+        pre {{
+            background:#111827;
+            color:white;
+            padding:12px;
+            overflow:auto;
+            border-radius:8px;
+            font-size:12px;
+        }}
+
+        @media (max-width:760px) {{
+            .topbar {{
+                flex-direction:column;
+                align-items:flex-start;
+                gap:12px;
+            }}
+
+            .links {{
+                justify-content:flex-start;
+            }}
+
+            .container {{
+                padding:16px;
+            }}
+        }}
     </style>
     </head>
-
     <body>
         <div class="topbar">
             <div class="brand">Giant Sports Cards</div>
             <div class="links">{nav}</div>
         </div>
-
         <div class="container">{content}</div>
     </body>
     </html>
