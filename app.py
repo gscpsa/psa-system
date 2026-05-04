@@ -224,63 +224,95 @@ def page(content, mode="admin"):
     return f"""
     <html>
     <head>
-<meta name='viewport' content='width=device-width, initial-scale=1.0'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
     <style>
-        body {{
-            font-family: Arial;
-            margin:0;
-            background:#f4f6f8;
-            color:#111827;
+        * {{
+            box-sizing: border-box;
         }}
+
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            margin:0;
+            background: linear-gradient(135deg, #0f5132 0%, #198754 45%, #e8f5ee 100%);
+            color:#111827;
+            min-height:100vh;
+        }}
+
         .topbar {{
-            background:#0f5132;
+            background:rgba(15,81,50,.96);
             color:white;
-            padding:15px 20px;
+            padding:18px 24px;
             display:flex;
             justify-content:space-between;
             align-items:center;
+            box-shadow:0 8px 24px rgba(0,0,0,.18);
         }}
+
         .brand {{
-            font-weight:bold;
-            font-size:20px;
+            font-weight:800;
+            font-size:22px;
+            letter-spacing:.2px;
         }}
+
+        .links {{
+            display:flex;
+            gap:12px;
+            flex-wrap:wrap;
+            justify-content:flex-end;
+        }}
+
         .links a {{
             color:white;
-            margin-left:14px;
             text-decoration:none;
-            font-weight:bold;
+            font-weight:700;
+            font-size:14px;
+            opacity:.92;
+            padding:8px 10px;
+            border-radius:999px;
+            background:rgba(255,255,255,.08);
         }}
+
         .links a:hover {{
-            color:#d1e7dd;
+            opacity:1;
+            background:rgba(255,255,255,.16);
         }}
+
         .container {{
-            padding:16px;
+            padding:28px;
             overflow-x:auto;
+            min-height:calc(100vh - 74px);
         }}
+
         table {{
             width:100%;
             border-collapse:collapse;
             background:white;
             font-size:12px;
             table-layout:auto;
+            border-radius:14px;
+            overflow:hidden;
+            box-shadow:0 16px 38px rgba(0,0,0,.14);
         }}
+
         th {{
             background:#0f5132;
             color:white;
-            padding:5px;
+            padding:8px;
             text-align:left;
             position:sticky;
             top:0;
             white-space:nowrap;
         }}
+
         td {{
-            padding:5px;
-            border-bottom:1px solid #ddd;
+            padding:8px;
+            border-bottom:1px solid #e5e7eb;
             white-space:nowrap;
             max-width:180px;
             overflow:hidden;
             text-overflow:ellipsis;
         }}
+
         td.notes-col {{
             white-space:normal;
             max-width:220px;
@@ -288,56 +320,124 @@ def page(content, mode="admin"):
             overflow-wrap:break-word;
             word-break:break-word;
         }}
+
         tr:hover {{
             background:#eef6f2;
         }}
+
         .status {{
             font-weight:bold;
             color:#198754;
         }}
+
         .card {{
             background:white;
-            padding:18px;
-            margin-bottom:15px;
-            border-radius:10px;
-            box-shadow:0 2px 8px rgba(0,0,0,.08);
+            padding:28px;
+            margin:0 auto 18px auto;
+            border-radius:18px;
+            box-shadow:0 18px 45px rgba(0,0,0,.18);
+            border:1px solid rgba(255,255,255,.6);
         }}
+
+        .container > .card:only-child {{
+            max-width:460px;
+            margin-top:42px;
+        }}
+
+        h2 {{
+            margin-top:0;
+            margin-bottom:10px;
+            font-size:28px;
+            letter-spacing:-.4px;
+        }}
+
+        h3 {{
+            margin-top:0;
+            font-size:21px;
+        }}
+
+        p {{
+            color:#4b5563;
+            line-height:1.45;
+        }}
+
         .btn {{
             display:inline-block;
-            padding:8px 12px;
+            padding:10px 14px;
             background:#198754;
             color:white;
             text-decoration:none;
-            border-radius:6px;
+            border-radius:9px;
             margin:5px 8px 15px 0;
             font-weight:bold;
+            box-shadow:0 8px 18px rgba(25,135,84,.22);
         }}
+
+        .btn:hover {{
+            background:#157347;
+        }}
+
         input, button {{
-            padding:10px;
-            margin:5px;
+            padding:12px;
+            margin:6px 0;
+            border-radius:9px;
+            font-size:15px;
         }}
+
+        input {{
+            width:100%;
+            border:1px solid #d1d5db;
+            background:#fbfbfb;
+        }}
+
+        input:focus {{
+            border-color:#198754;
+            outline:none;
+            box-shadow:0 0 0 3px rgba(25,135,84,.16);
+            background:white;
+        }}
+
+        button {{
+            width:100%;
+            border:none;
+            background:#198754;
+            color:white;
+            font-weight:800;
+            cursor:pointer;
+            box-shadow:0 10px 22px rgba(25,135,84,.28);
+        }}
+
+        button:hover {{
+            background:#157347;
+            transform:translateY(-1px);
+        }}
+
         .bar {{
             display:flex;
             gap:6px;
             flex-wrap:wrap;
             margin-top:10px;
         }}
+
         .step {{
             padding:7px 11px;
             border-radius:20px;
             background:#e5e7eb;
             font-size:13px;
         }}
+
         .done {{
             background:#d1e7dd;
             color:#0f5132;
             font-weight:bold;
         }}
+
         .current {{
             background:#198754;
             color:white;
             font-weight:bold;
         }}
+
         pre {{
             background:#111827;
             color:white;
@@ -345,6 +445,26 @@ def page(content, mode="admin"):
             overflow:auto;
             border-radius:8px;
             font-size:12px;
+        }}
+
+        @media (max-width: 700px) {{
+            .topbar {{
+                align-items:flex-start;
+                flex-direction:column;
+                gap:12px;
+            }}
+
+            .links {{
+                justify-content:flex-start;
+            }}
+
+            .container {{
+                padding:18px;
+            }}
+
+            .card {{
+                padding:22px;
+            }}
         }}
     </style>
     </head>
@@ -415,7 +535,7 @@ def build_table(rows):
             if should_hide_column(key_text):
                 continue
 
-            display_key = "Submission Date" if key_text in ["S", "ƒand"] else key_text
+            display_key = "Submission Date" if key_text == "S" else key_text
             row[display_key] = v
 
             if display_key not in keys:
@@ -457,7 +577,7 @@ def build_table(rows):
 
 def get_sort_date(row):
     data = row[0] or {}
-    date_value = get_field(data, ["Submission Date", "S", "ƒand", "Date"])
+    date_value = get_field(data, ["Submission Date", "S", "Date"])
 
     try:
         if date_value:
@@ -947,12 +1067,12 @@ def portal():
         return redirect("/portal/orders")
 
     return page("""
-    <div class="card" style="max-width:420px">
+    <div class="card">
         <h2>Customer Portal</h2>
-        <p>Enter your phone number and last name.</p>
+        <p>Track your PSA submissions instantly.</p>
         <form method="post">
-            <input name="phone" placeholder="Phone number" style="width:95%"><br>
-            <input name="last" placeholder="Last name" style="width:95%"><br>
+            <input name="phone" placeholder="Phone number">
+            <input name="last" placeholder="Last name">
             <button>View My Orders</button>
         </form>
     </div>
@@ -996,7 +1116,7 @@ def portal_orders():
         customer_name = get_field(data, ["Customer Name", "Name"])
         cards = get_field(data, ["# Of Cards", "# of Cards", "Cards"])
         service = get_field(data, ["Service Type", "Service"])
-        date = get_field(data, ["S", "ƒand", "Submission Date", "Date"])
+        date = get_field(data, ["S", "Submission Date", "Date"])
         arrived_completed = get_field(data, ["Arrived / Completed"])
         display_status = status or "Submitted"
 
