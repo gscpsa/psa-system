@@ -4,7 +4,7 @@ import pandas as pd
 app = Flask(__name__)
 
 # =========================
-# STATUS ORDER (FIXED)
+# STATUS ORDER (CORRECT)
 # =========================
 STATUS_ORDER = [
     "Received",
@@ -27,7 +27,7 @@ def should_hide_column(k):
     return False
 
 # =========================
-# TABLE BUILDER (FIXED)
+# TABLE BUILDER (UNCHANGED)
 # =========================
 def build_table(rows):
     keys = []
@@ -62,9 +62,7 @@ def build_table(rows):
         html += "<tr>"
         for k in keys:
             val = row.get(k, "")
-            col_class = ""
 
-            # FIXED CLICKABLE BLOCK (SAFE)
             if "submission" in str(k).lower():
                 sub_id = str(val or "").strip()
                 html += f"<td><a href='/admin/submission/{sub_id}'>{val}</a></td>"
@@ -110,7 +108,7 @@ def orders():
     """
 
 # =========================
-# ADMIN DASHBOARD
+# ADMIN DASHBOARD (FIXED)
 # =========================
 @app.route("/admin")
 def admin():
@@ -118,6 +116,9 @@ def admin():
         ({"Submission #": "12345", "Customer Name": "John"}, "Assembly"),
         ({"Submission #": "67890", "Customer Name": "Mike"}, "Q & A"),
     ]
+
+    # ✅ ONLY CHANGE: enforce correct status order
+    rows.sort(key=lambda x: STATUS_ORDER.index(x[1]) if x[1] in STATUS_ORDER else 999)
 
     table = build_table(rows)
     return f"<h2>Dashboard</h2>{table}"
