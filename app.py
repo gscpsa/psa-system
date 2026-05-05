@@ -621,8 +621,8 @@ def build_table(rows):
             if k == "PSA Status":
                 html += f"<td class='status {col_class}'>{val}</td>"
             else:
-                if "submission" in k.lower():
-                sub_id = str(val).strip()
+                if "submission" in str(k).lower():
+                sub_id = str(val or "").strip()
                 html += f"<td class='{col_class}'><a href='/admin/submission/{sub_id}'>{val}</a></td>"
             else:
                 html += f"<td class='{col_class}'>{val}</td>"
