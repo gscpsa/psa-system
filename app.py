@@ -205,8 +205,8 @@ def save_row(sub, raw):
 # =========================
 # UI
 # =========================
-def page(content, mode="admin"):
-    return '''
+def page(content, mode='admin'):
+    return f'''
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -502,80 +502,6 @@ def page(content, mode="admin"):
         .footer {{ flex-direction: column; gap: 25px; align-items: center; text-align: center; }}
         .footer-feature {{ flex-direction: column; text-align: center; }}
     }}
-
-    /* --- ORIGINAL APP COMPATIBILITY --- */
-    .container {
-        width: 100%;
-        padding: 20px;
-        background: #f4f6f8;
-        flex: 1;
-        overflow-x: auto;
-    }
-    .card {
-        background: white;
-        padding: 18px;
-        margin-bottom: 15px;
-        border-radius: 10px;
-        box-shadow: 0 2px 8px rgba(0,0,0,.08);
-        color: #111827;
-    }
-    table {
-        width:100%;
-        border-collapse:collapse;
-        background:white;
-        font-size:12px;
-        table-layout:auto;
-        color:#111827;
-    }
-    th {
-        background:#0f5132;
-        color:white;
-        padding:5px;
-        text-align:left;
-        position:sticky;
-        top:0;
-        white-space:nowrap;
-    }
-    td {
-        padding:5px;
-        border-bottom:1px solid #ddd;
-        white-space:nowrap;
-        max-width:180px;
-        overflow:hidden;
-        text-overflow:ellipsis;
-    }
-    td.notes-col {
-        white-space:normal;
-        max-width:220px;
-        min-width:160px;
-        overflow-wrap:break-word;
-        word-break:break-word;
-    }
-    tr:hover { background:#eef6f2; }
-    .status { font-weight:bold; color:#198754; }
-    .btn {
-        display:inline-block;
-        padding:8px 12px;
-        background:#198754;
-        color:white;
-        text-decoration:none;
-        border-radius:6px;
-        margin:5px 8px 15px 0;
-        font-weight:bold;
-    }
-    .bar { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
-    .step { padding:7px 11px; border-radius:20px; background:#e5e7eb; font-size:13px; }
-    .done { background:#d1e7dd; color:#0f5132; font-weight:bold; }
-    .current { background:#198754; color:white; font-weight:bold; }
-    pre {
-        background:#111827;
-        color:white;
-        padding:12px;
-        overflow:auto;
-        border-radius:8px;
-        font-size:12px;
-    }
-
     </style>
     </head>
 
@@ -598,7 +524,7 @@ def page(content, mode="admin"):
         </div>
     </div>
 
-    ''' + content + '''
+    {content}
 
     <div class="footer">
         <div class="footer-feature">
@@ -627,6 +553,8 @@ def page(content, mode="admin"):
     </body>
     </html>
     '''
+
+
 
 def status_bar(status):
     steps = [
@@ -685,7 +613,7 @@ def build_table(rows):
             if should_hide_column(key_text):
                 continue
 
-            display_key = "Submission Date" if key_text in ["S", "ƒand"] else key_text
+            display_key = "Submission Date" if key_text == "S" else key_text
             row[display_key] = v
 
             if display_key not in keys:
@@ -727,7 +655,7 @@ def build_table(rows):
 
 def get_sort_date(row):
     data = row[0] or {}
-    date_value = get_field(data, ["Submission Date", "S", "ƒand", "Date"])
+    date_value = get_field(data, ["Submission Date", "S", "Date"])
 
     try:
         if date_value:
@@ -1217,49 +1145,33 @@ def portal():
         return redirect("/portal/orders")
 
     return page("""
-    <div class="hero">
+<div class="hero">
+<div class="left"></div>
+<div class="right">
+<div class="panel">
 
-        <div class="left"></div>
+<h2>Track Your Submission</h2>
 
-        <div class="right">
-            <div class="panel">
+<form method="post">
 
-                <div class="panel-icon-top">
-                    <i class="fa-solid fa-clipboard-check"></i>
-                </div>
+<div class="input-group">
+<i class="fa-solid fa-mobile-screen"></i>
+<input name="phone" placeholder="Phone number">
+</div>
 
-                <h2>Track Your Submission</h2>
-                <div class="panel-divider"></div>
-                <p class="desc">Enter your information below to view<br>the real-time status of your PSA submission.</p>
+<div class="input-group">
+<i class="fa-solid fa-user"></i>
+<input name="last" placeholder="Last name">
+</div>
 
-                <form method="post">
+<button type="submit">VIEW STATUS</button>
 
-                    <div class="input-group">
-                        <i class="fa-solid fa-mobile-screen"></i>
-                        <input name="phone" placeholder="Phone number" required>
-                    </div>
+</form>
 
-                    <div class="input-group">
-                        <i class="fa-solid fa-user"></i>
-                        <input name="last" placeholder="Last name" required>
-                    </div>
-
-                    <button type="submit">VIEW STATUS <i class="fa-solid fa-arrow-right"></i></button>
-
-                </form>
-
-                <div class="panel-footer">
-                    <div class="panel-footer-logo">
-                        GIANT<br><span>SPORTS CARDS</span>
-                    </div>
-                    <p>Thank you for trusting Giant Sports Cards<br>with your valuable collection.</p>
-                </div>
-
-            </div>
-        </div>
-
-    </div>
-    """, mode="portal")
+</div>
+</div>
+</div>
+""", mode="portal")
 
 @app.route("/portal/orders")
 def portal_orders():
@@ -1299,7 +1211,7 @@ def portal_orders():
         customer_name = get_field(data, ["Customer Name", "Name"])
         cards = get_field(data, ["# Of Cards", "# of Cards", "Cards"])
         service = get_field(data, ["Service Type", "Service"])
-        date = get_field(data, ["S", "ƒand", "Submission Date", "Date"])
+        date = get_field(data, ["S", "Submission Date", "Date"])
         arrived_completed = get_field(data, ["Arrived / Completed"])
         display_status = status or "Submitted"
 
