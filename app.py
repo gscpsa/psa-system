@@ -18,9 +18,14 @@ PREFERRED_DASHBOARD_COLUMNS = [
     "Contact",
     "Phone",
     "Status",
+    "PSA Status",
     "Arrived",
     "Completed",
+    "Arrived / Completed",
     "Submission Date",
+    "S",
+    "ƒand",
+    "fand",
     "Date",
     "Service",
     "Declared Value",
@@ -612,6 +617,16 @@ def should_hide_column(column_name):
         "customer status"
     ]
 
+
+def display_column_label(key):
+    text = str(key or "").strip()
+    normalized = text.lower()
+    if normalized in ["s", "ƒand", "fand", "date", "submission date"]:
+        return "Submission Date"
+    if normalized == "psa status":
+        return "Status"
+    return text
+
 def build_table(rows):
     keys = []
     clean_rows = []
@@ -631,16 +646,18 @@ def build_table(rows):
             if should_hide_column(key_text):
                 continue
 
-            display_key = "Submission Date" if key_text == "S" else key_text
+            display_key = display_column_label(key_text)
             row[display_key] = v
 
             if display_key not in keys:
                 keys.append(display_key)
 
-        row["PSA Status"] = r[1] or "Submitted"
+        # Put the database PSA status into the visible Status column.
+        # Display-only change: does not alter stored data or PSA logic.
+        row["Status"] = r[1] or row.get("Status") or "Submitted"
 
-        if "PSA Status" not in keys:
-            keys.append("PSA Status")
+        if "Status" not in keys:
+            keys.append("Status")
 
         clean_rows.append(row)
 
@@ -648,12 +665,45 @@ def build_table(rows):
         if forced_key not in keys:
             keys.append(forced_key)
 
+    # Reorder final visible columns without changing the row data.
+    preferred_visible = [
+        "Submission #",
+        "Submission Number",
+        "Submission",
+        "Customer Name",
+        "Name",
+        "Customer Contact",
+        "Contact",
+        "Phone",
+        "Status",
+        "Arrived",
+        "Completed",
+        "Arrived / Completed",
+        "Submission Date",
+    ]
+
+    ordered_keys = []
+    seen = set()
+
+    for wanted in preferred_visible:
+        for key in keys:
+            if key not in seen and key.strip().lower() == wanted.strip().lower():
+                ordered_keys.append(key)
+                seen.add(key)
+
+    for key in keys:
+        if key not in seen:
+            ordered_keys.append(key)
+            seen.add(key)
+
+    keys = ordered_keys
+
     if not clean_rows:
         return "<div class='card'>No records found.</div>"
 
     html = "<table><tr>"
     for k in keys:
-        html += f"<th>{k}</th>"
+        html += f"<th>{display_column_label(k)}</th>"
     html += "</tr>"
 
     for row in clean_rows:
@@ -662,7 +712,7 @@ def build_table(rows):
             val = row.get(k, "")
             col_class = "notes-col" if "note" in k.lower() else ""
 
-            if k == "PSA Status":
+            if k == "Status":
                 html += f"<td class='status {col_class}'>{val}</td>"
             else:
                 html += f"<td class='{col_class}'>{val}</td>"
@@ -673,11 +723,14 @@ def build_table(rows):
 
 def get_sort_date(row):
     data = row[0] or {}
-    date_value = get_field(data, ["Submission Date", "S", "Date"])
+
+    # Sort by actual submission date aliases only.
+    # Display-only/sort-only fix; does not change stored data.
+    date_value = get_field(data, ["Submission Date", "S", "ƒand", "fand", "Date"])
 
     try:
         if date_value:
-            return pd.to_datetime(date_value)
+            return pd.to_datetime(date_value, errors="coerce")
     except Exception:
         pass
 
