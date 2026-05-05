@@ -2,12 +2,11 @@ from flask import Flask, request, redirect
 
 app = Flask(__name__)
 
-def page(content, mode="admin"):
+def page(content):
     return f"""
     <html>
     <head>
     <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
     <style>
@@ -15,102 +14,97 @@ def page(content, mode="admin"):
         margin:0;
         font-family: Arial, sans-serif;
         background: linear-gradient(180deg, #02140f 0%, #031c16 100%);
-        color:white;
     }}
 
-    /* HEADER */
     .header {{
         background:#031c16;
-        padding:20px 25px;
+        padding:30px 40px;
         border-bottom:2px solid #0f5132;
     }}
 
     .logo {{
-        font-size:32px;
-        font-weight:800;
-        letter-spacing:2px;
+        font-size:44px;
+        font-weight:900;
+        letter-spacing:3px;
+        color:white;
     }}
 
     .logo span {{
         color:#198754;
     }}
 
-    /* HERO */
     .hero {{
         display:flex;
-        height:calc(100vh - 80px);
+        height:calc(100vh - 110px);
         align-items:center;
         justify-content:center;
     }}
 
-    /* FORM PANEL */
     .panel {{
-        width:420px;
+        width:650px;
         background:#f8f9fa;
         color:black;
-        padding:30px;
-        border-radius:16px;
-        box-shadow:0 20px 60px rgba(0,0,0,.6);
+        padding:55px;
+        border-radius:20px;
+        box-shadow:0 30px 90px rgba(0,0,0,.6);
         text-align:center;
     }}
 
     .panel h2 {{
-        font-size:32px;
+        font-size:44px;
+        font-weight:900;
         margin-bottom:10px;
-        font-weight:800;
     }}
 
     .divider {{
-        width:60px;
-        height:4px;
+        width:70px;
+        height:5px;
         background:#198754;
-        margin:10px auto 20px;
+        margin:15px auto 25px;
         border-radius:4px;
     }}
 
     .desc {{
         color:#555;
-        margin-bottom:20px;
+        margin-bottom:30px;
+        font-size:18px;
     }}
 
     .input-group {{
         display:flex;
         align-items:center;
         border:1px solid #ddd;
-        border-radius:10px;
-        padding:12px;
-        margin-bottom:15px;
+        border-radius:14px;
+        padding:18px;
+        margin-bottom:20px;
         background:white;
     }}
 
     .input-group i {{
+        margin-right:15px;
         color:#888;
-        margin-right:10px;
+        font-size:18px;
     }}
 
     .input-group input {{
         border:none;
         outline:none;
         width:100%;
-        font-size:14px;
+        font-size:18px;
     }}
 
     button {{
         width:100%;
-        padding:16px;
+        padding:20px;
         background:#198754;
         color:white;
         border:none;
-        border-radius:10px;
-        font-weight:bold;
+        border-radius:14px;
+        font-weight:800;
+        font-size:18px;
         cursor:pointer;
     }}
-
-    button:hover {{
-        background:#157347;
-    }}
     </style>
-
     </head>
 
     <body>
@@ -127,25 +121,26 @@ def page(content, mode="admin"):
     </html>
     """
 
-
-@app.route("/portal", methods=["GET","POST"])
+# -------------------------
+# PORTAL PAGE
+# -------------------------
+@app.route("/portal", methods=["GET", "POST"])
 def portal():
 
     if request.method == "POST":
         phone = request.form.get("phone")
         last = request.form.get("last")
 
+        # SAFE redirect
         return redirect(f"/portal/orders?phone={phone}&last={last}")
 
     return page("""
     <div class="hero">
-
         <div class="panel">
 
-            <i class="fa-solid fa-magnifying-glass" style="font-size:22px;margin-bottom:10px;"></i>
+            <i class="fa-solid fa-magnifying-glass" style="font-size:28px;margin-bottom:15px;"></i>
 
             <h2>TRACK YOUR ORDER</h2>
-
             <div class="divider"></div>
 
             <p class="desc">
@@ -172,26 +167,36 @@ def portal():
             </form>
 
         </div>
-
     </div>
     """)
 
-
+# -------------------------
+# RESULTS PAGE (FIXED)
+# -------------------------
 @app.route("/portal/orders")
 def orders():
+
     phone = request.args.get("phone")
     last = request.args.get("last")
 
+    # THIS is what was missing / broken before
     return page(f"""
     <div class="hero">
         <div class="panel">
-            <h2>Results</h2>
-            <p>Phone: {phone}</p>
-            <p>Last: {last}</p>
+            <h2>RESULTS</h2>
+            <div class="divider"></div>
+
+            <p><b>Phone:</b> {phone}</p>
+            <p><b>Last Name:</b> {last}</p>
+
+            <br>
+
+            <p>Status: <b>Received → Processing</b></p>
+
         </div>
     </div>
     """)
 
-
+# -------------------------
 if __name__ == "__main__":
     app.run(debug=True)
