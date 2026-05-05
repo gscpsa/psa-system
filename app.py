@@ -5,6 +5,48 @@ import os, io, json, re, traceback
 from functools import wraps
 
 app = Flask(__name__)
+
+# UI-only preferred display order for dashboard tables.
+# This does not rename fields, change parsing, change SQL, or change stored data.
+PREFERRED_DASHBOARD_COLUMNS = [
+    "Submission #",
+    "Submission Number",
+    "Submission",
+    "Customer Name",
+    "Name",
+    "Customer Contact",
+    "Contact",
+    "Phone",
+    "Status",
+    "Arrived",
+    "Completed",
+    "Submission Date",
+    "Date",
+    "Service",
+    "Declared Value",
+    "Total Cards",
+    "Notes",
+]
+
+def ordered_display_keys(data):
+    keys = list(data.keys())
+    ordered = []
+    seen = set()
+
+    for wanted in PREFERRED_DASHBOARD_COLUMNS:
+        for key in keys:
+            if key not in seen and key.strip().lower() == wanted.strip().lower():
+                ordered.append(key)
+                seen.add(key)
+
+    for key in keys:
+        if key not in seen:
+            ordered.append(key)
+            seen.add(key)
+
+    return ordered
+
+
 app.secret_key = os.getenv("SECRET_KEY", "change-this-secret")
 DATABASE_URL = os.getenv("DATABASE_URL")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
@@ -80,7 +122,8 @@ def normalize_phone(v):
 
 def get_field(data, names):
     for wanted in names:
-        for k, v in data.items():
+        for k in ordered_display_keys(data):
+            v = data.get(k)
             if str(k).strip().lower() == wanted.strip().lower():
                 return v
     return ""
@@ -578,7 +621,8 @@ def build_table(rows):
         data = r[0] or {}
         row = {}
 
-        for k, v in data.items():
+        for k in ordered_display_keys(data):
+            v = data.get(k)
             key_text = str(k).strip()
 
             if "unnamed" in key_text.lower():
