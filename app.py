@@ -13,96 +13,129 @@ def page(content):
     body {{
         margin:0;
         font-family: Arial, sans-serif;
-        background: linear-gradient(180deg, #02140f 0%, #031c16 100%);
+        background:#02140f;
     }}
 
+    /* HEADER */
     .header {{
         background:#031c16;
-        padding:30px 40px;
+        padding:30px 50px;
         border-bottom:2px solid #0f5132;
     }}
 
     .logo {{
-        font-size:44px;
         font-weight:900;
-        letter-spacing:3px;
+        letter-spacing:4px;
+        line-height:1;
+    }}
+
+    .logo .giant {{
+        font-size:52px;
         color:white;
     }}
 
-    .logo span {{
+    .logo .sports {{
+        font-size:22px;
         color:#198754;
+        letter-spacing:6px;
     }}
 
+    /* LAYOUT */
     .hero {{
         display:flex;
         height:calc(100vh - 110px);
-        align-items:center;
-        justify-content:center;
     }}
 
+    .left {{
+        flex:1;
+        background: radial-gradient(circle at 20% 20%, #0f5132, #02140f);
+    }}
+
+    .right {{
+        flex:1;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        background:#f4f4f4;
+    }}
+
+    /* FORM PANEL */
     .panel {{
-        width:650px;
-        background:#f8f9fa;
-        color:black;
-        padding:55px;
-        border-radius:20px;
-        box-shadow:0 30px 90px rgba(0,0,0,.6);
+        width:720px;
+        background:#ffffff;
+        padding:60px;
+        border-radius:22px;
+        box-shadow:0 35px 120px rgba(0,0,0,.6);
         text-align:center;
     }}
 
+    .icon-top {{
+        font-size:32px;
+        margin-bottom:15px;
+        color:#031c16;
+    }}
+
     .panel h2 {{
-        font-size:44px;
+        font-size:46px;
         font-weight:900;
-        margin-bottom:10px;
+        letter-spacing:2px;
+        margin:10px 0;
     }}
 
     .divider {{
-        width:70px;
-        height:5px;
+        width:80px;
+        height:6px;
         background:#198754;
-        margin:15px auto 25px;
-        border-radius:4px;
+        margin:20px auto 30px;
+        border-radius:6px;
     }}
 
     .desc {{
-        color:#555;
-        margin-bottom:30px;
         font-size:18px;
+        color:#555;
+        margin-bottom:35px;
+        line-height:1.5;
     }}
 
+    /* INPUTS */
     .input-group {{
         display:flex;
         align-items:center;
         border:1px solid #ddd;
-        border-radius:14px;
-        padding:18px;
-        margin-bottom:20px;
+        border-radius:16px;
+        padding:22px;
+        margin-bottom:22px;
         background:white;
     }}
 
     .input-group i {{
+        font-size:20px;
         margin-right:15px;
-        color:#888;
-        font-size:18px;
+        color:#777;
     }}
 
     .input-group input {{
         border:none;
         outline:none;
         width:100%;
-        font-size:18px;
+        font-size:20px;
     }}
 
+    /* BUTTON */
     button {{
         width:100%;
-        padding:20px;
+        padding:22px;
         background:#198754;
         color:white;
         border:none;
-        border-radius:14px;
-        font-weight:800;
-        font-size:18px;
+        border-radius:16px;
+        font-size:20px;
+        font-weight:900;
         cursor:pointer;
+    }}
+
+    button:hover {{
+        background:#157347;
     }}
     </style>
     </head>
@@ -111,7 +144,8 @@ def page(content):
 
     <div class="header">
         <div class="logo">
-            GIANT <span>SPORTS CARDS</span>
+            <div class="giant">GIANT</div>
+            <div class="sports">SPORTS CARDS</div>
         </div>
     </div>
 
@@ -130,48 +164,55 @@ def portal():
     if request.method == "POST":
         phone = request.form.get("phone")
         last = request.form.get("last")
-
-        # SAFE redirect
         return redirect(f"/portal/orders?phone={phone}&last={last}")
 
     return page("""
     <div class="hero">
-        <div class="panel">
 
-            <i class="fa-solid fa-magnifying-glass" style="font-size:28px;margin-bottom:15px;"></i>
+        <div class="left"></div>
 
-            <h2>TRACK YOUR ORDER</h2>
-            <div class="divider"></div>
+        <div class="right">
+            <div class="panel">
 
-            <p class="desc">
-            Enter your details to see the real-time<br>
-            status of your PSA submission.
-            </p>
-
-            <form method="post">
-
-                <div class="input-group">
-                    <i class="fa-solid fa-mobile-screen"></i>
-                    <input name="phone" placeholder="Phone Number" required>
+                <div class="icon-top">
+                    <i class="fa-solid fa-clipboard-check"></i>
                 </div>
 
-                <div class="input-group">
-                    <i class="fa-solid fa-user"></i>
-                    <input name="last" placeholder="Last Name" required>
-                </div>
+                <h2>TRACK YOUR ORDER</h2>
 
-                <button type="submit">
-                    VIEW STATUS →
-                </button>
+                <div class="divider"></div>
 
-            </form>
+                <p class="desc">
+                Enter your details to see the real-time<br>
+                status of your PSA submission.
+                </p>
 
+                <form method="post">
+
+                    <div class="input-group">
+                        <i class="fa-solid fa-mobile-screen"></i>
+                        <input name="phone" placeholder="Phone Number" required>
+                    </div>
+
+                    <div class="input-group">
+                        <i class="fa-solid fa-user"></i>
+                        <input name="last" placeholder="Last Name" required>
+                    </div>
+
+                    <button type="submit">
+                        VIEW STATUS →
+                    </button>
+
+                </form>
+
+            </div>
         </div>
+
     </div>
     """)
 
 # -------------------------
-# RESULTS PAGE (FIXED)
+# RESULTS PAGE
 # -------------------------
 @app.route("/portal/orders")
 def orders():
@@ -179,21 +220,27 @@ def orders():
     phone = request.args.get("phone")
     last = request.args.get("last")
 
-    # THIS is what was missing / broken before
     return page(f"""
     <div class="hero">
-        <div class="panel">
-            <h2>RESULTS</h2>
-            <div class="divider"></div>
 
-            <p><b>Phone:</b> {phone}</p>
-            <p><b>Last Name:</b> {last}</p>
+        <div class="left"></div>
 
-            <br>
+        <div class="right">
+            <div class="panel">
 
-            <p>Status: <b>Received → Processing</b></p>
+                <h2>RESULTS</h2>
+                <div class="divider"></div>
 
+                <p><b>Phone:</b> {phone}</p>
+                <p><b>Last Name:</b> {last}</p>
+
+                <br>
+
+                <p>Status: <b>Received → Processing</b></p>
+
+            </div>
         </div>
+
     </div>
     """)
 
