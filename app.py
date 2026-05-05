@@ -1,151 +1,205 @@
-from flask import Flask, request, redirect
+from flask import Flask, request, session, redirect
 import pandas as pd
+import psycopg2
+import os, io, json, re, traceback
+from functools import wraps
 
 app = Flask(__name__)
 
-# =========================
-# STATUS ORDER (UNCHANGED)
-# =========================
-STATUS_ORDER = [
-    "Received",
-    "Processing",
-    "Assembly",
-    "Q & A",
-    "Completed"
+PREFERRED_DASHBOARD_COLUMNS = [
+    "Submission #","Submission Number","Submission","Customer Name","Name",
+    "Customer Contact","Contact","Phone","Status","PSA Status","Arrived",
+    "Completed","Arrived / Completed","Submission Date","S","ƒand","fand",
+    "Date","Service","Declared Value","Total Cards","Notes",
 ]
 
-# =========================
-# HELPERS (UNCHANGED)
-# =========================
 def ordered_display_keys(data):
-    return list(data.keys())
+    keys = list(data.keys())
+    ordered, seen = [], set()
+    for wanted in PREFERRED_DASHBOARD_COLUMNS:
+        for key in keys:
+            if key not in seen and key.strip().lower() == wanted.strip().lower():
+                ordered.append(key); seen.add(key)
+    for key in keys:
+        if key not in seen:
+            ordered.append(key); seen.add(key)
+    return ordered
 
-def display_column_label(k):
-    return k
+app.secret_key = os.getenv("SECRET_KEY", "change-this-secret")
+DATABASE_URL = os.getenv("DATABASE_URL")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 
-def should_hide_column(k):
-    return False
+def get_conn():
+    return psycopg2.connect(DATABASE_URL, sslmode="require")
 
-# =========================
-# TABLE BUILDER (UNCHANGED)
-# =========================
-def build_table(rows):
-    keys = []
-    clean_rows = []
+def init_db():
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS submissions (
+        submission_number TEXT PRIMARY KEY,
+        status TEXT DEFAULT 'Submitted',
+        raw_data JSONB,
+        last_updated TIMESTAMP DEFAULT NOW()
+    )""")
+    conn.commit(); cur.close(); conn.close()
 
-    for r in rows:
-        data = r[0] or {}
-        row = {}
+@app.before_request
+def setup():
+    try: init_db()
+    except Exception: pass
 
+@app.errorhandler(Exception)
+def error_handler(e):
+    return page(f"<div class='card'><h2>Error</h2><pre>{traceback.format_exc()}</pre></div>")
+
+def admin_required(f):
+    @wraps(f)
+    def wrapper(*a, **k):
+        if not session.get("admin"): return redirect("/admin/login")
+        return f(*a, **k)
+    return wrapper
+
+def clean(v):
+    try:
+        if pd.isna(v): return ""
+    except: pass
+    return str(v).strip()
+
+def normalize_submission(v):
+    return re.sub(r"\D","",str(v).split(".")[0]) if v else None
+
+def normalize_phone(v):
+    return re.sub(r"\D","",str(v or ""))
+
+def get_field(data, names):
+    for wanted in names:
         for k in ordered_display_keys(data):
-            v = data.get(k)
+            if str(k).strip().lower()==wanted.lower():
+                return data.get(k)
+    return ""
 
-            if should_hide_column(k):
-                continue
+def read_file(file):
+    name=(file.filename or "").lower()
+    if name.endswith(("xlsx","xls")):
+        return pd.read_excel(file)
+    raw=file.read(); file.seek(0)
+    try:
+        return pd.read_csv(io.StringIO(raw.decode("utf-8")),on_bad_lines="skip")
+    except:
+        return pd.read_csv(io.StringIO(raw.decode("latin1")),on_bad_lines="skip")
 
-            row[k] = v
-            if k not in keys:
-                keys.append(k)
+def normalize_psa_status(status):
+    s=re.sub(r"\s+"," ",str(status or "")).strip().lower()
+    if s=="order arrived": return "Order Arrived"
+    if s=="research & id": return "Research & ID"
+    if s=="grading": return "Grading"
+    if s=="qa checks": return "QA Checks"
+    if s=="assembly": return "Assembly"
+    if s=="shipping soon": return "Shipping Soon"
+    if s=="complete": return "Complete"
+    return None
 
-        row["Status"] = r[1] or "Submitted"
-        if "Status" not in keys:
-            keys.append("Status")
-
-        clean_rows.append(row)
-
-    html = "<table><tr>"
-    for k in keys:
-        html += f"<th>{k}</th>"
-    html += "</tr>"
-
-    for row in clean_rows:
-        html += "<tr>"
-        for k in keys:
-            val = row.get(k, "")
-
-            if "submission" in str(k).lower():
-                sub_id = str(val or "").strip()
-                html += f"<td><a href='/admin/submission/{sub_id}'>{val}</a></td>"
-            else:
-                html += f"<td>{val}</td>"
-
-        html += "</tr>"
-
-    html += "</table>"
-    return html
-
-# =========================
-# PORTAL (UNCHANGED)
-# =========================
-@app.route("/portal", methods=["GET", "POST"])
-def portal():
-    if request.method == "POST":
-        phone = request.form.get("phone")
-        last = request.form.get("last")
-        return redirect(f"/portal/orders?phone={phone}&last={last}")
-
-    return """
-    <h2>TRACK YOUR ORDER</h2>
-    <form method="post">
-        <input name="phone" placeholder="Phone">
-        <input name="last" placeholder="Last Name">
-        <button>Submit</button>
-    </form>
-    """
-
-# =========================
-# PORTAL RESULTS (UNCHANGED)
-# =========================
-@app.route("/portal/orders")
-def orders():
-    phone = request.args.get("phone")
-    last = request.args.get("last")
-
-    return f"""
-    <h2>Results</h2>
-    Phone: {phone}<br>
-    Last: {last}<br>
-    """
-
-# =========================
-# ADMIN DASHBOARD (ONLY FIX HERE)
-# =========================
-@app.route("/admin")
-def admin():
-    rows = [
-        ({"Submission #": "12345", "Customer Name": "John"}, "Assembly"),
-        ({"Submission #": "67890", "Customer Name": "Mike"}, "Q & A"),
-    ]
-
-    # ✅ ONLY FIX — FORCE ORDER
-    rows.sort(key=lambda x: 0 if x[1] == "Assembly" else 1 if x[1] == "Q & A" else 2)
-
-    table = build_table(rows)
-    return f"<h2>Dashboard</h2>{table}"
-
-# =========================
-# CLICKABLE SUBMISSION PAGE (UNCHANGED)
-# =========================
-@app.route("/admin/submission/<sub_id>")
-def admin_submission(sub_id):
-
-    data = {
-        "Submission #": sub_id,
-        "Customer Name": "Sample User",
-        "Status": "Assembly"
+def status_rank(status):
+    ranks = {
+        "Submitted": 0,
+        "Order Arrived": 1,
+        "Research & ID": 2,
+        "Grading": 3,
+        "Assembly": 4,      # FIXED
+        "QA Checks": 5,     # FIXED
+        "Shipping Soon": 6,
+        "Complete": 7,
+        "Delivered to Us": 8,
+        "Picked Up": 9,
     }
+    return ranks.get(status or "Submitted", 0)
 
-    html = "<h2>Submission Detail</h2><table>"
+def detect_internal_status(raw):
+    full=" ".join([f"{k} {v}" for k,v in raw.items()]).lower()
+    if "picked up" in full: return "Picked Up"
+    if "delivered to us" in full: return "Delivered to Us"
+    return None
 
-    for k, v in data.items():
-        html += f"<tr><td><b>{k}</b></td><td>{v}</td></tr>"
+def save_row(sub, raw):
+    conn=get_conn(); cur=conn.cursor()
+    internal=detect_internal_status(raw)
+    cur.execute("SELECT status FROM submissions WHERE submission_number=%s",(sub,))
+    existing=cur.fetchone()
+    existing_status=existing[0] if existing else None
 
-    html += "</table><br><a href='/admin'>Back</a>"
+    if internal:
+        cur.execute("""
+        INSERT INTO submissions (submission_number,status,raw_data)
+        VALUES (%s,%s,%s)
+        ON CONFLICT (submission_number)
+        DO UPDATE SET status=%s, raw_data=EXCLUDED.raw_data
+        """,(sub,internal,json.dumps(raw),internal))
+    else:
+        cur.execute("""
+        INSERT INTO submissions (submission_number,status,raw_data)
+        VALUES (%s,'Submitted',%s)
+        ON CONFLICT (submission_number)
+        DO UPDATE SET raw_data=EXCLUDED.raw_data
+        """,(sub,json.dumps(raw)))
 
+    conn.commit(); cur.close(); conn.close()
+
+def page(content,mode="admin"):
+    nav = "<a href='/admin'>Dashboard</a>" if mode=="admin" else "<a href='/portal'>Home</a>"
+    return f"<html><body>{nav}<div>{content}</div></body></html>"
+
+def status_bar(status):
+    steps = [
+        "Submitted","Order Arrived","Research & ID","Grading",
+        "Assembly",      # FIXED
+        "QA Checks",     # FIXED
+        "Shipping Soon","Complete","Delivered to Us","Picked Up"
+    ]
+    status=status or "Submitted"
+    idx=steps.index(status) if status in steps else 0
+    html="<div>"
+    for i,step in enumerate(steps):
+        html+=f"[{step}] "
+    html+="</div>"
     return html
 
-# =========================
-# RUN (UNCHANGED)
-# =========================
-if __name__ == "__main__":
-    app.run(debug=True)
+def build_table(rows):
+    html="<table border=1><tr><th>Submission</th><th>Status</th></tr>"
+    for r in rows:
+        html+=f"<tr><td>{r[0].get('Submission #')}</td><td>{r[1]}</td></tr>"
+    html+="</table>"
+    return html
+
+@app.route("/admin")
+@admin_required
+def admin_dashboard():
+    conn=get_conn(); cur=conn.cursor()
+    cur.execute("SELECT raw_data,status FROM submissions")
+    rows=cur.fetchall()
+    cur.close(); conn.close()
+
+    rows=sorted(rows,key=lambda x:status_rank(x[1]))
+    return page(build_table(rows))
+
+@app.route("/admin/login",methods=["GET","POST"])
+def admin_login():
+    if request.method=="POST":
+        if request.form.get("password")==ADMIN_PASSWORD:
+            session["admin"]=True
+            return redirect("/admin")
+    return page("<form method=post><input name=password><button>Login</button></form>")
+
+@app.route("/portal",methods=["GET","POST"])
+def portal():
+    if request.method=="POST":
+        session["phone"]=normalize_phone(request.form.get("phone"))
+        session["last"]=clean(request.form.get("last")).lower()
+        return redirect("/portal/orders")
+    return page("<form method=post><input name=phone><input name=last><button>Go</button></form>",mode="portal")
+
+@app.route("/portal/orders")
+def portal_orders():
+    return page("<h2>Orders</h2>",mode="portal")
+
+if __name__=="__main__":
+    app.run()
