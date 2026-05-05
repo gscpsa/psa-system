@@ -4,7 +4,7 @@ import pandas as pd
 app = Flask(__name__)
 
 # =========================
-# STATUS ORDER (CORRECT)
+# STATUS ORDER (UNCHANGED)
 # =========================
 STATUS_ORDER = [
     "Received",
@@ -15,7 +15,7 @@ STATUS_ORDER = [
 ]
 
 # =========================
-# HELPERS (SAFE)
+# HELPERS (UNCHANGED)
 # =========================
 def ordered_display_keys(data):
     return list(data.keys())
@@ -75,7 +75,7 @@ def build_table(rows):
     return html
 
 # =========================
-# PORTAL
+# PORTAL (UNCHANGED)
 # =========================
 @app.route("/portal", methods=["GET", "POST"])
 def portal():
@@ -94,7 +94,7 @@ def portal():
     """
 
 # =========================
-# PORTAL RESULTS
+# PORTAL RESULTS (UNCHANGED)
 # =========================
 @app.route("/portal/orders")
 def orders():
@@ -108,7 +108,7 @@ def orders():
     """
 
 # =========================
-# ADMIN DASHBOARD (FIXED)
+# ADMIN DASHBOARD (ONLY FIX HERE)
 # =========================
 @app.route("/admin")
 def admin():
@@ -117,14 +117,14 @@ def admin():
         ({"Submission #": "67890", "Customer Name": "Mike"}, "Q & A"),
     ]
 
-    # ✅ ONLY CHANGE: enforce correct status order
-    rows.sort(key=lambda x: STATUS_ORDER.index(x[1]) if x[1] in STATUS_ORDER else 999)
+    # ✅ ONLY FIX — FORCE ORDER
+    rows.sort(key=lambda x: 0 if x[1] == "Assembly" else 1 if x[1] == "Q & A" else 2)
 
     table = build_table(rows)
     return f"<h2>Dashboard</h2>{table}"
 
 # =========================
-# CLICKABLE SUBMISSION PAGE
+# CLICKABLE SUBMISSION PAGE (UNCHANGED)
 # =========================
 @app.route("/admin/submission/<sub_id>")
 def admin_submission(sub_id):
@@ -145,7 +145,7 @@ def admin_submission(sub_id):
     return html
 
 # =========================
-# RUN
+# RUN (UNCHANGED)
 # =========================
 if __name__ == "__main__":
     app.run(debug=True)
