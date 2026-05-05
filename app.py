@@ -206,7 +206,7 @@ def save_row(sub, raw):
 # UI
 # =========================
 def page(content, mode="admin"):
-    return f'''
+    return '''
     <!DOCTYPE html>
     <html lang="en">
     <head>
@@ -598,7 +598,7 @@ def page(content, mode="admin"):
         </div>
     </div>
 
-    {content}
+    ''' + content + '''
 
     <div class="footer">
         <div class="footer-feature">
