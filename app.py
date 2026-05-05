@@ -9,97 +9,85 @@ def page(content):
     <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Giant Sports Cards</title>
+    <title>Giant Sports Cards Portal</title>
+    <!-- Importing fonts and icons to match the mockup -->
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    
     <style>
     * {{
         box-sizing: border-box;
     }}
+    
     body {{ 
         margin:0; 
-        font-family: 'Inter', sans-serif; 
-        background-color: #111;
+        font-family: 'Inter', Arial, sans-serif; 
+        background-color: #06100d;
         display: flex;
         flex-direction: column;
         min-height: 100vh;
     }}
 
+    /* --- HEADER STYLES --- */
     .header {{
-        background: #040b09;
+        background: #06100d;
         color: white;
-        padding: 0 40px;
-        height: 70px;
+        padding: 0 30px;
+        height: 80px;
         display: flex;
         justify-content: space-between;
         align-items: center;
         border-bottom: 2px solid #113824;
     }}
 
-    .header-left {{
+    .header-logo {{
         font-family: 'Oswald', sans-serif;
-        font-size: 24px;
-        font-weight: 600;
+        font-size: 26px;
+        font-weight: 700;
         color: white;
-        display: flex;
-        align-items: center;
+        letter-spacing: -0.5px;
+        text-decoration: none;
     }}
     
-    .header-left span {{
+    .header-logo span {{
         color: #198754;
     }}
 
     .header-nav {{
         display: flex;
-        gap: 30px;
+        gap: 35px;
     }}
 
-    .header-nav a {{
-        color: #e0e0e0;
+    .header-nav a, .header-logout a {{
+        color: #fff;
         text-decoration: none;
         font-size: 14px;
         font-weight: 500;
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 10px;
         transition: color 0.2s;
     }}
 
-    .header-nav a:hover {{
+    .header-nav a:hover, .header-logout a:hover {{
         color: #198754;
     }}
 
-    .header-right a {{
-        color: #e0e0e0;
-        text-decoration: none;
-        font-size: 14px;
-        font-weight: 500;
-        display: flex;
-        align-items: center;
-        gap: 8px;
+    .header-nav i, .header-logout i {{
+        font-size: 16px;
     }}
 
+    /* --- HERO & LAYOUT --- */
     .hero {{
         display: flex;
         flex: 1;
-        /* Replace with actual background image path */
         background: url('/static/images/bg.png') center center no-repeat;
         background-size: cover;
         position: relative;
     }}
 
-    /* Adding a dark overlay to make the panel pop just like the mockup */
-    .hero::before {{
-        content: '';
-        position: absolute;
-        top: 0; right: 0; bottom: 0; left: 0;
-        background: rgba(0,0,0,0.4);
-        z-index: 0;
-    }}
-
     .left {{
         flex: 1;
-        z-index: 1;
     }}
 
     .right {{
@@ -107,17 +95,17 @@ def page(content):
         display: flex;
         justify-content: center;
         align-items: center;
-        z-index: 1;
         padding: 40px;
     }}
 
+    /* --- FORM PANEL (MOCKUP) --- */
     .panel {{
         width: 100%;
-        max-width: 520px;
+        max-width: 500px;
         background: white;
         padding: 50px 60px;
         border-radius: 12px;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.4);
     }}
 
     .panel-icon-top {{
@@ -131,18 +119,18 @@ def page(content):
         margin: 0 auto 20px auto;
         border: 2px solid #e9ecef;
         color: #0d462b;
-        font-size: 30px;
+        font-size: 28px;
     }}
 
     .panel h2 {{
         text-align: center;
         font-family: 'Oswald', sans-serif;
-        font-size: 36px;
+        font-size: 32px;
         font-weight: 600;
-        margin: 0 0 10px 0;
+        margin: 0 0 15px 0;
         color: #111;
         text-transform: uppercase;
-        letter-spacing: -0.5px;
+        letter-spacing: 0.5px;
     }}
 
     .panel-divider {{
@@ -155,7 +143,7 @@ def page(content):
     .panel p.desc {{
         text-align: center;
         color: #555;
-        font-size: 16px;
+        font-size: 15px;
         line-height: 1.5;
         margin-bottom: 30px;
     }}
@@ -168,13 +156,8 @@ def page(content):
         padding: 14px 16px;
         margin-bottom: 16px;
         background: white;
-        transition: border-color 0.2s;
     }}
     
-    .input-group:focus-within {{
-        border-color: #198754;
-    }}
-
     .input-group i {{
         color: #888;
         font-size: 18px;
@@ -204,7 +187,7 @@ def page(content):
         border: none;
         border-radius: 6px;
         font-family: 'Inter', sans-serif;
-        font-size: 16px;
+        font-size: 15px;
         font-weight: 600;
         cursor: pointer;
         display: flex;
@@ -219,8 +202,9 @@ def page(content):
         background: #064023;
     }}
 
+    /* --- FORM BOTTOM LOGO --- */
     .panel-footer {{
-        margin-top: 40px;
+        margin-top: 35px;
         text-align: center;
         position: relative;
     }}
@@ -244,10 +228,19 @@ def page(content):
         position: relative;
         z-index: 2;
         font-family: 'Oswald', sans-serif;
-        font-weight: 600;
+        font-weight: 700;
         color: #085a31;
         font-size: 18px;
-        margin-bottom: 15px;
+        margin-bottom: 10px;
+        line-height: 1;
+    }}
+    
+    .panel-footer-logo span {{
+        display: block;
+        font-size: 10px;
+        color: #111;
+        letter-spacing: 1px;
+        margin-top: 2px;
     }}
 
     .panel-footer p {{
@@ -257,13 +250,15 @@ def page(content):
         line-height: 1.5;
     }}
 
+    /* --- FOOTER STYLES --- */
     .footer {{
-        background: #040b09;
+        background: #06100d;
         color: white;
         display: flex;
         justify-content: center;
-        gap: 60px;
-        padding: 25px 40px;
+        gap: 80px;
+        padding: 30px 40px;
+        border-top: 1px solid #113824;
     }}
 
     .footer-feature {{
@@ -288,6 +283,7 @@ def page(content):
         margin: 0 0 4px 0;
         font-size: 14px;
         font-weight: 600;
+        font-family: 'Inter', sans-serif;
         letter-spacing: 0.5px;
     }}
 
@@ -299,28 +295,29 @@ def page(content):
 
     @media (max-width: 1000px) {{
         .hero {{ flex-direction: column; }}
-        .header-nav {{ display: none; }} /* Mobile menu needed */
-        .footer {{ flex-direction: column; gap: 20px; align-items: center; text-align: center; }}
-        .footer-feature {{ flex-direction: column; }}
+        .header-nav {{ display: none; }}
+        .footer {{ flex-direction: column; gap: 25px; align-items: center; text-align: center; }}
+        .footer-feature {{ flex-direction: column; text-align: center; }}
     }}
     </style>
     </head>
 
     <body>
     <div class="header">
-        <div class="header-left">
-            <!-- Mockup Logo Text -->
+        <a href="/" class="header-logo">
             GIANT <span>SPORTS CARDS</span>
-        </div>
+        </a>
+        
         <div class="header-nav">
-            <a href="#"><i class="fa-solid fa-chart-simple"></i> Dashboard</a>
-            <a href="#"><i class="fa-solid fa-magnifying-glass"></i> Search</a>
-            <a href="#"><i class="fa-regular fa-file-excel"></i> Upload Excel</a>
-            <a href="#"><i class="fa-solid fa-file-lines"></i> Upload PSA</a>
-            <a href="#"><i class="fa-solid fa-users"></i> Customer Portal</a>
+            <a href="/"><i class="fa-solid fa-chart-simple"></i> Dashboard</a>
+            <a href="/"><i class="fa-solid fa-magnifying-glass"></i> Search</a>
+            <a href="/"><i class="fa-regular fa-file-excel"></i> Upload Excel</a>
+            <a href="/"><i class="fa-solid fa-file-lines"></i> Upload PSA</a>
+            <a href="/portal"><i class="fa-solid fa-users"></i> Customer Portal</a>
         </div>
-        <div class="header-right">
-            <a href="#"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout</a>
+        
+        <div class="header-logout">
+            <a href="/"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout</a>
         </div>
     </div>
 
@@ -357,9 +354,11 @@ def page(content):
 @app.route("/", methods=["GET","POST"])
 @app.route("/portal", methods=["GET","POST"])
 def portal():
+    # Preserving your exact Python logic
     if request.method == "POST":
         return redirect("/portal")
 
+    # Only one hero and one form are returned here, replacing the old block
     return page('''
     <div class="hero">
 
@@ -393,7 +392,9 @@ def portal():
                 </form>
 
                 <div class="panel-footer">
-                    <div class="panel-footer-logo">GIANT SPORTS CARDS</div>
+                    <div class="panel-footer-logo">
+                        GIANT<br><span>SPORTS CARDS</span>
+                    </div>
                     <p>Thank you for trusting Giant Sports Cards<br>with your valuable collection.</p>
                 </div>
 
@@ -404,4 +405,4 @@ def portal():
     ''')
 
 if __name__ == "__main__":
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True)
