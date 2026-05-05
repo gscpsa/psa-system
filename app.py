@@ -1,121 +1,138 @@
-    return self.load_wsgiapp()
-           ~~~~~~~~~~~~~~~~~^^
-  File "/app/.venv/lib/python3.13/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
-    return util.import_app(self.app_uri)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
-  File "/app/.venv/lib/python3.13/site-packages/gunicorn/util.py", line 377, in import_app
-    mod = importlib.import_module(module)
-  File "/mise/installs/python/3.13.13/lib/python3.13/importlib/__init__.py", line 88, in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<frozen importlib._bootstrap>", line 1395, in _gcd_import
-  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
-  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
-  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
-  File "<frozen importlib._bootstrap_external>", line 1019, in exec_module
-  File "<frozen importlib._bootstrap_external>", line 1157, in get_code
-  File "<frozen importlib._bootstrap_external>", line 1087, in source_to_code
-  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
-  File "/app/app.py", line 625
-    sub_id = str(val or "").strip()
-    ^^^^^^
-IndentationError: expected an indented block after 'if' statement on line 624
-expected an indented block after 'if' statement on line 624 (app.py, line 625)
-[2026-05-05 14:41:28 +0000] [2] [INFO] Worker exiting (pid: 2)
-[2026-05-05 14:41:28 +0000] [1] [ERROR] Worker (pid:2) exited with code 3.
-[2026-05-05 14:41:28 +0000] [1] [INFO] Control socket listening at /root/.gunicorn/gunicorn.ctl
-[2026-05-05 14:41:30 +0000] [1] [ERROR] Shutting down: Master
-[2026-05-05 14:41:30 +0000] [1] [ERROR] Reason: Worker failed to boot.
-[2026-05-05 14:41:31 +0000] [1] [INFO] Starting gunicorn 25.3.0
-[2026-05-05 14:41:31 +0000] [1] [INFO] Listening at: http://0.0.0.0:8080 (1)
-[2026-05-05 14:41:31 +0000] [1] [INFO] Using worker: sync
-[2026-05-05 14:41:31 +0000] [2] [INFO] Booting worker with pid: 2
-  File "/app/.venv/lib/python3.13/site-packages/gunicorn/app/base.py", line 66, in wsgi
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
-  File "/app/.venv/lib/python3.13/site-packages/gunicorn/util.py", line 377, in import_app
-    self.callable = self.load()
-                    ~~~~~~~~~^^
-  File "/app/.venv/lib/python3.13/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
-    ~~~~~~~~~~~~~~^^
-[2026-05-05 14:41:31 +0000] [2] [ERROR] Exception in worker process
-    return self.load_wsgiapp()
-Traceback (most recent call last):
-  File "/app/.venv/lib/python3.13/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
-           ~~~~~~~~~~~~~~~~~^^
-  File "/app/.venv/lib/python3.13/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
-    self.wsgi = self.app.wsgi()
-    worker.init_process()
-  File "/app/.venv/lib/python3.13/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
-                ~~~~~~~~~~~~~^^
-    ~~~~~~~~~~~~~~~~~~~^^
-    return util.import_app(self.app_uri)
-  File "/app/.venv/lib/python3.13/site-packages/gunicorn/workers/base.py", line 136, in init_process
-    self.load_wsgi()
-  File "/app/app.py", line 625
-    sub_id = str(val or "").strip()
-    ^^^^^^
-IndentationError: expected an indented block after 'if' statement on line 624
-expected an indented block after 'if' statement on line 624 (app.py, line 625)
-[2026-05-05 14:41:31 +0000] [2] [INFO] Worker exiting (pid: 2)
-[2026-05-05 14:41:32 +0000] [1] [ERROR] Worker (pid:2) exited with code 3.
-    mod = importlib.import_module(module)
-  File "/mise/installs/python/3.13.13/lib/python3.13/importlib/__init__.py", line 88, in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<frozen importlib._bootstrap>", line 1395, in _gcd_import
-  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
-  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
-  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
-  File "<frozen importlib._bootstrap_external>", line 1019, in exec_module
-  File "<frozen importlib._bootstrap_external>", line 1157, in get_code
-  File "<frozen importlib._bootstrap_external>", line 1087, in source_to_code
-  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
-[2026-05-05 14:41:32 +0000] [1] [INFO] Control socket listening at /root/.gunicorn/gunicorn.ctl
-[2026-05-05 14:41:34 +0000] [1] [ERROR] Shutting down: Master
-[2026-05-05 14:41:34 +0000] [1] [ERROR] Reason: Worker failed to boot.
-  File "/app/.venv/lib/python3.13/site-packages/gunicorn/app/wsgiapp.py", line 57, in load
-    worker.init_process()
-    return self.load_wsgiapp()
-           ~~~~~~~~~~~~~~~~~^^
-    ~~~~~~~~~~~~~~~~~~~^^
-  File "/app/.venv/lib/python3.13/site-packages/gunicorn/workers/base.py", line 148, in load_wsgi
-  File "/app/.venv/lib/python3.13/site-packages/gunicorn/workers/base.py", line 136, in init_process
-[2026-05-05 14:41:34 +0000] [1] [INFO] Listening at: http://0.0.0.0:8080 (1)
-    self.wsgi = self.app.wsgi()
-    self.load_wsgi()
-                ~~~~~~~~~~~~~^^
-[2026-05-05 14:41:34 +0000] [1] [INFO] Using worker: sync
-    ~~~~~~~~~~~~~~^^
-  File "/app/.venv/lib/python3.13/site-packages/gunicorn/app/base.py", line 66, in wsgi
-[2026-05-05 14:41:34 +0000] [2] [INFO] Booting worker with pid: 2
-    self.callable = self.load()
-                    ~~~~~~~~~^^
-[2026-05-05 14:41:34 +0000] [2] [ERROR] Exception in worker process
-Traceback (most recent call last):
-  File "/app/.venv/lib/python3.13/site-packages/gunicorn/arbiter.py", line 713, in spawn_worker
-[2026-05-05 14:41:34 +0000] [1] [INFO] Starting gunicorn 25.3.0
-  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
-IndentationError: expected an indented block after 'if' statement on line 624
-  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
-  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
-  File "<frozen importlib._bootstrap_external>", line 1019, in exec_module
-  File "<frozen importlib._bootstrap_external>", line 1157, in get_code
-  File "<frozen importlib._bootstrap_external>", line 1087, in source_to_code
-  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
-  File "/app/app.py", line 625
-    sub_id = str(val or "").strip()
-    ^^^^^^
-  File "/app/.venv/lib/python3.13/site-packages/gunicorn/app/wsgiapp.py", line 47, in load_wsgiapp
-    return util.import_app(self.app_uri)
-           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
-  File "/app/.venv/lib/python3.13/site-packages/gunicorn/util.py", line 377, in import_app
-    mod = importlib.import_module(module)
-  File "/mise/installs/python/3.13.13/lib/python3.13/importlib/__init__.py", line 88, in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<frozen importlib._bootstrap>", line 1395, in _gcd_import
-expected an indented block after 'if' statement on line 624 (app.py, line 625)
-[2026-05-05 14:41:34 +0000] [2] [INFO] Worker exiting (pid: 2)
-[2026-05-05 14:41:35 +0000] [1] [ERROR] Worker (pid:2) exited with code 3.
-[2026-05-05 14:41:35 +0000] [1] [INFO] Control socket listening at /root/.gunicorn/gunicorn.ctl
-[2026-05-05 14:41:37 +0000] [1] [ERROR] Shutt
+from flask import Flask, request, redirect
+
+app = Flask(__name__)
+
+# =========================
+# EXISTING FUNCTIONS / LOGIC
+# (unchanged)
+# =========================
+
+def build_table(rows):
+    keys = []
+    clean_rows = []
+    force_keys = ["Arrived / Completed"]
+
+    for r in rows:
+        data = r[0] or {}
+        row = {}
+
+        for k in ordered_display_keys(data):
+            v = data.get(k)
+            key_text = str(k).strip()
+
+            if "unnamed" in key_text.lower():
+                continue
+
+            if should_hide_column(key_text):
+                continue
+
+            display_key = display_column_label(key_text)
+            row[display_key] = v
+
+            if display_key not in keys:
+                keys.append(display_key)
+
+        row["Status"] = r[1] or row.get("Status") or "Submitted"
+
+        if "Status" not in keys:
+            keys.append("Status")
+
+        clean_rows.append(row)
+
+    for forced_key in force_keys:
+        if forced_key not in keys:
+            keys.append(forced_key)
+
+    if not clean_rows:
+        return "<div class='card'>No records found.</div>"
+
+    html = "<table><tr>"
+    for k in keys:
+        html += f"<th>{display_column_label(k)}</th>"
+    html += "</tr>"
+
+    for row in clean_rows:
+        html += "<tr>"
+        for k in keys:
+            val = row.get(k, "")
+            col_class = "notes-col" if "note" in str(k).lower() else ""
+
+            # ✅ FIXED BLOCK (THIS WAS CRASHING)
+            if "submission" in str(k).lower():
+                sub_id = str(val or "").strip()
+                html += f"<td class='{col_class}'><a href='/admin/submission/{sub_id}'>{val}</a></td>"
+            elif k == "Status":
+                html += f"<td class='status {col_class}'>{val}</td>"
+            else:
+                html += f"<td class='{col_class}'>{val}</td>"
+
+        html += "</tr>"
+
+    html += "</table>"
+    return html
+
+
+# =========================
+# NEW ROUTE (UNCHANGED FROM BEFORE)
+# =========================
+
+@app.route("/admin/submission/<sub_id>")
+@admin_required
+def admin_submission(sub_id):
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT raw_data, status
+        FROM submissions
+        WHERE submission_number = %s
+    """, (sub_id,))
+
+    row = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    if not row:
+        return page("<div class='card'>Submission not found.</div>")
+
+    data = row[0] or {}
+    status = row[1] or "Submitted"
+
+    html = f"""
+    <div class="portal-landing">
+        <div class="portal-panel">
+
+            <h2>Submission #{sub_id}</h2>
+            <div class="portal-divider"></div>
+
+            <p><b>Status:</b> {status}</p>
+            <br>
+
+            <table>
+    """
+
+    for k in ordered_display_keys(data):
+        v = data.get(k, "")
+        html += f"<tr><td><b>{k}</b></td><td>{v}</td></tr>"
+
+    html += """
+            </table>
+
+            <br>
+            <a class="btn" href="/admin">Back to Dashboard</a>
+
+        </div>
+    </div>
+    """
+
+    return page(html)
+
+
+# =========================
+# EXISTING APP RUN
+# =========================
+
+if __name__ == "__main__":
+    app.run(debug=True)
