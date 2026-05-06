@@ -282,12 +282,14 @@ def page(content, mode="admin"):
             color:#111827;
         }}
         .topbar {{
-            background:#0f5132;
+            background:rgba(8,16,24,.92);
+            backdrop-filter:blur(10px);
             color:white;
             padding:15px 20px;
             display:flex;
             justify-content:space-between;
             align-items:center;
+            border-bottom:1px solid rgba(255,255,255,.08);
         }}
         .brand {{
             font-weight:bold;
@@ -419,19 +421,36 @@ def page(content, mode="admin"):
             display:flex;
             align-items:center;
             justify-content:center;
-            padding:38px 18px;
+            padding:40px 20px;
+
             background:
-                radial-gradient(circle at 50% 0%, rgba(25,135,84,.34), transparent 36%),
-                linear-gradient(180deg, #02140f 0%, #031c16 100%);
+                linear-gradient(
+                    rgba(255,255,255,0.38),
+                    rgba(255,255,255,0.38)
+                ),
+                url('/static/images/bp2.png');
+
+            background-size:cover;
+            background-position:center center;
+            background-repeat:no-repeat;
+            background-attachment:fixed;
         }}
         .portal-panel {{
             width:680px;
             max-width:94vw;
-            background:#f8f9fa;
+
+            background:rgba(255,255,255,0.92);
+            backdrop-filter:blur(8px);
+
             color:#111827;
             padding:54px 58px;
-            border-radius:20px;
-            box-shadow:0 30px 90px rgba(0,0,0,.55);
+
+            border-radius:24px;
+
+            box-shadow:
+                0 25px 80px rgba(0,0,0,.28),
+                0 0 0 1px rgba(255,255,255,.35);
+
             text-align:center;
         }}
         .portal-panel .panel-icon-top {{
