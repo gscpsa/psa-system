@@ -755,16 +755,27 @@ def admin_upload_psa():
                             # Extract Arrived / Completed
                             block_text = " ".join(search_parts)
 
-                            # Fix broken PDF line breaks (Apr 22, \n 2026)
+                            # Normalize messy PSA PDF text before extracting dates.
+                            block_text = re.sub(r"\s+", " ", block_text).strip()
                             block_text = re.sub(r",\s+(\d{4})", r", \1", block_text)
 
+                            date_pattern = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+\d{4}"
                             matches = re.findall(
-                                r"(Completed\s+[A-Za-z]{3}\s+\d{1,2},\s+\d{4}|Est\.\s+by\s+[A-Za-z]{3}\s+\d{1,2},\s+\d{4}|[A-Za-z]{3}\s+\d{1,2},\s+\d{4})",
-                                block_text
+                                rf"(?:Completed\s+{date_pattern}|Est\.\s*by\s+{date_pattern}|{date_pattern})",
+                                block_text,
+                                re.IGNORECASE
                             )
 
                             if matches:
-                                ac_map[sub] = " | ".join(matches)
+                                cleaned_matches = []
+                                seen_matches = set()
+                                for m in matches:
+                                    m = re.sub(r"\s+", " ", m).strip()
+                                    key = m.lower()
+                                    if key not in seen_matches:
+                                        seen_matches.add(key)
+                                        cleaned_matches.append(m)
+                                ac_map[sub] = " | ".join(cleaned_matches)
 
                     i += 1
 
@@ -818,22 +829,29 @@ def admin_upload_psa():
             for sub, status in best.items():
                 cur.execute("""
                 UPDATE submissions
-                SET status=%s,
-                    raw_data = jsonb_set(
-                        COALESCE(raw_data, '{}'::jsonb),
-                        '{Arrived / Completed}',
-                        to_jsonb(%s::text),
-                        true
-                    ),
-                    last_updated=NOW()
+                SET status=%s, last_updated=NOW()
                 WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
                   AND COALESCE(status, '') NOT IN ('Picked Up', 'Delivered to Us')
-                """, (status, ac_map.get(sub, ""), sub))
+                """, (status, sub))
 
                 if cur.rowcount:
                     updated += 1
                 else:
                     skipped += 1
+
+                arrived_completed_value = ac_map.get(sub, "")
+                if arrived_completed_value:
+                    cur.execute("""
+                    UPDATE submissions
+                    SET raw_data = jsonb_set(
+                            COALESCE(raw_data, '{}'::jsonb),
+                            '{Arrived / Completed}',
+                            to_jsonb(%s::text),
+                            true
+                        ),
+                        last_updated=NOW()
+                    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+                    """, (arrived_completed_value, sub))
 
             conn.commit()
 
@@ -863,6 +881,7 @@ def admin_upload_psa():
                     f"<tr>"
                     f"<td>{sub}</td>"
                     f"<td>{parsed_status}</td>"
+                    f"<td>{ac_map.get(sub, '')}</td>"
                     f"<td>{db_status}</td>"
                     f"<td style='{result_style}'>{match}</td>"
                     f"</tr>"
@@ -906,6 +925,7 @@ def admin_upload_psa():
                     <tr>
                         <th>Submission #</th>
                         <th>PDF Parsed Status</th>
+                        <th>Arrived / Completed</th>
                         <th>Database Status After Upload</th>
                         <th>Result</th>
                     </tr>
