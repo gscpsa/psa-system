@@ -707,7 +707,7 @@ def admin_upload_psa():
                             search_parts.append(after_sub_text)
 
                         j = i + 1
-                        while j < len(lines) and len(search_parts) < 5:
+                        while j < len(lines) and len(search_parts) < 12:
                             next_line = lines[j].strip()
 
                             # Stop if the next submission starts before a status is found.
@@ -730,7 +730,7 @@ def admin_upload_psa():
                             sub = normalize_submission(number_match.group(1))
 
                             j = i + 2
-                            while j < len(lines) and len(search_parts) < 5:
+                            while j < len(lines) and len(search_parts) < 12:
                                 next_line = lines[j].strip()
 
                                 if re.search(r"Sub\s*#\s*\d+", next_line, re.IGNORECASE):
