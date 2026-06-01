@@ -44,6 +44,11 @@ def init_db():
 
     cur.execute("""
     ALTER TABLE submissions
+    ADD COLUMN IF NOT EXISTS sms_mode TEXT DEFAULT 'none'
+    """)
+
+    cur.execute("""
+    ALTER TABLE submissions
     ADD COLUMN IF NOT EXISTS last_sms_status TEXT
     """)
 
@@ -86,6 +91,26 @@ def init_db():
     cur.execute("""
     ALTER TABLE card_buyback_items
     ADD COLUMN IF NOT EXISTS buyback_status TEXT DEFAULT 'New'
+    """)
+
+    cur.execute("""
+    ALTER TABLE card_buyback_items
+    ADD COLUMN IF NOT EXISTS card_type TEXT
+    """)
+
+    cur.execute("""
+    ALTER TABLE card_buyback_items
+    ADD COLUMN IF NOT EXISTS description TEXT
+    """)
+
+    cur.execute("""
+    ALTER TABLE card_buyback_items
+    ADD COLUMN IF NOT EXISTS after_service TEXT
+    """)
+
+    cur.execute("""
+    ALTER TABLE card_buyback_items
+    ADD COLUMN IF NOT EXISTS images_url TEXT
     """)
     conn.commit()
     cur.close()
@@ -172,8 +197,8 @@ def clean_service_display(service):
     value = str(service or "").strip()
     if " - " in value:
         return value.split(" - ", 1)[0].strip()
-    if " â " in value:
-        return value.split(" â ", 1)[0].strip()
+    if " – " in value:
+        return value.split(" – ", 1)[0].strip()
     return value
 
 def date_only_display(value):
@@ -198,18 +223,26 @@ def date_only_display(value):
     return text
 
 def get_dropoff_date(data):
-    value = get_field(data, ["Customer Drop-Off Date", "Submission Date", "Æand", "Æand.", "fand", "Fand", "S", "s", "Date", "date"])
+    aliases = ["Customer Drop-Off Date", "Submission Date", "ƒand", "ƒand.", "Æand", "Æand.", "fand", "Fand", "S", "s", "Date", "date"]
+    value = get_field(data, aliases)
 
     if value:
         return date_only_display(value)
 
     for k, v in (data or {}).items():
-        key = str(k).strip().lower()
-        if key in ["s", "submission date", "customer drop-off date", "date", "Æand", "Æand.", "fand"]:
+        key = str(k).strip()
+        key_lower = key.lower()
+
+        # Exact/common matches
+        if key_lower in ["s", "submission date", "customer drop-off date", "date", "ƒand", "ƒand.", "æand", "æand.", "fand"]:
+            return date_only_display(v)
+
+        # Defensive fallback for the corrupted Excel header:
+        # catches variants like "ƒand", "Æand", or copied/pasted mojibake that still ends with "and".
+        if "and" in key_lower and len(key_lower) <= 8:
             return date_only_display(v)
 
     return ""
-
 
 def parse_arrived_completed_value(value):
     text = str(value or "").strip()
@@ -220,8 +253,8 @@ def parse_arrived_completed_value(value):
 
     month = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
     date_single = month + r"\s+\d{1,2},\s+\d{4}"
-    date_range_same_year = month + r"\s+\d{1,2}\s*[-â]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
-    date_range_full = date_single + r"\s*[-â]\s*" + date_single
+    date_range_same_year = month + r"\s+\d{1,2}\s*[-–]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
+    date_range_full = date_single + r"\s*[-–]\s*" + date_single
 
     completed_match = re.search(r"Completed\s+(" + date_single + r")", text, re.IGNORECASE)
     if completed_match:
@@ -294,13 +327,27 @@ def html_escape(value):
             .replace("'", "&#39;")
     )
 
-def sms_status_is_textable(new_status, pickup_only=True):
+def sms_status_is_textable(new_status, sms_mode="pickup"):
     new_status = new_status or ""
 
-    if pickup_only:
+    # Backward compatibility: old code passed pickup_only as True/False.
+    if sms_mode is True:
+        sms_mode = "pickup"
+    elif sms_mode is False:
+        sms_mode = "all"
+
+    sms_mode = str(sms_mode or "none").lower()
+
+    if sms_mode == "none":
+        return False
+
+    if sms_mode == "pickup":
         return new_status == "Delivered to Us"
 
-    return new_status not in ["", "Submitted", "Picked Up"]
+    if sms_mode == "all":
+        return new_status not in ["", "Submitted", "Picked Up"]
+
+    return False
 
 def build_sms_message(submission_number, old_status, new_status):
     display_new = customer_status_label(new_status)
@@ -345,8 +392,10 @@ def send_sms_or_queue(submission_number, phone, old_status, new_status, message)
 
     return send_status, provider_response
 
-def maybe_queue_status_sms(cur, submission_number, phone, old_status, new_status, sms_opt_in, pickup_only, last_sms_status):
-    if not sms_opt_in:
+def maybe_queue_status_sms(cur, submission_number, phone, old_status, new_status, sms_opt_in, sms_mode, last_sms_status):
+    sms_mode = str(sms_mode or "none").lower()
+
+    if not sms_opt_in or sms_mode == "none":
         return False
 
     if not phone:
@@ -361,7 +410,7 @@ def maybe_queue_status_sms(cur, submission_number, phone, old_status, new_status
     if last_sms_status == new_status:
         return False
 
-    if not sms_status_is_textable(new_status, pickup_only):
+    if not sms_status_is_textable(new_status, sms_mode):
         return False
 
     message = build_sms_message(submission_number, old_status, new_status)
@@ -381,6 +430,7 @@ def maybe_queue_status_sms(cur, submission_number, phone, old_status, new_status
     """, (new_status, send_status, submission_number))
 
     return True
+
 
 # =========================
 # STATUS LOGIC
@@ -833,7 +883,7 @@ def build_table(rows):
 
             if key_text == "S":
                 display_key = "Customer Drop-Off Date"
-            elif normalized_key_text in ["submission date", "Æand", "Æand.", "fand"]:
+            elif normalized_key_text in ["submission date", "ƒand", "ƒand.", "fand"]:
                 display_key = "Customer Drop-Off Date"
             else:
                 display_key = key_text
@@ -896,7 +946,7 @@ def build_table(rows):
 
 def get_sort_date(row):
     data = row[0] or {}
-    date_value = get_field(data, ["Customer Drop-Off Date", "Submission Date", "Æand", "Æand.", "fand", "Fand", "S", "s", "Date", "date"])
+    date_value = get_field(data, ["Customer Drop-Off Date", "Submission Date", "ƒand", "ƒand.", "Æand", "Æand.", "fand", "Fand", "S", "s", "Date", "date"])
 
     try:
         if date_value:
@@ -948,6 +998,7 @@ def extract_card_items_from_pdf(pdf_path):
             sub_match = re.search(r"Submission\s*#\s*(\d+)", text, re.IGNORECASE)
             if sub_match:
                 submission_number = normalize_submission(sub_match.group(1)) or ""
+
         if not order_number:
             order_match = re.search(r"Order\s*#\s*(\d+)", text, re.IGNORECASE)
             if order_match:
@@ -958,27 +1009,78 @@ def extract_card_items_from_pdf(pdf_path):
 
         for idx, cert_match in enumerate(cert_matches):
             cert_number = normalize_submission(cert_match.group(1)) or ""
-            start = cert_match.end()
-            end = cert_matches[idx + 1].start() if idx + 1 < len(cert_matches) else len(text)
-            block = text[start:end]
-            block_lines = [clean(line) for line in block.splitlines() if clean(line)]
-            ignored = set(["Item Details", "Report Error", "Ship to You", "Status", "Sell on eBay", "Send to Vault", "Grading"])
-            detail_lines = []
-            grade = ""
+            start_pos = cert_match.end()
+            end_pos = cert_matches[idx + 1].start() if idx + 1 < len(cert_matches) else len(text)
+            block = text[start_pos:end_pos]
 
-            for line in block_lines:
+            all_lines = [clean(line) for line in block.splitlines() if clean(line)]
+
+            grade = ""
+            description_lines = []
+            after_service = ""
+
+            # PSA PDF layout commonly puts grade and description just above Cert #,
+            # so look backward from the cert line too.
+            before_text = text[:cert_match.start()]
+            before_lines = [clean(line) for line in before_text.splitlines() if clean(line)]
+            nearby_before = before_lines[-8:]
+
+            grade_pattern = re.compile(
+                r"^(VERY GOOD|GOOD|EXCELLENT|EXCELLENT-MINT|MINT|GEM MINT|NEAR MINT|NM-MT|AUTHENTIC|PR|FR|VG|EX|MT|GM)?\s*\d{1,2}$",
+                re.IGNORECASE
+            )
+
+            for line in reversed(nearby_before):
+                if not grade and (grade_pattern.search(line) or re.search(r"\b\d{1,2}$", line)):
+                    grade = line
+                    continue
+
+                if line.lower() in ["view grades", "your grades are ready", "complete", "status", "show more", "grader notes"]:
+                    continue
+
+                if not description_lines and "cert #" not in line.lower() and not re.search(r"order\s*#|submission\s*#", line, re.IGNORECASE):
+                    description_lines.insert(0, line)
+                    break
+
+            ignored = set([
+                "Item Details", "Report Error", "Ship to You", "Status", "Sell on eBay",
+                "Send to Vault", "Grading", "Grader Notes", "Show More", "View Grades",
+                "Your grades are ready", "Complete"
+            ])
+
+            for line in all_lines:
                 if line in ignored:
                     continue
-                if re.search(r"^(Status|Ship to You|Sell on eBay|Send to Vault)$", line, re.IGNORECASE):
+                if re.search(r"^(Status|Ship to You|Sell on eBay|Send to Vault|Grader Notes|Show More)$", line, re.IGNORECASE):
                     continue
-                if re.search(r"^(PSA\s*)?\d{1,2}$", line.strip(), re.IGNORECASE):
-                    grade = line.strip()
+                if re.search(r"Notes?", line, re.IGNORECASE):
                     continue
-                if "Â©" in line or "https://" in line or "Order " in line:
+                if "©" in line or "Â©" in line or "https://" in line:
                     continue
-                detail_lines.append(line)
+                if re.search(r"Order\s+\d+", line, re.IGNORECASE):
+                    continue
+                if grade_pattern.search(line):
+                    if not grade:
+                        grade = line
+                    continue
 
-            item_details = " ".join(detail_lines).strip()
+                if re.search(r"shipped|vault|after service", line, re.IGNORECASE):
+                    after_service = line
+                    continue
+
+                description_lines.append(line)
+
+            # Remove duplicates while preserving order.
+            clean_desc = []
+            seen = set()
+            for line in description_lines:
+                key = line.lower()
+                if key not in seen:
+                    seen.add(key)
+                    clean_desc.append(line)
+
+            description = " ".join(clean_desc).strip()
+            item_details = description
             image_data = images[idx] if idx < len(images) else (images[0] if len(images) == 1 else "")
 
             if cert_number:
@@ -986,19 +1088,69 @@ def extract_card_items_from_pdf(pdf_path):
                     "submission_number": submission_number,
                     "order_number": order_number,
                     "cert_number": cert_number,
+                    "card_type": "Card",
+                    "description": description,
                     "item_details": item_details,
                     "grade": grade,
+                    "after_service": after_service,
+                    "images_url": "",
                     "image_data": image_data
                 })
 
     doc.close()
     return submission_number, order_number, items
 
+def extract_card_items_from_csv(file):
+    df = read_file(file)
+    df.columns = [str(c).strip() for c in df.columns]
+
+    items = []
+
+    def field(row, names):
+        for name in names:
+            for col in df.columns:
+                if str(col).strip().lower() == name.strip().lower():
+                    return clean(row[col])
+        return ""
+
+    for _, row in df.iterrows():
+        cert_number = normalize_submission(field(row, ["Cert #", "Cert", "Certification Number", "Certification #"]))
+        if not cert_number:
+            continue
+
+        card_type = field(row, ["Type"])
+        description = field(row, ["Description"])
+        grade = field(row, ["Grade"])
+        after_service = field(row, ["After Service"])
+        images_url = field(row, ["Images", "Image", "Image URL", "Images URL"])
+
+        items.append({
+            "submission_number": "",
+            "order_number": "",
+            "cert_number": cert_number,
+            "card_type": card_type,
+            "description": description,
+            "item_details": description,
+            "grade": grade,
+            "after_service": after_service,
+            "images_url": images_url,
+            "image_data": ""
+        })
+
+    return "", "", items
+
 def get_buyback_items_for_submission(submission_number):
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
-    SELECT cert_number, item_details, grade, image_data, interested
+    SELECT cert_number,
+           COALESCE(description, item_details, ''),
+           grade,
+           image_data,
+           interested,
+           COALESCE(card_type, ''),
+           COALESCE(after_service, ''),
+           COALESCE(images_url, '')
     FROM card_buyback_items
     WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
     ORDER BY cert_number
@@ -1007,6 +1159,7 @@ def get_buyback_items_for_submission(submission_number):
     cur.close()
     conn.close()
     return rows
+
 
 # =========================
 # ADMIN ROUTES
@@ -1234,8 +1387,8 @@ def admin_upload_psa():
 
                 month_pattern = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
                 date_pattern = month_pattern + r"\s+\d{1,2},\s+\d{4}"
-                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-â]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
-                date_range_full = date_pattern + r"\s*[-â]\s*" + date_pattern
+                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-–]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
+                date_range_full = date_pattern + r"\s*[-–]\s*" + date_pattern
 
                 value_pattern = re.compile(
                     rf"(Completed\s+{date_pattern}|Est\.\s*Complete\s*by\s+{date_range_full}|Est\.\s*Complete\s*by\s+{date_range_same_year}|Est\.\s*Complete\s*by\s+{date_pattern}|Estimated\s*Complete\s*by\s+{date_range_full}|Estimated\s*Complete\s*by\s+{date_range_same_year}|Estimated\s*Complete\s*by\s+{date_pattern}|Est\.\s*by\s+{date_range_full}|Est\.\s*by\s+{date_range_same_year}|Est\.\s*by\s+{date_pattern}|{date_pattern})",
@@ -1308,7 +1461,7 @@ def admin_upload_psa():
                             j += 1
 
                     # Split case:
-                    # â¢ Sub
+                    # • Sub
                     # #14550482
                     # Research & ID
                     elif re.search(r"\bSub\b\s*$", line, re.IGNORECASE) and i + 1 < len(lines):
@@ -1347,7 +1500,7 @@ def admin_upload_psa():
                             block_text = re.sub(r",\s+(\d{4})", r", \1", block_text)
 
                             matches = re.findall(
-                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
+                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
                                 block_text,
                                 re.IGNORECASE
                             )
@@ -1417,7 +1570,7 @@ def admin_upload_psa():
                 cur.execute("""
                 SELECT status,
                        COALESCE(sms_opt_in, FALSE),
-                       COALESCE(sms_pickup_only, TRUE),
+                       COALESCE(sms_mode, CASE WHEN COALESCE(sms_opt_in, FALSE)=FALSE THEN 'none' WHEN COALESCE(sms_pickup_only, TRUE)=TRUE THEN 'pickup' ELSE 'all' END),
                        COALESCE(last_sms_status, ''),
                        raw_data
                 FROM submissions
@@ -1427,7 +1580,7 @@ def admin_upload_psa():
 
                 old_status = existing_sms_row[0] if existing_sms_row else None
                 sms_opt_in = existing_sms_row[1] if existing_sms_row else False
-                sms_pickup_only = existing_sms_row[2] if existing_sms_row else True
+                sms_mode = existing_sms_row[2] if existing_sms_row else "none"
                 last_sms_status = existing_sms_row[3] if existing_sms_row else ""
                 existing_raw_data = existing_sms_row[4] if existing_sms_row and existing_sms_row[4] else {}
 
@@ -1451,7 +1604,7 @@ def admin_upload_psa():
 
                 if cur.rowcount:
                     updated += 1
-                    maybe_queue_status_sms(cur, sub, sms_phone, old_status, status, sms_opt_in, sms_pickup_only, last_sms_status)
+                    maybe_queue_status_sms(cur, sub, sms_phone, old_status, status, sms_opt_in, sms_mode, last_sms_status)
                 else:
                     skipped += 1
 
@@ -1578,7 +1731,7 @@ def admin_upload_psa():
     <div class="card">
         <h2>Upload PSA PDF</h2>
         <form method="post" enctype="multipart/form-data">
-            <input type="file" name="file" accept=".pdf,application/pdf">
+            <input type="file" name="file" accept=".pdf,.csv,application/pdf,text/csv">
             <button>Upload PDF</button>
         </form>
     </div>
@@ -1594,28 +1747,33 @@ def admin_upload_cards():
             if not file:
                 return page("<div class='card'>No card PDF uploaded.</div>")
             filename = (file.filename or "").lower()
-            if not filename.endswith(".pdf"):
+            if not (filename.endswith(".pdf") or filename.endswith(".csv")):
                 return page("""
                 <div class="card">
                     <h2>Wrong File Type</h2>
-                    <p>This uploader only accepts PDF files from the PSA order/card details page.</p>
-                    <a href="/admin/upload_cards">Back to Card PDF Upload</a>
+                    <p>This uploader accepts PSA card detail PDF or PSA CSV files.</p>
+                    <a href="/admin/upload_cards">Back to Card Upload</a>
                 </div>
                 """)
-            temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-            file.save(temp.name)
-            try:
-                submission_number, order_number, items = extract_card_items_from_pdf(temp.name)
-            finally:
+
+            if filename.endswith(".csv"):
+                submission_number = normalize_submission(request.form.get("submission_number"))
+                order_number, items = "", extract_card_items_from_csv(file)[2]
+            else:
+                temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+                file.save(temp.name)
                 try:
-                    os.unlink(temp.name)
-                except Exception:
-                    pass
+                    submission_number, order_number, items = extract_card_items_from_pdf(temp.name)
+                finally:
+                    try:
+                        os.unlink(temp.name)
+                    except Exception:
+                        pass
             if not submission_number:
                 return page("""
                 <div class="card">
                     <h2>No Submission Number Found</h2>
-                    <p>The PDF did not contain a readable Submission #. Please use the PSA order details PDF.</p>
+                    <p>For PDF files, use the PSA order details PDF. For CSV files, enter the Submission # on the upload form.</p>
                     <a href="/admin/upload_cards">Try Again</a>
                 </div>
                 """)
@@ -1627,15 +1785,29 @@ def admin_upload_cards():
                     item["submission_number"] = submission_number
                 cur.execute("""
                 INSERT INTO card_buyback_items
-                    (submission_number, cert_number, item_details, grade, image_data)
-                VALUES (%s, %s, %s, %s, %s)
+                    (submission_number, cert_number, item_details, grade, image_data, card_type, description, after_service, images_url)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (submission_number, cert_number)
                 DO UPDATE SET
                     item_details=EXCLUDED.item_details,
                     grade=EXCLUDED.grade,
                     image_data=COALESCE(NULLIF(EXCLUDED.image_data, ''), card_buyback_items.image_data),
+                    card_type=EXCLUDED.card_type,
+                    description=EXCLUDED.description,
+                    after_service=EXCLUDED.after_service,
+                    images_url=EXCLUDED.images_url,
                     updated_at=NOW()
-                """, (item["submission_number"], item["cert_number"], item["item_details"], item["grade"], item["image_data"]))
+                """, (
+                    item["submission_number"],
+                    item["cert_number"],
+                    item["item_details"],
+                    item["grade"],
+                    item["image_data"],
+                    item.get("card_type", ""),
+                    item.get("description", item.get("item_details", "")),
+                    item.get("after_service", ""),
+                    item.get("images_url", "")
+                ))
                 saved += 1
             conn.commit()
             cur.close()
@@ -1643,8 +1815,16 @@ def admin_upload_cards():
             preview_rows = ""
             for item in items[:50]:
                 img_html = f"<img src='{item['image_data']}' style='max-height:120px;max-width:90px;'>" if item.get("image_data") else ""
+                image_link = f"<a href='{item.get('images_url','')}' target='_blank'>Images</a>" if item.get("images_url") else ""
                 preview_rows += f"""
-                <tr><td>{img_html}</td><td>{item.get('cert_number','')}</td><td>{item.get('item_details','')}</td><td>{item.get('grade','')}</td></tr>
+                <tr>
+                    <td>{img_html}{image_link}</td>
+                    <td>{item.get('cert_number','')}</td>
+                    <td>{item.get('card_type','')}</td>
+                    <td>{item.get('description', item.get('item_details',''))}</td>
+                    <td>{item.get('grade','')}</td>
+                    <td>{item.get('after_service','')}</td>
+                </tr>
                 """
             return page(f"""
             <div class="card">
@@ -1653,7 +1833,7 @@ def admin_upload_cards():
                 <p><b>Order #:</b> {order_number}</p>
                 <p><b>Cards found:</b> {len(items)}</p>
                 <p><b>Cards saved:</b> {saved}</p>
-                <table><tr><th>Image</th><th>Cert #</th><th>Item Details</th><th>Grade</th></tr>{preview_rows}</table>
+                <table><tr><th>Image/Link</th><th>Cert #</th><th>Type</th><th>Description</th><th>Grade</th><th>After Service</th></tr>{preview_rows}</table>
                 <br><a class="btn" href="/admin/upload_cards">Upload Another</a>
                 <a class="btn" href="/admin/buyback_requests">View Buyback Requests</a>
                 <a class="btn" href="/admin">Back to Admin</a>
@@ -1670,11 +1850,11 @@ def admin_upload_cards():
             """)
     return page("""
     <div class="card">
-        <h2>Upload PSA Card Details PDF</h2>
+        <h2>Upload PSA Card Details PDF / CSV</h2>
         <p>Use this for completed/card-detail PDFs that include cert numbers, card details, grades, and card images.</p>
         <form method="post" enctype="multipart/form-data">
             <input type="file" name="file" accept=".pdf,application/pdf">
-            <button>Upload Card PDF</button>
+            <button>Upload Card File</button>
         </form>
     </div>
     """)
@@ -1699,8 +1879,9 @@ def admin_buyback_requests():
 
     if selected_queue == "all":
         cur.execute("""
-        SELECT c.submission_number, c.cert_number, c.item_details, c.grade, c.image_data,
-               c.interested, COALESCE(c.buyback_status, 'New'), s.raw_data
+        SELECT c.submission_number, c.cert_number, COALESCE(c.description, c.item_details, ''), c.grade, c.image_data,
+               c.interested, COALESCE(c.buyback_status, 'New'), s.raw_data,
+               COALESCE(c.card_type, ''), COALESCE(c.after_service, ''), COALESCE(c.images_url, '')
         FROM card_buyback_items c
         LEFT JOIN submissions s
           ON REGEXP_REPLACE(s.submission_number, '\\D', '', 'g') = REGEXP_REPLACE(c.submission_number, '\\D', '', 'g')
@@ -1716,8 +1897,9 @@ def admin_buyback_requests():
         """)
     else:
         cur.execute("""
-        SELECT c.submission_number, c.cert_number, c.item_details, c.grade, c.image_data,
-               c.interested, COALESCE(c.buyback_status, 'New'), s.raw_data
+        SELECT c.submission_number, c.cert_number, COALESCE(c.description, c.item_details, ''), c.grade, c.image_data,
+               c.interested, COALESCE(c.buyback_status, 'New'), s.raw_data,
+               COALESCE(c.card_type, ''), COALESCE(c.after_service, ''), COALESCE(c.images_url, '')
         FROM card_buyback_items c
         LEFT JOIN submissions s
           ON REGEXP_REPLACE(s.submission_number, '\\D', '', 'g') = REGEXP_REPLACE(c.submission_number, '\\D', '', 'g')
@@ -1756,12 +1938,18 @@ def admin_buyback_requests():
         return page(html)
 
     html += "<div class='card'><table>"
-    html += "<tr><th>Status</th><th>Image</th><th>Customer</th><th>Submission #</th><th>Cert #</th><th>Item</th><th>Grade</th><th>Actions</th></tr>"
+    html += "<tr><th>Status</th><th>Image/Link</th><th>Customer</th><th>Submission #</th><th>Cert #</th><th>Type</th><th>Description</th><th>Grade</th><th>After Service</th><th>Actions</th></tr>"
 
-    for submission_number, cert_number, item_details, grade, image_data, interested, buyback_status, raw_data in rows:
+    for row in rows:
+        submission_number, cert_number, item_details, grade, image_data, interested, buyback_status, raw_data = row[:8]
+        card_type = row[8] if len(row) > 8 else ""
+        after_service = row[9] if len(row) > 9 else ""
+        images_url = row[10] if len(row) > 10 else ""
+
         customer_name = get_field(raw_data or {}, ["Customer Name", "Name"])
         phone = get_field(raw_data or {}, ["Contact Info", "Phone", "Phone Number"])
         img_html = f"<img src='{image_data}' style='max-height:120px;max-width:90px;'>" if image_data else ""
+        image_link = f"<br><a href='{images_url}' target='_blank'>Images</a>" if images_url else ""
 
         action_html = f"""
         <form method="post" action="/admin/buyback_status" style="display:inline;">
@@ -1776,12 +1964,14 @@ def admin_buyback_requests():
         html += f"""
         <tr>
             <td><b>{buyback_status}</b></td>
-            <td>{img_html}</td>
+            <td>{img_html}{image_link}</td>
             <td>{customer_name}<br><small>{phone}</small></td>
             <td>{submission_number}</td>
             <td>{cert_number}</td>
+            <td>{card_type}</td>
             <td>{item_details}</td>
             <td>{grade}</td>
+            <td>{after_service}</td>
             <td>{action_html}</td>
         </tr>
         """
@@ -1825,8 +2015,12 @@ def portal_sms_preferences():
         return redirect("/portal")
 
     submission_number = normalize_submission(request.form.get("submission_number"))
-    sms_opt_in = request.form.get("sms_opt_in") == "yes"
-    sms_pickup_only = request.form.get("sms_mode", "pickup") == "pickup"
+    sms_mode = request.form.get("sms_mode", "none")
+    if sms_mode not in ["none", "pickup", "all"]:
+        sms_mode = "none"
+
+    sms_opt_in = sms_mode != "none"
+    sms_pickup_only = sms_mode == "pickup"
 
     if not submission_number:
         return redirect("/portal/orders")
@@ -1983,7 +2177,14 @@ def portal_orders():
 
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT raw_data, status FROM submissions ORDER BY last_updated DESC")
+    cur.execute("""
+    SELECT raw_data, status,
+           COALESCE(sms_opt_in, FALSE),
+           COALESCE(sms_pickup_only, TRUE),
+           COALESCE(sms_mode, CASE WHEN COALESCE(sms_opt_in, FALSE)=FALSE THEN 'none' WHEN COALESCE(sms_pickup_only, TRUE)=TRUE THEN 'pickup' ELSE 'all' END)
+    FROM submissions
+    ORDER BY last_updated DESC
+    """)
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -2004,7 +2205,10 @@ def portal_orders():
         name_match = bool(last) and last in name
 
         if phone_match and name_match and sub and sub not in grouped:
-            grouped[sub] = (data, r[1] or "Submitted")
+            sms_opted = r[2] if len(r) > 2 else False
+            sms_pickup_only = r[3] if len(r) > 3 else True
+            sms_mode = r[4] if len(r) > 4 else ("pickup" if sms_opted and sms_pickup_only else ("all" if sms_opted else "none"))
+            grouped[sub] = (data, r[1] or "Submitted", sms_opted, sms_pickup_only, sms_mode)
 
     if not grouped:
         html += "<div class='card'>No matching orders found. Check phone number and last name.</div>"
@@ -2074,6 +2278,7 @@ def portal_orders():
         data, status = grouped_values[0], grouped_values[1]
         sms_opted = grouped_values[2] if len(grouped_values) > 2 else False
         sms_pickup_only = grouped_values[3] if len(grouped_values) > 3 else True
+        sms_mode = grouped_values[4] if len(grouped_values) > 4 else ("pickup" if sms_opted and sms_pickup_only else ("all" if sms_opted else "none"))
         customer_name = get_field(data, ["Customer Name", "Name"])
         cards = get_field(data, ["# Of Cards", "# of Cards", "Cards"])
         service = clean_service_display(get_field(data, ["Service Type", "Service"]))
@@ -2098,15 +2303,25 @@ def portal_orders():
                 <div class="card-grid">
             """
 
-            for cert_number, item_details, grade, image_data, interested in buyback_rows:
+            for row in buyback_rows:
+                cert_number, item_details, grade, image_data, interested = row[0], row[1], row[2], row[3], row[4]
+                card_type = row[5] if len(row) > 5 else ""
+                after_service = row[6] if len(row) > 6 else ""
+                images_url = row[7] if len(row) > 7 else ""
+
                 checked = "checked" if interested else ""
                 img_html = f"<img src='{image_data}' alt='Card image'>" if image_data else ""
+                image_link = f"<div><a href='{images_url}' target='_blank'>View PSA Images</a></div>" if images_url else ""
+
                 buyback_html += f"""
                 <div class="buy-card">
                     {img_html}
+                    {image_link}
                     <div class="cert">Cert #: {cert_number}</div>
+                    <div><b>Type:</b> {card_type}</div>
                     <div>{item_details}</div>
                     <div><b>Grade:</b> {grade}</div>
+                    <div><b>After Service:</b> {after_service}</div>
                     <label class="sell-check"><input type="checkbox" name="cert" value="{cert_number}" {checked}> Interested in selling</label>
                 </div>
                 """
@@ -2118,27 +2333,34 @@ def portal_orders():
             </form>
             """
 
-        sms_checked = "checked" if sms_opted else ""
-        pickup_selected = "selected" if sms_pickup_only else ""
-        all_selected = "" if sms_pickup_only else "selected"
+        sms_mode = sms_mode or "none"
+        none_checked = "checked" if sms_mode == "none" else ""
+        pickup_checked = "checked" if sms_mode == "pickup" else ""
+        all_checked = "checked" if sms_mode == "all" else ""
 
         sms_html = f"""
         <hr>
         <form method="post" action="/portal/sms_preferences">
             <input type="hidden" name="submission_number" value="{sub}">
+            <h4>Text Notifications</h4>
+
             <label class="sell-check">
-                <input type="checkbox" name="sms_opt_in" value="yes" {sms_checked}>
-                Text me updates for this submission
+                <input type="radio" name="sms_mode" value="none" {none_checked}>
+                No text messages
             </label>
-            <label>
-                Text option:
-                <select name="sms_mode">
-                    <option value="pickup" {pickup_selected}>Ready for pickup only</option>
-                    <option value="all" {all_selected}>Every PSA status change</option>
-                </select>
+
+            <label class="sell-check">
+                <input type="radio" name="sms_mode" value="pickup" {pickup_checked}>
+                Text me when this submission is ready for pickup
             </label>
+
+            <label class="sell-check">
+                <input type="radio" name="sms_mode" value="all" {all_checked}>
+                Text me for every PSA status change on this submission
+            </label>
+
             <button type="submit">Save Text Settings</button>
-            <p><small>Texts will go to the phone number on this order. Message/data rates may apply.</small></p>
+            <p><small>Texts go to the phone number on this order. Each text identifies the exact submission number. Message/data rates may apply.</small></p>
         </form>
         """
 
