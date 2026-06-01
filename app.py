@@ -130,6 +130,7 @@ def clean_service_display(service):
         return value.split(" – ", 1)[0].strip()
     return value
 
+
 def parse_arrived_completed_value(value):
     text = str(value or "").strip()
     result = {"arrived": "", "estimated": "", "completed": "", "display": text}
@@ -137,21 +138,43 @@ def parse_arrived_completed_value(value):
     if not text:
         return result
 
-    date_pattern = r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+\d{4}"
+    month = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
+    date_single = month + r"\s+\d{1,2},\s+\d{4}"
+    date_range_same_year = month + r"\s+\d{1,2}\s*[-–]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
+    date_range_full = date_single + r"\s*[-–]\s*" + date_single
 
-    completed_match = re.search(r"Completed\s+(" + date_pattern + r")", text, re.IGNORECASE)
+    completed_match = re.search(r"Completed\s+(" + date_single + r")", text, re.IGNORECASE)
     if completed_match:
-        result["completed"] = completed_match.group(1)
+        result["completed"] = re.sub(r"\s+", " ", completed_match.group(1)).strip()
 
-    estimated_match = re.search(r"Est\.\s*by\s+(" + date_pattern + r")", text, re.IGNORECASE)
-    if estimated_match:
-        result["estimated"] = estimated_match.group(1)
+    estimated_patterns = [
+        r"Est\.\s*Complete\s*by\s+(" + date_range_full + r")",
+        r"Est\.\s*Complete\s*by\s+(" + date_range_same_year + r")",
+        r"Est\.\s*Complete\s*by\s+(" + date_single + r")",
+        r"Estimated\s*Complete\s*by\s+(" + date_range_full + r")",
+        r"Estimated\s*Complete\s*by\s+(" + date_range_same_year + r")",
+        r"Estimated\s*Complete\s*by\s+(" + date_single + r")",
+        r"Est\.\s*by\s+(" + date_range_full + r")",
+        r"Est\.\s*by\s+(" + date_range_same_year + r")",
+        r"Est\.\s*by\s+(" + date_single + r")",
+        r"Estimated\s*Completion\s*Date\s*:?\s*(" + date_range_full + r")",
+        r"Estimated\s*Completion\s*Date\s*:?\s*(" + date_range_same_year + r")",
+        r"Estimated\s*Completion\s*Date\s*:?\s*(" + date_single + r")",
+    ]
 
-    first_date_match = re.search(date_pattern, text, re.IGNORECASE)
+    for estimated_pattern in estimated_patterns:
+        estimated_match = re.search(estimated_pattern, text, re.IGNORECASE)
+        if estimated_match:
+            result["estimated"] = re.sub(r"\s+", " ", estimated_match.group(1)).strip()
+            break
+
+    first_date_match = re.search(date_single, text, re.IGNORECASE)
     if first_date_match:
-        first_date = first_date_match.group(0)
+        first_date = re.sub(r"\s+", " ", first_date_match.group(0)).strip()
         if first_date != result["completed"] and first_date != result["estimated"]:
-            result["arrived"] = first_date
+            estimated_start = result["estimated"].split("-")[0].strip() if result["estimated"] else ""
+            if not estimated_start or first_date.lower() != estimated_start.lower():
+                result["arrived"] = first_date
 
     parts = []
     if result["arrived"]:
@@ -1013,15 +1036,20 @@ def admin_upload_psa():
                     return None
                 return normalize_psa_status(match.group(1))
 
+
             def extract_arrived_completed_from_full_text(text_value):
                 found = {}
 
                 normalized = re.sub(r"\s+", " ", text_value or "").strip()
                 normalized = re.sub(r",\s+(\d{4})", r", \1", normalized)
 
-                date_pattern = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+\d{4}"
+                month_pattern = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
+                date_pattern = month_pattern + r"\s+\d{1,2},\s+\d{4}"
+                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-–]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
+                date_range_full = date_pattern + r"\s*[-–]\s*" + date_pattern
+
                 value_pattern = re.compile(
-                    rf"(Completed\s+{date_pattern}|Est\.\s*by\s+{date_pattern}|{date_pattern})",
+                    rf"(Completed\s+{date_pattern}|Est\.\s*Complete\s*by\s+{date_range_full}|Est\.\s*Complete\s*by\s+{date_range_same_year}|Est\.\s*Complete\s*by\s+{date_pattern}|Estimated\s*Complete\s*by\s+{date_range_full}|Estimated\s*Complete\s*by\s+{date_range_same_year}|Estimated\s*Complete\s*by\s+{date_pattern}|Est\.\s*by\s+{date_range_full}|Est\.\s*by\s+{date_range_same_year}|Est\.\s*by\s+{date_pattern}|{date_pattern})",
                     re.IGNORECASE
                 )
 
@@ -1130,8 +1158,9 @@ def admin_upload_psa():
                             block_text = re.sub(r",\s+(\d{4})", r", \1", block_text)
 
                             matches = re.findall(
-                                r"(Completed\s+[A-Za-z]{3}\s+\d{1,2},\s+\d{4}|Est\.\s+by\s+[A-Za-z]{3}\s+\d{1,2},\s+\d{4}|[A-Za-z]{3}\s+\d{1,2},\s+\d{4})",
-                                block_text
+                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
+                                block_text,
+                                re.IGNORECASE
                             )
 
                             if matches:
@@ -1236,7 +1265,6 @@ def admin_upload_psa():
                         last_updated=NOW()
                     WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
                     """, (parsed_ac["display"], parsed_ac["estimated"], sub))
-
             conn.commit()
 
             verification_rows = []
