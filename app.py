@@ -112,6 +112,26 @@ def init_db():
     ALTER TABLE card_buyback_items
     ADD COLUMN IF NOT EXISTS images_url TEXT
     """)
+
+    cur.execute("""
+    ALTER TABLE card_buyback_items
+    ADD COLUMN IF NOT EXISTS psa_estimate TEXT
+    """)
+
+    cur.execute("""
+    ALTER TABLE card_buyback_items
+    ADD COLUMN IF NOT EXISTS card_ladder_value TEXT
+    """)
+
+    cur.execute("""
+    ALTER TABLE card_buyback_items
+    ADD COLUMN IF NOT EXISTS pop TEXT
+    """)
+
+    cur.execute("""
+    ALTER TABLE card_buyback_items
+    ADD COLUMN IF NOT EXISTS pop_higher TEXT
+    """)
     conn.commit()
     cur.close()
     conn.close()
@@ -988,114 +1008,168 @@ def extract_card_items_from_pdf(pdf_path):
             pass
         image_data_by_page[page_index] = page_images
 
-    for page_index, pdf_page in enumerate(doc):
+    all_page_text = []
+    for pdf_page in doc:
         try:
-            text = pdf_page.get_text("text") or ""
+            all_page_text.append(pdf_page.get_text("text") or "")
         except Exception:
-            text = ""
+            all_page_text.append("")
 
-        if not submission_number:
-            sub_match = re.search(r"Submission\s*#\s*(\d+)", text, re.IGNORECASE)
-            if sub_match:
-                submission_number = normalize_submission(sub_match.group(1)) or ""
+    full_text = "\n".join(all_page_text)
 
-        if not order_number:
-            order_match = re.search(r"Order\s*#\s*(\d+)", text, re.IGNORECASE)
-            if order_match:
-                order_number = normalize_submission(order_match.group(1)) or ""
+    sub_match = re.search(r"Submission\s*#\s*(\d+)", full_text, re.IGNORECASE)
+    if sub_match:
+        submission_number = normalize_submission(sub_match.group(1)) or ""
 
-        cert_matches = list(re.finditer(r"Cert\s*#\s*(\d+)", text, re.IGNORECASE))
-        images = image_data_by_page.get(page_index, [])
+    order_match = re.search(r"Order\s*#\s*(\d+)", full_text, re.IGNORECASE)
+    if order_match:
+        order_number = normalize_submission(order_match.group(1)) or ""
 
-        for idx, cert_match in enumerate(cert_matches):
-            cert_number = normalize_submission(cert_match.group(1)) or ""
-            start_pos = cert_match.end()
-            end_pos = cert_matches[idx + 1].start() if idx + 1 < len(cert_matches) else len(text)
-            block = text[start_pos:end_pos]
+    cert_matches = list(re.finditer(r"Cert\s*#\s*(\d+)", full_text, re.IGNORECASE))
 
-            all_lines = [clean(line) for line in block.splitlines() if clean(line)]
+    grade_pattern = re.compile(
+        r"^(?:POOR|FAIR|GOOD|VERY GOOD|EXCELLENT|EXCELLENT-MINT|NEAR MINT|NM-MT|MINT|GEM MINT|AUTHENTIC|PR|FR|GD|VG|EX|NM|MT|GM)?\s*\d{1,2}$",
+        re.IGNORECASE
+    )
 
-            grade = ""
-            description_lines = []
-            after_service = ""
+    stop_lines = set([
+        "Grader Notes",
+        "Show More",
+        "Status",
+        "Payment & Address",
+        "Payment Method",
+        "Return Address",
+        "Download CSV",
+        "View Grades",
+        "Your grades are ready",
+        "Complete",
+        "Items 1"
+    ])
 
-            # PSA PDF layout commonly puts grade and description just above Cert #,
-            # so look backward from the cert line too.
-            before_text = text[:cert_match.start()]
-            before_lines = [clean(line) for line in before_text.splitlines() if clean(line)]
-            nearby_before = before_lines[-8:]
+    for idx, cert_match in enumerate(cert_matches):
+        cert_number = normalize_submission(cert_match.group(1)) or ""
 
-            grade_pattern = re.compile(
-                r"^(VERY GOOD|GOOD|EXCELLENT|EXCELLENT-MINT|MINT|GEM MINT|NEAR MINT|NM-MT|AUTHENTIC|PR|FR|VG|EX|MT|GM)?\s*\d{1,2}$",
-                re.IGNORECASE
-            )
+        block_start = cert_match.start()
+        block_end = cert_matches[idx + 1].start() if idx + 1 < len(cert_matches) else len(full_text)
+        after_block = full_text[cert_match.end():block_end]
+        before_block = full_text[:cert_match.start()]
 
-            for line in reversed(nearby_before):
-                if not grade and (grade_pattern.search(line) or re.search(r"\b\d{1,2}$", line)):
-                    grade = line
+        before_lines = [clean(line) for line in before_block.splitlines() if clean(line)]
+        after_lines = [clean(line) for line in after_block.splitlines() if clean(line)]
+
+        grade = ""
+        description = ""
+        card_type = "Card"
+        after_service = ""
+        psa_estimate = ""
+        card_ladder_value = ""
+        pop = ""
+        pop_higher = ""
+
+        # In PSA's completed order PDF, grade and description are directly before Cert #.
+        nearby_before = before_lines[-10:]
+        for line in reversed(nearby_before):
+            if not grade and grade_pattern.match(line):
+                grade = line
+                continue
+
+            if not description:
+                low = line.lower()
+                if (
+                    line not in stop_lines
+                    and "order " not in low
+                    and "submission #" not in low
+                    and "https://" not in low
+                    and "©" not in line
+                    and "Â©" not in line
+                    and not grade_pattern.match(line)
+                ):
+                    description = line
                     continue
 
-                if line.lower() in ["view grades", "your grades are ready", "complete", "status", "show more", "grader notes"]:
-                    continue
+            if grade and description:
+                break
 
-                if not description_lines and "cert #" not in line.lower() and not re.search(r"order\s*#|submission\s*#", line, re.IGNORECASE):
-                    description_lines.insert(0, line)
+        # Pull card metadata after cert number, skipping notes text.
+        for i, line in enumerate(after_lines):
+            low = line.lower()
+
+            if line in stop_lines:
+                continue
+
+            if "grader notes" in low or low == "notes":
+                continue
+
+            if "psa estimate" in low:
+                m = re.search(r"PSA\s+Estimate\s*(.+)", line, re.IGNORECASE)
+                if m:
+                    psa_estimate = m.group(1).strip()
+                elif i + 1 < len(after_lines):
+                    psa_estimate = after_lines[i + 1]
+                continue
+
+            if "card ladder value" in low:
+                m = re.search(r"Card\s+Ladder\s+Value\s*(.+)", line, re.IGNORECASE)
+                if m and m.group(1).strip():
+                    card_ladder_value = m.group(1).strip()
+                elif i + 1 < len(after_lines):
+                    card_ladder_value = after_lines[i + 1]
+                continue
+
+            if re.match(r"^pop\s+higher\b", line, re.IGNORECASE):
+                m = re.search(r"Pop\s+Higher\s*(\d+)", line, re.IGNORECASE)
+                if m:
+                    pop_higher = m.group(1)
+                continue
+
+            if re.match(r"^pop\b", line, re.IGNORECASE):
+                m = re.search(r"Pop\s*(\d+)", line, re.IGNORECASE)
+                if m:
+                    pop = m.group(1)
+                continue
+
+            if re.search(r"shipped|vault|send to vault|ship to you", low, re.IGNORECASE):
+                after_service = line
+                continue
+
+            # PSA sometimes has a normalized item line after Grader Notes:
+            # "Item JOE DiMAGGIO #274". Use only if description is missing.
+            if low.startswith("item ") and not description:
+                description = re.sub(r"^Item\s+", "", line, flags=re.IGNORECASE).strip()
+                continue
+
+        # Find image from page containing this cert; fallback to first image in doc.
+        image_data = ""
+        for page_index, page_text in enumerate(all_page_text):
+            if cert_number and cert_number in page_text:
+                page_images = image_data_by_page.get(page_index, [])
+                if page_images:
+                    image_data = page_images[0]
                     break
 
-            ignored = set([
-                "Item Details", "Report Error", "Ship to You", "Status", "Sell on eBay",
-                "Send to Vault", "Grading", "Grader Notes", "Show More", "View Grades",
-                "Your grades are ready", "Complete"
-            ])
+        if not image_data:
+            for page_images in image_data_by_page.values():
+                if page_images:
+                    image_data = page_images[0]
+                    break
 
-            for line in all_lines:
-                if line in ignored:
-                    continue
-                if re.search(r"^(Status|Ship to You|Sell on eBay|Send to Vault|Grader Notes|Show More)$", line, re.IGNORECASE):
-                    continue
-                if re.search(r"Notes?", line, re.IGNORECASE):
-                    continue
-                if "©" in line or "Â©" in line or "https://" in line:
-                    continue
-                if re.search(r"Order\s+\d+", line, re.IGNORECASE):
-                    continue
-                if grade_pattern.search(line):
-                    if not grade:
-                        grade = line
-                    continue
-
-                if re.search(r"shipped|vault|after service", line, re.IGNORECASE):
-                    after_service = line
-                    continue
-
-                description_lines.append(line)
-
-            # Remove duplicates while preserving order.
-            clean_desc = []
-            seen = set()
-            for line in description_lines:
-                key = line.lower()
-                if key not in seen:
-                    seen.add(key)
-                    clean_desc.append(line)
-
-            description = " ".join(clean_desc).strip()
-            item_details = description
-            image_data = images[idx] if idx < len(images) else (images[0] if len(images) == 1 else "")
-
-            if cert_number:
-                items.append({
-                    "submission_number": submission_number,
-                    "order_number": order_number,
-                    "cert_number": cert_number,
-                    "card_type": "Card",
-                    "description": description,
-                    "item_details": item_details,
-                    "grade": grade,
-                    "after_service": after_service,
-                    "images_url": "",
-                    "image_data": image_data
-                })
+        if cert_number:
+            items.append({
+                "submission_number": submission_number,
+                "order_number": order_number,
+                "cert_number": cert_number,
+                "card_type": card_type,
+                "description": description,
+                "item_details": description,
+                "grade": grade,
+                "after_service": after_service,
+                "images_url": "",
+                "image_data": image_data,
+                "psa_estimate": psa_estimate,
+                "card_ladder_value": card_ladder_value,
+                "pop": pop,
+                "pop_higher": pop_higher
+            })
 
     doc.close()
     return submission_number, order_number, items
@@ -1123,6 +1197,10 @@ def extract_card_items_from_csv(file):
         grade = field(row, ["Grade"])
         after_service = field(row, ["After Service"])
         images_url = field(row, ["Images", "Image", "Image URL", "Images URL"])
+        psa_estimate = field(row, ["PSA Estimate"])
+        card_ladder_value = field(row, ["Card Ladder Value"])
+        pop = field(row, ["Pop"])
+        pop_higher = field(row, ["Pop Higher"])
 
         items.append({
             "submission_number": "",
@@ -1134,7 +1212,11 @@ def extract_card_items_from_csv(file):
             "grade": grade,
             "after_service": after_service,
             "images_url": images_url,
-            "image_data": ""
+            "image_data": "",
+            "psa_estimate": psa_estimate,
+            "card_ladder_value": card_ladder_value,
+            "pop": pop,
+            "pop_higher": pop_higher
         })
 
     return "", "", items
@@ -1150,7 +1232,11 @@ def get_buyback_items_for_submission(submission_number):
            interested,
            COALESCE(card_type, ''),
            COALESCE(after_service, ''),
-           COALESCE(images_url, '')
+           COALESCE(images_url, ''),
+           COALESCE(psa_estimate, ''),
+           COALESCE(card_ladder_value, ''),
+           COALESCE(pop, ''),
+           COALESCE(pop_higher, '')
     FROM card_buyback_items
     WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
     ORDER BY cert_number
@@ -1785,8 +1871,8 @@ def admin_upload_cards():
                     item["submission_number"] = submission_number
                 cur.execute("""
                 INSERT INTO card_buyback_items
-                    (submission_number, cert_number, item_details, grade, image_data, card_type, description, after_service, images_url)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (submission_number, cert_number, item_details, grade, image_data, card_type, description, after_service, images_url, psa_estimate, card_ladder_value, pop, pop_higher)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (submission_number, cert_number)
                 DO UPDATE SET
                     item_details=EXCLUDED.item_details,
@@ -1796,6 +1882,10 @@ def admin_upload_cards():
                     description=EXCLUDED.description,
                     after_service=EXCLUDED.after_service,
                     images_url=EXCLUDED.images_url,
+                    psa_estimate=EXCLUDED.psa_estimate,
+                    card_ladder_value=EXCLUDED.card_ladder_value,
+                    pop=EXCLUDED.pop,
+                    pop_higher=EXCLUDED.pop_higher,
                     updated_at=NOW()
                 """, (
                     item["submission_number"],
@@ -1806,7 +1896,11 @@ def admin_upload_cards():
                     item.get("card_type", ""),
                     item.get("description", item.get("item_details", "")),
                     item.get("after_service", ""),
-                    item.get("images_url", "")
+                    item.get("images_url", ""),
+                    item.get("psa_estimate", ""),
+                    item.get("card_ladder_value", ""),
+                    item.get("pop", ""),
+                    item.get("pop_higher", "")
                 ))
                 saved += 1
             conn.commit()
@@ -1823,6 +1917,10 @@ def admin_upload_cards():
                     <td>{item.get('card_type','')}</td>
                     <td>{item.get('description', item.get('item_details',''))}</td>
                     <td>{item.get('grade','')}</td>
+                    <td>{item.get('psa_estimate','')}</td>
+                    <td>{item.get('card_ladder_value','')}</td>
+                    <td>{item.get('pop','')}</td>
+                    <td>{item.get('pop_higher','')}</td>
                     <td>{item.get('after_service','')}</td>
                 </tr>
                 """
@@ -1833,7 +1931,7 @@ def admin_upload_cards():
                 <p><b>Order #:</b> {order_number}</p>
                 <p><b>Cards found:</b> {len(items)}</p>
                 <p><b>Cards saved:</b> {saved}</p>
-                <table><tr><th>Image/Link</th><th>Cert #</th><th>Type</th><th>Description</th><th>Grade</th><th>After Service</th></tr>{preview_rows}</table>
+                <table><tr><th>Image/Link</th><th>Cert #</th><th>Type</th><th>Description</th><th>Grade</th><th>PSA Estimate</th><th>Card Ladder Value</th><th>Pop</th><th>Pop Higher</th><th>After Service</th></tr>{preview_rows}</table>
                 <br><a class="btn" href="/admin/upload_cards">Upload Another</a>
                 <a class="btn" href="/admin/buyback_requests">View Buyback Requests</a>
                 <a class="btn" href="/admin">Back to Admin</a>
@@ -1881,7 +1979,8 @@ def admin_buyback_requests():
         cur.execute("""
         SELECT c.submission_number, c.cert_number, COALESCE(c.description, c.item_details, ''), c.grade, c.image_data,
                c.interested, COALESCE(c.buyback_status, 'New'), s.raw_data,
-               COALESCE(c.card_type, ''), COALESCE(c.after_service, ''), COALESCE(c.images_url, '')
+               COALESCE(c.card_type, ''), COALESCE(c.after_service, ''), COALESCE(c.images_url, ''),
+               COALESCE(c.psa_estimate, ''), COALESCE(c.card_ladder_value, ''), COALESCE(c.pop, ''), COALESCE(c.pop_higher, '')
         FROM card_buyback_items c
         LEFT JOIN submissions s
           ON REGEXP_REPLACE(s.submission_number, '\\D', '', 'g') = REGEXP_REPLACE(c.submission_number, '\\D', '', 'g')
@@ -1899,7 +1998,8 @@ def admin_buyback_requests():
         cur.execute("""
         SELECT c.submission_number, c.cert_number, COALESCE(c.description, c.item_details, ''), c.grade, c.image_data,
                c.interested, COALESCE(c.buyback_status, 'New'), s.raw_data,
-               COALESCE(c.card_type, ''), COALESCE(c.after_service, ''), COALESCE(c.images_url, '')
+               COALESCE(c.card_type, ''), COALESCE(c.after_service, ''), COALESCE(c.images_url, ''),
+               COALESCE(c.psa_estimate, ''), COALESCE(c.card_ladder_value, ''), COALESCE(c.pop, ''), COALESCE(c.pop_higher, '')
         FROM card_buyback_items c
         LEFT JOIN submissions s
           ON REGEXP_REPLACE(s.submission_number, '\\D', '', 'g') = REGEXP_REPLACE(c.submission_number, '\\D', '', 'g')
@@ -1938,13 +2038,17 @@ def admin_buyback_requests():
         return page(html)
 
     html += "<div class='card'><table>"
-    html += "<tr><th>Status</th><th>Image/Link</th><th>Customer</th><th>Submission #</th><th>Cert #</th><th>Type</th><th>Description</th><th>Grade</th><th>After Service</th><th>Actions</th></tr>"
+    html += "<tr><th>Status</th><th>Image/Link</th><th>Customer</th><th>Submission #</th><th>Cert #</th><th>Type</th><th>Description</th><th>Grade</th><th>PSA Estimate</th><th>Card Ladder</th><th>Pop</th><th>Pop Higher</th><th>After Service</th><th>Actions</th></tr>"
 
     for row in rows:
         submission_number, cert_number, item_details, grade, image_data, interested, buyback_status, raw_data = row[:8]
         card_type = row[8] if len(row) > 8 else ""
         after_service = row[9] if len(row) > 9 else ""
         images_url = row[10] if len(row) > 10 else ""
+        psa_estimate = row[11] if len(row) > 11 else ""
+        card_ladder_value = row[12] if len(row) > 12 else ""
+        pop = row[13] if len(row) > 13 else ""
+        pop_higher = row[14] if len(row) > 14 else ""
 
         customer_name = get_field(raw_data or {}, ["Customer Name", "Name"])
         phone = get_field(raw_data or {}, ["Contact Info", "Phone", "Phone Number"])
@@ -1971,6 +2075,10 @@ def admin_buyback_requests():
             <td>{card_type}</td>
             <td>{item_details}</td>
             <td>{grade}</td>
+            <td>{psa_estimate}</td>
+            <td>{card_ladder_value}</td>
+            <td>{pop}</td>
+            <td>{pop_higher}</td>
             <td>{after_service}</td>
             <td>{action_html}</td>
         </tr>
@@ -2308,6 +2416,10 @@ def portal_orders():
                 card_type = row[5] if len(row) > 5 else ""
                 after_service = row[6] if len(row) > 6 else ""
                 images_url = row[7] if len(row) > 7 else ""
+                psa_estimate = row[8] if len(row) > 8 else ""
+                card_ladder_value = row[9] if len(row) > 9 else ""
+                pop = row[10] if len(row) > 10 else ""
+                pop_higher = row[11] if len(row) > 11 else ""
 
                 checked = "checked" if interested else ""
                 img_html = f"<img src='{image_data}' alt='Card image'>" if image_data else ""
@@ -2321,6 +2433,10 @@ def portal_orders():
                     <div><b>Type:</b> {card_type}</div>
                     <div>{item_details}</div>
                     <div><b>Grade:</b> {grade}</div>
+                    <div><b>PSA Estimate:</b> {psa_estimate}</div>
+                    <div><b>Card Ladder Value:</b> {card_ladder_value}</div>
+                    <div><b>Pop:</b> {pop}</div>
+                    <div><b>Pop Higher:</b> {pop_higher}</div>
                     <div><b>After Service:</b> {after_service}</div>
                     <label class="sell-check"><input type="checkbox" name="cert" value="{cert_number}" {checked}> Interested in selling</label>
                 </div>
