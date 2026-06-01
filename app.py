@@ -130,6 +130,40 @@ def clean_service_display(service):
         return value.split(" – ", 1)[0].strip()
     return value
 
+def date_only_display(value):
+    text = str(value or "").strip()
+
+    if not text:
+        return ""
+
+    try:
+        parsed = pd.to_datetime(text, errors="coerce")
+        if not pd.isna(parsed):
+            return parsed.strftime("%Y-%m-%d")
+    except Exception:
+        pass
+
+    # Fallback for values like "2026-03-31 00:00:00"
+    if " " in text:
+        possible_date = text.split(" ", 1)[0].strip()
+        if re.match(r"^\d{4}-\d{1,2}-\d{1,2}$", possible_date):
+            return possible_date
+
+    return text
+
+def get_dropoff_date(data):
+    value = get_field(data, ["Customer Drop-Off Date", "Submission Date", "S", "s", "Date", "date"])
+
+    if value:
+        return date_only_display(value)
+
+    for k, v in (data or {}).items():
+        key = str(k).strip().lower()
+        if key in ["s", "submission date", "customer drop-off date", "date"]:
+            return date_only_display(v)
+
+    return ""
+
 
 def parse_arrived_completed_value(value):
     text = str(value or "").strip()
@@ -657,6 +691,9 @@ def build_table(rows):
             if display_key.strip().lower() == "service type":
                 display_value = clean_service_display(v)
 
+            if display_key == "Customer Drop-Off Date":
+                display_value = date_only_display(v)
+
             if display_key == "Arrived / Completed":
                 parsed_ac = parse_arrived_completed_value(v)
                 display_value = parsed_ac["display"]
@@ -707,7 +744,7 @@ def build_table(rows):
 
 def get_sort_date(row):
     data = row[0] or {}
-    date_value = get_field(data, ["Customer Drop-Off Date", "Submission Date", "S", "Date"])
+    date_value = get_field(data, ["Customer Drop-Off Date", "Submission Date", "S", "s", "Date", "date"])
 
     try:
         if date_value:
@@ -1661,7 +1698,7 @@ def portal_orders():
         customer_name = get_field(data, ["Customer Name", "Name"])
         cards = get_field(data, ["# Of Cards", "# of Cards", "Cards"])
         service = clean_service_display(get_field(data, ["Service Type", "Service"]))
-        date = get_field(data, ["Customer Drop-Off Date", "S", "Submission Date", "Date"])
+        date = get_dropoff_date(data)
         arrived_completed_raw = get_field(data, ["Arrived / Completed"])
         arrived_completed_data = parse_arrived_completed_value(arrived_completed_raw)
         arrived_completed = arrived_completed_data["display"]
