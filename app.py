@@ -992,6 +992,16 @@ def extract_card_items_from_pdf(pdf_path):
     def norm_text(value):
         return re.sub(r"\s+", " ", str(value or "")).strip()
 
+    def clean_loading(value):
+        value = norm_text(value)
+        if value.lower() in ["loading", "loadin", "n/a"]:
+            return "" if value.lower() in ["loading", "loadin"] else "N/A"
+        if value.lower().startswith("loading"):
+            return ""
+        if value.lower() in ["pop hig", "pop high"]:
+            return ""
+        return value
+
     def block_text(block):
         parts = []
         for line in block.get("lines", []):
@@ -1012,20 +1022,13 @@ def extract_card_items_from_pdf(pdf_path):
         area = width * height
         ratio = height / max(width, 1)
 
-        # Real PSA card/slab images are larger and vertical.
-        # Payment logos/UI icons are small, wide, or outside the card image column.
         if area < 20000:
             return False
-
         if width > height * 2.5:
             return False
-
         if ratio < 1.05:
             return False
-
-        # On PSA order printouts, card/slab images appear in the left column.
-        # This prevents payment/card-logo images in lower payment sections.
-        if x0 > 220:
+        if x0 > 230:
             return False
 
         return True
@@ -1038,6 +1041,30 @@ def extract_card_items_from_pdf(pdf_path):
                 return ""
             image_b64 = base64.b64encode(image_bytes).decode("ascii")
             return f"data:image/{ext};base64,{image_b64}"
+        except Exception:
+            return ""
+
+    def render_crop_image(pdf_page, cert_y):
+        # Fallback when PSA's PDF image blocks do not map cleanly.
+        # Crop the visible left-card column around the cert row.
+        try:
+            page_rect = pdf_page.rect
+
+            x0 = 70
+            x1 = 195
+            y0 = max(0, cert_y - 95)
+            y1 = min(page_rect.height, cert_y + 85)
+
+            clip = fitz.Rect(x0, y0, x1, y1)
+            pix = pdf_page.get_pixmap(matrix=fitz.Matrix(2, 2), clip=clip, alpha=False)
+
+            # Do not save empty/too-small crops.
+            if pix.width < 80 or pix.height < 100:
+                return ""
+
+            image_bytes = pix.tobytes("png")
+            image_b64 = base64.b64encode(image_bytes).decode("ascii")
+            return f"data:image/png;base64,{image_b64}"
         except Exception:
             return ""
 
@@ -1088,6 +1115,7 @@ def extract_card_items_from_pdf(pdf_path):
 
         page_data.append({
             "text": text,
+            "page": pdf_page,
             "text_blocks": text_blocks,
             "image_blocks": image_blocks
         })
@@ -1105,7 +1133,7 @@ def extract_card_items_from_pdf(pdf_path):
     cert_matches = list(re.finditer(r"Cert\s*#\s*(\d+)", full_text, re.IGNORECASE))
 
     grade_pattern = re.compile(
-        r"^(?:POOR|FAIR|GOOD|VERY GOOD|EXCELLENT|EXCELLENT-MINT|NEAR MINT|NM-MT|MINT|GEM MINT|AUTHENTIC|PR|FR|GD|VG|EX|NM|MT|GM)?\s*\d{1,2}$",
+        r"^(?:POOR|FAIR|GOOD|VERY GOOD|EXCELLENT|EXCELLENT-MINT|NEAR MINT|NEAR MINT-MINT|NM-MT|MINT|GEM MINT|AUTHENTIC|PR|FR|GD|VG|EX|NM|MT|GM)?\s*\d{1,2}$",
         re.IGNORECASE
     )
 
@@ -1139,10 +1167,9 @@ def extract_card_items_from_pdf(pdf_path):
 
         blocks = page_data[page_index]["text_blocks"]
 
-        # Use text blocks above the cert, in the main text column.
         candidates = [
             b for b in blocks
-            if b["y_mid"] < cert_y and b["x0"] > 190 and (cert_y - b["y_mid"]) < 90
+            if b["y_mid"] < cert_y and b["x0"] > 190 and (cert_y - b["y_mid"]) < 120
         ]
 
         candidates.sort(key=lambda b: b["y_mid"], reverse=True)
@@ -1164,6 +1191,11 @@ def extract_card_items_from_pdf(pdf_path):
                     and "©" not in line
                     and "Â©" not in line
                     and not grade_pattern.match(line)
+                    and not line.lower().startswith("cert ")
+                    and not line.lower().startswith("item ")
+                    and "estimate" not in low
+                    and "ladder" not in low
+                    and not low.startswith("pop")
                 ):
                     description = line
                     continue
@@ -1178,12 +1210,8 @@ def extract_card_items_from_pdf(pdf_path):
             return ""
 
         images = page_data[page_index]["image_blocks"]
-        if not images:
-            return ""
-
         used_indexes = used_images_by_page.setdefault(page_index, set())
 
-        # Choose the nearest unused card-shaped image by vertical position.
         scored = []
         for img_index, img in enumerate(images):
             if img_index in used_indexes:
@@ -1192,13 +1220,36 @@ def extract_card_items_from_pdf(pdf_path):
             distance = abs(img["y_mid"] - cert_y)
             scored.append((distance, -img.get("area", 0), img_index, img))
 
-        if not scored:
-            return ""
+        if scored:
+            scored.sort(key=lambda x: (x[0], x[1]))
+            # Use embedded image only when it is reasonably close to the cert row.
+            if scored[0][0] <= 120:
+                chosen = scored[0]
+                used_indexes.add(chosen[2])
+                return chosen[3]["image_data"]
 
-        scored.sort(key=lambda x: (x[0], x[1]))
-        chosen = scored[0]
-        used_indexes.add(chosen[2])
-        return chosen[3]["image_data"]
+        # Page-break fallback: if the cert row is near the bottom of a page, the card image
+        # can be at the top of the next PDF page.
+        if cert_y > 500 and page_index + 1 < len(page_data):
+            next_images = page_data[page_index + 1]["image_blocks"]
+            next_used = used_images_by_page.setdefault(page_index + 1, set())
+            top_images = [
+                (img["y_mid"], idx, img)
+                for idx, img in enumerate(next_images)
+                if idx not in next_used and img["y_mid"] < 180
+            ]
+            if top_images:
+                top_images.sort(key=lambda x: x[0])
+                chosen = top_images[0]
+                next_used.add(chosen[1])
+                return chosen[2]["image_data"]
+
+        # Rendered crop fallback catches PDFs where the image is visible but not stored as a clean image block.
+        crop = render_crop_image(page_data[page_index]["page"], cert_y)
+        if crop:
+            return crop
+
+        return ""
 
     used_images_by_page = {}
 
@@ -1230,29 +1281,29 @@ def extract_card_items_from_pdf(pdf_path):
             if "psa estimate" in low:
                 m = re.search(r"PSA\s+Estimate\s*(.+)", line, re.IGNORECASE)
                 if m:
-                    psa_estimate = m.group(1).strip()
+                    psa_estimate = clean_loading(m.group(1).strip())
                 elif i + 1 < len(after_lines):
-                    psa_estimate = after_lines[i + 1]
+                    psa_estimate = clean_loading(after_lines[i + 1])
                 continue
 
             if "card ladder value" in low:
                 m = re.search(r"Card\s+Ladder\s+Value\s*(.+)", line, re.IGNORECASE)
                 if m and m.group(1).strip():
-                    card_ladder_value = m.group(1).strip()
+                    card_ladder_value = clean_loading(m.group(1).strip())
                 elif i + 1 < len(after_lines):
-                    card_ladder_value = after_lines[i + 1]
+                    card_ladder_value = clean_loading(after_lines[i + 1])
                 continue
 
             if re.match(r"^pop\s+higher\b", line, re.IGNORECASE):
-                m = re.search(r"Pop\s+Higher\s*(\d+|Loading)", line, re.IGNORECASE)
+                m = re.search(r"Pop\s+Higher\s*(\d+|Loading|N/A)", line, re.IGNORECASE)
                 if m:
-                    pop_higher = m.group(1)
+                    pop_higher = clean_loading(m.group(1))
                 continue
 
             if re.match(r"^pop\b", line, re.IGNORECASE):
-                m = re.search(r"Pop\s*(\d+|Loading)", line, re.IGNORECASE)
+                m = re.search(r"Pop\s*(\d+|Loading|N/A)", line, re.IGNORECASE)
                 if m:
-                    pop = m.group(1)
+                    pop = clean_loading(m.group(1))
                 continue
 
             if re.search(r"shipped|vault|send to vault|ship to you", low, re.IGNORECASE):
