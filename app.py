@@ -36,10 +36,16 @@ def init_db():
         grade TEXT,
         image_data TEXT,
         interested BOOLEAN DEFAULT FALSE,
+        buyback_status TEXT DEFAULT 'New',
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW(),
         UNIQUE (submission_number, cert_number)
     )
+    """)
+
+    cur.execute("""
+    ALTER TABLE card_buyback_items
+    ADD COLUMN IF NOT EXISTS buyback_status TEXT DEFAULT 'New'
     """)
     conn.commit()
     cur.close()
@@ -561,6 +567,10 @@ def page(content, mode="admin"):
             text-decoration:none;
             font-weight:bold;
             font-size:14px;
+        }}
+        .filterbar .reset-link.active {{
+            background:#198754;
+            color:white;
         }}
         .card-grid {{
             display:grid;
@@ -1510,32 +1520,138 @@ def admin_upload_cards():
 @app.route("/admin/buyback_requests")
 @admin_required
 def admin_buyback_requests():
+    selected_queue = request.args.get("queue", "new").lower()
+
+    allowed_queues = {
+        "new": "New",
+        "sold": "Sold",
+        "pass": "Pass",
+        "all": "All"
+    }
+
+    if selected_queue not in allowed_queues:
+        selected_queue = "new"
+
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("""
-    SELECT c.submission_number, c.cert_number, c.item_details, c.grade, c.image_data, c.interested, s.raw_data
-    FROM card_buyback_items c
-    LEFT JOIN submissions s ON REGEXP_REPLACE(s.submission_number, '\\D', '', 'g') = REGEXP_REPLACE(c.submission_number, '\\D', '', 'g')
-    ORDER BY c.interested DESC, c.updated_at DESC
-    """)
+
+    if selected_queue == "all":
+        cur.execute("""
+        SELECT c.submission_number, c.cert_number, c.item_details, c.grade, c.image_data,
+               c.interested, COALESCE(c.buyback_status, 'New'), s.raw_data
+        FROM card_buyback_items c
+        LEFT JOIN submissions s
+          ON REGEXP_REPLACE(s.submission_number, '\\D', '', 'g') = REGEXP_REPLACE(c.submission_number, '\\D', '', 'g')
+        WHERE c.interested=TRUE
+        ORDER BY
+            CASE COALESCE(c.buyback_status, 'New')
+                WHEN 'New' THEN 0
+                WHEN 'Sold' THEN 1
+                WHEN 'Pass' THEN 2
+                ELSE 3
+            END,
+            c.updated_at DESC
+        """)
+    else:
+        cur.execute("""
+        SELECT c.submission_number, c.cert_number, c.item_details, c.grade, c.image_data,
+               c.interested, COALESCE(c.buyback_status, 'New'), s.raw_data
+        FROM card_buyback_items c
+        LEFT JOIN submissions s
+          ON REGEXP_REPLACE(s.submission_number, '\\D', '', 'g') = REGEXP_REPLACE(c.submission_number, '\\D', '', 'g')
+        WHERE c.interested=TRUE
+          AND COALESCE(c.buyback_status, 'New')=%s
+        ORDER BY c.updated_at DESC
+        """, (allowed_queues[selected_queue],))
+
     rows = cur.fetchall()
     cur.close()
     conn.close()
-    html = "<h2>Buyback Interest</h2>"
+
+    def active(q):
+        return "active" if selected_queue == q else ""
+
+    html = """
+    <h2>Buyback Interest</h2>
+    <div class="filterbar">
+        <a class="reset-link {new_active}" href="/admin/buyback_requests?queue=new">New Interested</a>
+        <a class="reset-link {sold_active}" href="/admin/buyback_requests?queue=sold">Sold</a>
+        <a class="reset-link {pass_active}" href="/admin/buyback_requests?queue=pass">Pass</a>
+        <a class="reset-link {all_active}" href="/admin/buyback_requests?queue=all">All Interested</a>
+    </div>
+    """.format(
+        new_active=active("new"),
+        sold_active=active("sold"),
+        pass_active=active("pass"),
+        all_active=active("all")
+    )
+
     if not rows:
-        html += "<div class='card'>No card buyback items have been imported yet.</div>"
+        if selected_queue == "new":
+            html += "<div class='card'>No new customer-selected buyback cards right now.</div>"
+        else:
+            html += "<div class='card'>No cards in this queue.</div>"
         return page(html)
+
     html += "<div class='card'><table>"
-    html += "<tr><th>Interested</th><th>Image</th><th>Customer</th><th>Submission #</th><th>Cert #</th><th>Item</th><th>Grade</th></tr>"
-    for submission_number, cert_number, item_details, grade, image_data, interested, raw_data in rows:
+    html += "<tr><th>Status</th><th>Image</th><th>Customer</th><th>Submission #</th><th>Cert #</th><th>Item</th><th>Grade</th><th>Actions</th></tr>"
+
+    for submission_number, cert_number, item_details, grade, image_data, interested, buyback_status, raw_data in rows:
         customer_name = get_field(raw_data or {}, ["Customer Name", "Name"])
-        interested_text = "YES" if interested else ""
+        phone = get_field(raw_data or {}, ["Contact Info", "Phone", "Phone Number"])
         img_html = f"<img src='{image_data}' style='max-height:120px;max-width:90px;'>" if image_data else ""
-        html += f"""
-        <tr><td><b>{interested_text}</b></td><td>{img_html}</td><td>{customer_name}</td><td>{submission_number}</td><td>{cert_number}</td><td>{item_details}</td><td>{grade}</td></tr>
+
+        action_html = f"""
+        <form method="post" action="/admin/buyback_status" style="display:inline;">
+            <input type="hidden" name="submission_number" value="{submission_number}">
+            <input type="hidden" name="cert_number" value="{cert_number}">
+            <button name="status" value="Sold">Sold</button>
+            <button name="status" value="Pass">Pass</button>
+            <button name="status" value="New">Back to New</button>
+        </form>
         """
+
+        html += f"""
+        <tr>
+            <td><b>{buyback_status}</b></td>
+            <td>{img_html}</td>
+            <td>{customer_name}<br><small>{phone}</small></td>
+            <td>{submission_number}</td>
+            <td>{cert_number}</td>
+            <td>{item_details}</td>
+            <td>{grade}</td>
+            <td>{action_html}</td>
+        </tr>
+        """
+
     html += "</table></div>"
     return page(html)
+
+@app.route("/admin/buyback_status", methods=["POST"])
+@admin_required
+def admin_buyback_status():
+    submission_number = normalize_submission(request.form.get("submission_number"))
+    cert_number = normalize_submission(request.form.get("cert_number"))
+    status = clean(request.form.get("status"))
+
+    if status not in ["New", "Sold", "Pass"]:
+        status = "New"
+
+    if submission_number and cert_number:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+        UPDATE card_buyback_items
+        SET buyback_status=%s,
+            updated_at=NOW()
+        WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+          AND REGEXP_REPLACE(cert_number, '\\D', '', 'g')=%s
+        """, (status, submission_number, cert_number))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+    return redirect("/admin/buyback_requests")
 
 @app.route("/portal/sell_interest", methods=["POST"])
 def portal_sell_interest():
