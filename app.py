@@ -152,14 +152,14 @@ def date_only_display(value):
     return text
 
 def get_dropoff_date(data):
-    value = get_field(data, ["Customer Drop-Off Date", "Submission Date", "S", "s", "Date", "date"])
+    value = get_field(data, ["Customer Drop-Off Date", "Submission Date", "ƒand", "ƒand.", "fand", "Fand", "S", "s", "Date", "date"])
 
     if value:
         return date_only_display(value)
 
     for k, v in (data or {}).items():
         key = str(k).strip().lower()
-        if key in ["s", "submission date", "customer drop-off date", "date"]:
+        if key in ["s", "submission date", "customer drop-off date", "date", "ƒand", "ƒand.", "fand"]:
             return date_only_display(v)
 
     return ""
@@ -679,9 +679,11 @@ def build_table(rows):
             if should_hide_column(key_text):
                 continue
 
+            normalized_key_text = key_text.strip().lower()
+
             if key_text == "S":
                 display_key = "Customer Drop-Off Date"
-            elif key_text.strip().lower() == "submission date":
+            elif normalized_key_text in ["submission date", "ƒand", "ƒand.", "fand"]:
                 display_key = "Customer Drop-Off Date"
             else:
                 display_key = key_text
@@ -744,7 +746,7 @@ def build_table(rows):
 
 def get_sort_date(row):
     data = row[0] or {}
-    date_value = get_field(data, ["Customer Drop-Off Date", "Submission Date", "S", "s", "Date", "date"])
+    date_value = get_field(data, ["Customer Drop-Off Date", "Submission Date", "ƒand", "ƒand.", "fand", "Fand", "S", "s", "Date", "date"])
 
     try:
         if date_value:
