@@ -8,6 +8,11 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "change-this-secret")
 DATABASE_URL = os.getenv("DATABASE_URL")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+PUBLIC_PORTAL_URL = os.getenv("PUBLIC_PORTAL_URL", "https://psa.giantsportscards.com")
+SMS_PROVIDER = os.getenv("SMS_PROVIDER", "queue_only").lower()
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
+TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER", "")
 
 # =========================
 # DATABASE
@@ -24,6 +29,41 @@ def init_db():
         status TEXT DEFAULT 'Submitted',
         raw_data JSONB,
         last_updated TIMESTAMP DEFAULT NOW()
+    )
+    """)
+
+    cur.execute("""
+    ALTER TABLE submissions
+    ADD COLUMN IF NOT EXISTS sms_opt_in BOOLEAN DEFAULT FALSE
+    """)
+
+    cur.execute("""
+    ALTER TABLE submissions
+    ADD COLUMN IF NOT EXISTS sms_pickup_only BOOLEAN DEFAULT TRUE
+    """)
+
+    cur.execute("""
+    ALTER TABLE submissions
+    ADD COLUMN IF NOT EXISTS last_sms_status TEXT
+    """)
+
+    cur.execute("""
+    ALTER TABLE submissions
+    ADD COLUMN IF NOT EXISTS last_sms_sent TIMESTAMP
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS sms_notifications (
+        id SERIAL PRIMARY KEY,
+        submission_number TEXT,
+        phone TEXT,
+        old_status TEXT,
+        new_status TEXT,
+        message TEXT,
+        send_status TEXT DEFAULT 'Queued',
+        provider_response TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        sent_at TIMESTAMP
     )
     """)
 
@@ -132,8 +172,8 @@ def clean_service_display(service):
     value = str(service or "").strip()
     if " - " in value:
         return value.split(" - ", 1)[0].strip()
-    if " – " in value:
-        return value.split(" – ", 1)[0].strip()
+    if " â " in value:
+        return value.split(" â ", 1)[0].strip()
     return value
 
 def date_only_display(value):
@@ -158,14 +198,14 @@ def date_only_display(value):
     return text
 
 def get_dropoff_date(data):
-    value = get_field(data, ["Customer Drop-Off Date", "Submission Date", "ƒand", "ƒand.", "fand", "Fand", "S", "s", "Date", "date"])
+    value = get_field(data, ["Customer Drop-Off Date", "Submission Date", "Æand", "Æand.", "fand", "Fand", "S", "s", "Date", "date"])
 
     if value:
         return date_only_display(value)
 
     for k, v in (data or {}).items():
         key = str(k).strip().lower()
-        if key in ["s", "submission date", "customer drop-off date", "date", "ƒand", "ƒand.", "fand"]:
+        if key in ["s", "submission date", "customer drop-off date", "date", "Æand", "Æand.", "fand"]:
             return date_only_display(v)
 
     return ""
@@ -180,8 +220,8 @@ def parse_arrived_completed_value(value):
 
     month = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
     date_single = month + r"\s+\d{1,2},\s+\d{4}"
-    date_range_same_year = month + r"\s+\d{1,2}\s*[-–]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
-    date_range_full = date_single + r"\s*[-–]\s*" + date_single
+    date_range_same_year = month + r"\s+\d{1,2}\s*[-â]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
+    date_range_full = date_single + r"\s*[-â]\s*" + date_single
 
     completed_match = re.search(r"Completed\s+(" + date_single + r")", text, re.IGNORECASE)
     if completed_match:
@@ -242,6 +282,105 @@ def read_file(file):
         return pd.read_csv(io.StringIO(raw.decode("utf-8")), on_bad_lines="skip")
     except Exception:
         return pd.read_csv(io.StringIO(raw.decode("latin1")), on_bad_lines="skip")
+
+
+def html_escape(value):
+    text = str(value or "")
+    return (
+        text.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+            .replace("'", "&#39;")
+    )
+
+def sms_status_is_textable(new_status, pickup_only=True):
+    new_status = new_status or ""
+
+    if pickup_only:
+        return new_status == "Delivered to Us"
+
+    return new_status not in ["", "Submitted", "Picked Up"]
+
+def build_sms_message(submission_number, old_status, new_status):
+    display_new = customer_status_label(new_status)
+    display_old = customer_status_label(old_status) if old_status else ""
+
+    if new_status == "Delivered to Us":
+        return (
+            f"Giant Sports Cards: Your PSA submission #{submission_number} "
+            f"is ready for pickup. Track it here: {PUBLIC_PORTAL_URL}"
+        )
+
+    if display_old:
+        return (
+            f"Giant Sports Cards: Your PSA submission #{submission_number} "
+            f"moved from {display_old} to {display_new}. "
+            f"Track it here: {PUBLIC_PORTAL_URL}"
+        )
+
+    return (
+        f"Giant Sports Cards: Your PSA submission #{submission_number} "
+        f"status is now {display_new}. Track it here: {PUBLIC_PORTAL_URL}"
+    )
+
+def send_sms_or_queue(submission_number, phone, old_status, new_status, message):
+    send_status = "Queued"
+    provider_response = ""
+
+    if SMS_PROVIDER == "twilio" and TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER:
+        try:
+            from twilio.rest import Client
+            client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+            sms = client.messages.create(
+                body=message,
+                from_=TWILIO_FROM_NUMBER,
+                to=phone
+            )
+            send_status = "Sent"
+            provider_response = getattr(sms, "sid", "")
+        except Exception:
+            send_status = "Error"
+            provider_response = traceback.format_exc()
+
+    return send_status, provider_response
+
+def maybe_queue_status_sms(cur, submission_number, phone, old_status, new_status, sms_opt_in, pickup_only, last_sms_status):
+    if not sms_opt_in:
+        return False
+
+    if not phone:
+        return False
+
+    if not new_status:
+        return False
+
+    if old_status == new_status:
+        return False
+
+    if last_sms_status == new_status:
+        return False
+
+    if not sms_status_is_textable(new_status, pickup_only):
+        return False
+
+    message = build_sms_message(submission_number, old_status, new_status)
+    send_status, provider_response = send_sms_or_queue(submission_number, phone, old_status, new_status, message)
+
+    cur.execute("""
+    INSERT INTO sms_notifications
+        (submission_number, phone, old_status, new_status, message, send_status, provider_response, sent_at)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, CASE WHEN %s='Sent' THEN NOW() ELSE NULL END)
+    """, (submission_number, phone, old_status, new_status, message, send_status, provider_response, send_status))
+
+    cur.execute("""
+    UPDATE submissions
+    SET last_sms_status=%s,
+        last_sms_sent=CASE WHEN %s='Sent' THEN NOW() ELSE last_sms_sent END
+    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+    """, (new_status, send_status, submission_number))
+
+    return True
 
 # =========================
 # STATUS LOGIC
@@ -358,6 +497,7 @@ def page(content, mode="admin"):
         <a href="/admin/upload_psa">PSA PDF</a>
         <a href="/admin/upload_cards">Cards PDF</a>
         <a href="/admin/buyback_requests">Buyback</a>
+        <a href="/admin/sms_notifications">SMS Queue</a>
         <a href="/portal">Portal</a>
         <a href="/admin/logout">Logout</a>
         """
@@ -693,7 +833,7 @@ def build_table(rows):
 
             if key_text == "S":
                 display_key = "Customer Drop-Off Date"
-            elif normalized_key_text in ["submission date", "ƒand", "ƒand.", "fand"]:
+            elif normalized_key_text in ["submission date", "Æand", "Æand.", "fand"]:
                 display_key = "Customer Drop-Off Date"
             else:
                 display_key = key_text
@@ -756,7 +896,7 @@ def build_table(rows):
 
 def get_sort_date(row):
     data = row[0] or {}
-    date_value = get_field(data, ["Customer Drop-Off Date", "Submission Date", "ƒand", "ƒand.", "fand", "Fand", "S", "s", "Date", "date"])
+    date_value = get_field(data, ["Customer Drop-Off Date", "Submission Date", "Æand", "Æand.", "fand", "Fand", "S", "s", "Date", "date"])
 
     try:
         if date_value:
@@ -834,7 +974,7 @@ def extract_card_items_from_pdf(pdf_path):
                 if re.search(r"^(PSA\s*)?\d{1,2}$", line.strip(), re.IGNORECASE):
                     grade = line.strip()
                     continue
-                if "©" in line or "https://" in line or "Order " in line:
+                if "Â©" in line or "https://" in line or "Order " in line:
                     continue
                 detail_lines.append(line)
 
@@ -1094,8 +1234,8 @@ def admin_upload_psa():
 
                 month_pattern = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
                 date_pattern = month_pattern + r"\s+\d{1,2},\s+\d{4}"
-                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-–]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
-                date_range_full = date_pattern + r"\s*[-–]\s*" + date_pattern
+                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-â]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
+                date_range_full = date_pattern + r"\s*[-â]\s*" + date_pattern
 
                 value_pattern = re.compile(
                     rf"(Completed\s+{date_pattern}|Est\.\s*Complete\s*by\s+{date_range_full}|Est\.\s*Complete\s*by\s+{date_range_same_year}|Est\.\s*Complete\s*by\s+{date_pattern}|Estimated\s*Complete\s*by\s+{date_range_full}|Estimated\s*Complete\s*by\s+{date_range_same_year}|Estimated\s*Complete\s*by\s+{date_pattern}|Est\.\s*by\s+{date_range_full}|Est\.\s*by\s+{date_range_same_year}|Est\.\s*by\s+{date_pattern}|{date_pattern})",
@@ -1168,7 +1308,7 @@ def admin_upload_psa():
                             j += 1
 
                     # Split case:
-                    # • Sub
+                    # â¢ Sub
                     # #14550482
                     # Research & ID
                     elif re.search(r"\bSub\b\s*$", line, re.IGNORECASE) and i + 1 < len(lines):
@@ -1207,7 +1347,7 @@ def admin_upload_psa():
                             block_text = re.sub(r",\s+(\d{4})", r", \1", block_text)
 
                             matches = re.findall(
-                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
+                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
                                 block_text,
                                 re.IGNORECASE
                             )
@@ -1275,6 +1415,27 @@ def admin_upload_psa():
 
             for sub, status in best.items():
                 cur.execute("""
+                SELECT status,
+                       COALESCE(sms_opt_in, FALSE),
+                       COALESCE(sms_pickup_only, TRUE),
+                       COALESCE(last_sms_status, ''),
+                       raw_data
+                FROM submissions
+                WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+                """, (sub,))
+                existing_sms_row = cur.fetchone()
+
+                old_status = existing_sms_row[0] if existing_sms_row else None
+                sms_opt_in = existing_sms_row[1] if existing_sms_row else False
+                sms_pickup_only = existing_sms_row[2] if existing_sms_row else True
+                last_sms_status = existing_sms_row[3] if existing_sms_row else ""
+                existing_raw_data = existing_sms_row[4] if existing_sms_row and existing_sms_row[4] else {}
+
+                sms_phone = normalize_phone(get_field(existing_raw_data or {}, ["Contact Info", "Phone", "Phone Number"]))
+                if sms_phone and not sms_phone.startswith("+1") and len(sms_phone) == 10:
+                    sms_phone = "+1" + sms_phone
+
+                cur.execute("""
                 UPDATE submissions
                 SET status=%s,
                     raw_data = jsonb_set(
@@ -1290,6 +1451,7 @@ def admin_upload_psa():
 
                 if cur.rowcount:
                     updated += 1
+                    maybe_queue_status_sms(cur, sub, sms_phone, old_status, status, sms_opt_in, sms_pickup_only, last_sms_status)
                 else:
                     skipped += 1
 
@@ -1653,6 +1815,58 @@ def admin_buyback_status():
 
     return redirect("/admin/buyback_requests")
 
+
+@app.route("/portal/sms_preferences", methods=["POST"])
+def portal_sms_preferences():
+    phone = normalize_phone(session.get("phone"))
+    last = clean(session.get("last")).lower()
+
+    if not phone or not last:
+        return redirect("/portal")
+
+    submission_number = normalize_submission(request.form.get("submission_number"))
+    sms_opt_in = request.form.get("sms_opt_in") == "yes"
+    sms_pickup_only = request.form.get("sms_mode", "pickup") == "pickup"
+
+    if not submission_number:
+        return redirect("/portal/orders")
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT raw_data
+    FROM submissions
+    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+    """, (submission_number,))
+    row = cur.fetchone()
+
+    if not row:
+        cur.close()
+        conn.close()
+        return redirect("/portal/orders")
+
+    data = row[0] or {}
+    name = str(get_field(data, ["Customer Name", "Name"])).lower()
+    contact = normalize_phone(get_field(data, ["Contact Info", "Phone", "Phone Number"]))
+
+    phone_match = bool(contact) and (phone in contact or contact in phone)
+    name_match = bool(last) and last in name
+
+    if phone_match and name_match:
+        cur.execute("""
+        UPDATE submissions
+        SET sms_opt_in=%s,
+            sms_pickup_only=%s,
+            last_updated=NOW()
+        WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+        """, (sms_opt_in, sms_pickup_only, submission_number))
+        conn.commit()
+
+    cur.close()
+    conn.close()
+    return redirect("/portal/orders")
+
 @app.route("/portal/sell_interest", methods=["POST"])
 def portal_sell_interest():
     phone = normalize_phone(session.get("phone"))
@@ -1693,6 +1907,49 @@ def portal_sell_interest():
             """, (submission_number, cert_clean))
     conn.commit(); cur.close(); conn.close()
     return redirect("/portal/orders")
+
+
+@app.route("/admin/sms_notifications")
+@admin_required
+def admin_sms_notifications():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+    SELECT submission_number, phone, old_status, new_status, message, send_status, provider_response, created_at, sent_at
+    FROM sms_notifications
+    ORDER BY created_at DESC
+    LIMIT 200
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    html = "<h2>SMS Queue / Text History</h2>"
+    html += f"<div class='card'><p><b>Provider Mode:</b> {SMS_PROVIDER}</p><p><b>Portal URL:</b> {PUBLIC_PORTAL_URL}</p></div>"
+
+    if not rows:
+        html += "<div class='card'>No SMS notifications have been queued yet.</div>"
+        return page(html)
+
+    html += "<div class='card'><table>"
+    html += "<tr><th>Created</th><th>Submission #</th><th>Phone</th><th>Old</th><th>New</th><th>Status</th><th>Message</th></tr>"
+
+    for submission_number, phone, old_status, new_status, message, send_status, provider_response, created_at, sent_at in rows:
+        html += f"""
+        <tr>
+            <td>{created_at}</td>
+            <td>{submission_number}</td>
+            <td>{phone}</td>
+            <td>{customer_status_label(old_status)}</td>
+            <td>{customer_status_label(new_status)}</td>
+            <td><b>{send_status}</b></td>
+            <td>{html_escape(message)}</td>
+        </tr>
+        """
+
+    html += "</table></div>"
+    return page(html)
+
 
 # =========================
 # CUSTOMER PORTAL
@@ -1792,7 +2049,8 @@ def portal_orders():
     completed_statuses = set(["Complete", "Delivered to Us", "Picked Up"])
     filtered_grouped = {}
 
-    for sub, (data, status) in grouped.items():
+    for sub, grouped_values in grouped.items():
+        data, status = grouped_values[0], grouped_values[1]
         internal_status = status or "Submitted"
         label_status = customer_status_label(internal_status)
 
@@ -1805,14 +2063,17 @@ def portal_orders():
         if selected_status != "all" and label_status != selected_status:
             continue
 
-        filtered_grouped[sub] = (data, status)
+        filtered_grouped[sub] = grouped_values
 
     if not filtered_grouped:
         html += "<div class='card'>No submissions match the selected filters.</div>"
         html += "<a href='/portal/logout'>Log out</a>"
         return page(html, mode="portal")
 
-    for sub, (data, status) in filtered_grouped.items():
+    for sub, grouped_values in filtered_grouped.items():
+        data, status = grouped_values[0], grouped_values[1]
+        sms_opted = grouped_values[2] if len(grouped_values) > 2 else False
+        sms_pickup_only = grouped_values[3] if len(grouped_values) > 3 else True
         customer_name = get_field(data, ["Customer Name", "Name"])
         cards = get_field(data, ["# Of Cards", "# of Cards", "Cards"])
         service = clean_service_display(get_field(data, ["Service Type", "Service"]))
@@ -1857,6 +2118,30 @@ def portal_orders():
             </form>
             """
 
+        sms_checked = "checked" if sms_opted else ""
+        pickup_selected = "selected" if sms_pickup_only else ""
+        all_selected = "" if sms_pickup_only else "selected"
+
+        sms_html = f"""
+        <hr>
+        <form method="post" action="/portal/sms_preferences">
+            <input type="hidden" name="submission_number" value="{sub}">
+            <label class="sell-check">
+                <input type="checkbox" name="sms_opt_in" value="yes" {sms_checked}>
+                Text me updates for this submission
+            </label>
+            <label>
+                Text option:
+                <select name="sms_mode">
+                    <option value="pickup" {pickup_selected}>Ready for pickup only</option>
+                    <option value="all" {all_selected}>Every PSA status change</option>
+                </select>
+            </label>
+            <button type="submit">Save Text Settings</button>
+            <p><small>Texts will go to the phone number on this order. Message/data rates may apply.</small></p>
+        </form>
+        """
+
         html += f"""
         <div class="card">
             <h3>{customer_name}</h3>
@@ -1868,6 +2153,7 @@ def portal_orders():
             <p><b>Service:</b> {service}</p>
             <p><b>Customer Drop-Off Date:</b> {date}</p>
             {status_bar(display_status)}
+            {sms_html}
             {buyback_html}
         </div>
         """
