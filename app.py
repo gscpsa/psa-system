@@ -259,9 +259,9 @@ def page(content, mode="admin"):
         nav = """
         <a href="/admin">Dashboard</a>
         <a href="/admin/search">Search</a>
-        <a href="/admin/upload">Upload Excel</a>
-        <a href="/admin/upload_psa">Upload PSA</a>
-        <a href="/portal">Customer Portal</a>
+        <a href="/admin/upload">Excel</a>
+        <a href="/admin/upload_psa">PSA PDF</a>
+        <a href="/portal">Portal</a>
         <a href="/admin/logout">Logout</a>
         """
     else:
@@ -284,31 +284,50 @@ def page(content, mode="admin"):
         .topbar {{
             background:#0f5132;
             color:white;
-            padding:15px 20px;
+            padding:14px 20px;
             display:flex;
             justify-content:space-between;
             align-items:center;
+            gap:18px;
+            flex-wrap:wrap;
         }}
         .brand {{
             font-weight:bold;
             font-size:20px;
             display:flex;
             align-items:center;
-            gap:10px;
+            gap:12px;
+            min-width:260px;
         }}
         .brand img {{
-            max-height:44px;
+            max-height:78px;
             width:auto;
             display:block;
         }}
+        .brand span {{
+            white-space:nowrap;
+        }}
+        .links {{
+            display:flex;
+            flex-wrap:wrap;
+            gap:8px;
+            justify-content:flex-end;
+            align-items:center;
+        }}
         .links a {{
             color:white;
-            margin-left:14px;
+            background:rgba(255,255,255,.12);
+            padding:8px 11px;
+            border-radius:8px;
             text-decoration:none;
             font-weight:bold;
+            font-size:13px;
+            margin:0;
+            line-height:1;
         }}
         .links a:hover {{
-            color:#d1e7dd;
+            background:rgba(255,255,255,.22);
+            color:white;
         }}
         .container {{
             padding:16px;
@@ -405,25 +424,74 @@ def page(content, mode="admin"):
         }}
         .filterbar {{
             background:white;
-            padding:12px;
+            padding:14px;
             margin-bottom:15px;
             border-radius:10px;
             box-shadow:0 2px 8px rgba(0,0,0,.08);
         }}
-        .filterbar a {{
-            display:inline-block;
-            margin:4px 6px 4px 0;
-            padding:7px 10px;
-            background:#e5e7eb;
-            color:#111827;
-            border-radius:6px;
-            text-decoration:none;
-            font-weight:bold;
-            font-size:13px;
+        .filterbar form {{
+            display:flex;
+            flex-wrap:wrap;
+            align-items:end;
+            gap:10px;
+            margin:0;
         }}
-        .filterbar a.active {{
+        .filterbar label {{
+            display:block;
+            font-size:12px;
+            font-weight:bold;
+            margin-bottom:4px;
+            color:#374151;
+        }}
+        .filterbar select {{
+            min-width:180px;
+            padding:9px 10px;
+            border:1px solid #cbd5e1;
+            border-radius:8px;
+            background:white;
+            font-size:14px;
+        }}
+        .filterbar button {{
+            padding:10px 13px;
             background:#198754;
             color:white;
+            border:0;
+            border-radius:8px;
+            font-weight:bold;
+            cursor:pointer;
+            margin:0;
+        }}
+        .filterbar .reset-link {{
+            display:inline-block;
+            padding:10px 13px;
+            background:#e5e7eb;
+            color:#111827;
+            border-radius:8px;
+            text-decoration:none;
+            font-weight:bold;
+            font-size:14px;
+        }}
+        @media (max-width: 700px) {{
+            .topbar {{
+                align-items:flex-start;
+            }}
+            .brand {{
+                min-width:100%;
+            }}
+            .brand img {{
+                max-height:68px;
+            }}
+            .links {{
+                justify-content:flex-start;
+            }}
+            .filterbar form {{
+                display:block;
+            }}
+            .filterbar select, .filterbar button, .filterbar .reset-link {{
+                width:100%;
+                margin:5px 0 10px 0;
+                box-sizing:border-box;
+            }}
         }}
     </style>
     </head>
@@ -1175,19 +1243,39 @@ def portal_orders():
 
     statuses_available = sorted(set([customer_status_label(status) for _, status in grouped.values()]))
 
-    html += "<div class='filterbar'>"
-    html += "<b>View:</b> "
-    html += f"<a class='{ 'active' if selected_view == 'active' else '' }' href='/portal/orders?view=active&status={selected_status}'>Active</a>"
-    html += f"<a class='{ 'active' if selected_view == 'completed' else '' }' href='/portal/orders?view=completed&status={selected_status}'>Completed / Picked Up</a>"
-    html += f"<a class='{ 'active' if selected_view == 'all' else '' }' href='/portal/orders?view=all&status={selected_status}'>All</a>"
-    html += "<br><b>Status:</b> "
-    html += f"<a class='{ 'active' if selected_status == 'all' else '' }' href='/portal/orders?view={selected_view}&status=all'>All Statuses</a>"
+    def selected(option_value, current_value):
+        return "selected" if option_value == current_value else ""
+
+    html += """
+    <div class="filterbar">
+        <form method="get" action="/portal/orders">
+            <div>
+                <label for="view">View</label>
+                <select id="view" name="view">
+    """
+    html += f"<option value='active' {selected('active', selected_view)}>Active Orders</option>"
+    html += f"<option value='completed' {selected('completed', selected_view)}>Completed / Picked Up</option>"
+    html += f"<option value='all' {selected('all', selected_view)}>All Orders</option>"
+    html += """
+                </select>
+            </div>
+            <div>
+                <label for="status">Status</label>
+                <select id="status" name="status">
+    """
+    html += f"<option value='all' {selected('all', selected_status)}>All Statuses</option>"
 
     for status_option in statuses_available:
-        safe_status = status_option.replace(' ', '+').replace('&', '%26')
-        html += f"<a class='{ 'active' if selected_status == status_option else '' }' href='/portal/orders?view={selected_view}&status={safe_status}'>{status_option}</a>"
+        html += f"<option value='{status_option}' {selected(status_option, selected_status)}>{status_option}</option>"
 
-    html += "</div>"
+    html += """
+                </select>
+            </div>
+            <button type="submit">Apply Filters</button>
+            <a class="reset-link" href="/portal/orders?view=active&status=all">Reset</a>
+        </form>
+    </div>
+    """
 
     completed_statuses = set(["Complete", "Delivered to Us", "Picked Up"])
     filtered_grouped = {}
