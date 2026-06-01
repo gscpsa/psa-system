@@ -395,22 +395,22 @@ def page(content, mode="admin"):
             color:white;
             font-weight:bold;
         }}
-        pre {
+        pre {{
             background:#111827;
             color:white;
             padding:12px;
             overflow:auto;
             border-radius:8px;
             font-size:12px;
-        }
-        .filterbar {
+        }}
+        .filterbar {{
             background:white;
             padding:12px;
             margin-bottom:15px;
             border-radius:10px;
             box-shadow:0 2px 8px rgba(0,0,0,.08);
-        }
-        .filterbar a {
+        }}
+        .filterbar a {{
             display:inline-block;
             margin:4px 6px 4px 0;
             padding:7px 10px;
@@ -420,11 +420,11 @@ def page(content, mode="admin"):
             text-decoration:none;
             font-weight:bold;
             font-size:13px;
-        }
-        .filterbar a.active {
+        }}
+        .filterbar a.active {{
             background:#198754;
             color:white;
-        }
+        }}
     </style>
     </head>
     <body>
