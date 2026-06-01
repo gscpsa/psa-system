@@ -1,7 +1,7 @@
 from flask import Flask, request, session, redirect
 import pandas as pd
 import psycopg2
-import os, io, json, re, traceback
+import os, io, json, re, traceback, base64
 from functools import wraps
 
 app = Flask(__name__)
@@ -24,6 +24,21 @@ def init_db():
         status TEXT DEFAULT 'Submitted',
         raw_data JSONB,
         last_updated TIMESTAMP DEFAULT NOW()
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS card_buyback_items (
+        id SERIAL PRIMARY KEY,
+        submission_number TEXT NOT NULL,
+        cert_number TEXT NOT NULL,
+        item_details TEXT,
+        grade TEXT,
+        image_data TEXT,
+        interested BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (submission_number, cert_number)
     )
     """)
     conn.commit()
@@ -89,6 +104,23 @@ def customer_status_label(status):
     if status == "Delivered to Us":
         return "Ready For Pickup"
     return status or "Submitted"
+
+def psa_status_steps():
+    return [
+        "Submitted",
+        "Order Arrived",
+        "Research & ID",
+        "Grading",
+        "Assembly",
+        "QA Checks",
+        "Shipping Soon",
+        "Complete",
+        "Delivered to Us",
+        "Picked Up"
+    ]
+
+def customer_status_options():
+    return [customer_status_label(s) for s in psa_status_steps()]
 
 def clean_service_display(service):
     value = str(service or "").strip()
@@ -177,8 +209,8 @@ def status_rank(status):
         "Order Arrived": 1,
         "Research & ID": 2,
         "Grading": 3,
-        "QA Checks": 4,
-        "Assembly": 5,
+        "Assembly": 4,
+        "QA Checks": 5,
         "Shipping Soon": 6,
         "Complete": 7,
         "Delivered to Us": 8,
@@ -261,6 +293,8 @@ def page(content, mode="admin"):
         <a href="/admin/search">Search</a>
         <a href="/admin/upload">Excel</a>
         <a href="/admin/upload_psa">PSA PDF</a>
+        <a href="/admin/upload_cards">Cards PDF</a>
+        <a href="/admin/buyback_requests">Buyback</a>
         <a href="/portal">Portal</a>
         <a href="/admin/logout">Logout</a>
         """
@@ -471,6 +505,43 @@ def page(content, mode="admin"):
             font-weight:bold;
             font-size:14px;
         }}
+        .card-grid {{
+            display:grid;
+            grid-template-columns:repeat(auto-fill, minmax(230px, 1fr));
+            gap:14px;
+            margin-top:12px;
+        }}
+        .buy-card {{
+            background:#ffffff;
+            border:1px solid #e5e7eb;
+            border-radius:12px;
+            padding:12px;
+            box-shadow:0 2px 8px rgba(0,0,0,.06);
+        }}
+        .buy-card img {{
+            width:100%;
+            max-height:260px;
+            object-fit:contain;
+            background:#f9fafb;
+            border-radius:8px;
+            margin-bottom:10px;
+        }}
+        .buy-card .cert {{
+            font-weight:bold;
+            color:#0f5132;
+        }}
+        .sell-check {{
+            display:flex;
+            align-items:center;
+            gap:8px;
+            margin-top:10px;
+            font-weight:bold;
+        }}
+        .sell-check input {{
+            width:20px;
+            height:20px;
+            margin:0;
+        }}
         @media (max-width: 700px) {{
             .topbar {{
                 align-items:flex-start;
@@ -506,18 +577,7 @@ def page(content, mode="admin"):
     """
 
 def status_bar(status):
-    steps = [
-        "Submitted",
-        "Order Arrived",
-        "Research & ID",
-        "Grading",
-        "QA Checks",
-        "Assembly",
-        "Shipping Soon",
-        "Complete",
-        "Delivered to Us",
-        "Picked Up"
-    ]
+    steps = psa_status_steps()
 
     status = status or "Submitted"
     idx = steps.index(status) if status in steps else 0
@@ -633,6 +693,108 @@ def get_sort_date(row):
         pass
 
     return pd.Timestamp.min
+
+
+def extract_card_items_from_pdf(pdf_path):
+    items = []
+    submission_number = ""
+    order_number = ""
+
+    try:
+        import fitz
+    except Exception as e:
+        raise RuntimeError("PyMuPDF / fitz is required for card PDF import.") from e
+
+    doc = fitz.open(pdf_path)
+    image_data_by_page = {}
+
+    for page_index, pdf_page in enumerate(doc):
+        page_images = []
+        try:
+            for img in pdf_page.get_images(full=True):
+                xref = img[0]
+                try:
+                    extracted = doc.extract_image(xref)
+                    image_bytes = extracted.get("image")
+                    ext = extracted.get("ext", "png")
+                    if image_bytes:
+                        image_b64 = base64.b64encode(image_bytes).decode("ascii")
+                        page_images.append(f"data:image/{ext};base64,{image_b64}")
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        image_data_by_page[page_index] = page_images
+
+    for page_index, pdf_page in enumerate(doc):
+        try:
+            text = pdf_page.get_text("text") or ""
+        except Exception:
+            text = ""
+
+        if not submission_number:
+            sub_match = re.search(r"Submission\s*#\s*(\d+)", text, re.IGNORECASE)
+            if sub_match:
+                submission_number = normalize_submission(sub_match.group(1)) or ""
+        if not order_number:
+            order_match = re.search(r"Order\s*#\s*(\d+)", text, re.IGNORECASE)
+            if order_match:
+                order_number = normalize_submission(order_match.group(1)) or ""
+
+        cert_matches = list(re.finditer(r"Cert\s*#\s*(\d+)", text, re.IGNORECASE))
+        images = image_data_by_page.get(page_index, [])
+
+        for idx, cert_match in enumerate(cert_matches):
+            cert_number = normalize_submission(cert_match.group(1)) or ""
+            start = cert_match.end()
+            end = cert_matches[idx + 1].start() if idx + 1 < len(cert_matches) else len(text)
+            block = text[start:end]
+            block_lines = [clean(line) for line in block.splitlines() if clean(line)]
+            ignored = set(["Item Details", "Report Error", "Ship to You", "Status", "Sell on eBay", "Send to Vault", "Grading"])
+            detail_lines = []
+            grade = ""
+
+            for line in block_lines:
+                if line in ignored:
+                    continue
+                if re.search(r"^(Status|Ship to You|Sell on eBay|Send to Vault)$", line, re.IGNORECASE):
+                    continue
+                if re.search(r"^(PSA\s*)?\d{1,2}$", line.strip(), re.IGNORECASE):
+                    grade = line.strip()
+                    continue
+                if "©" in line or "https://" in line or "Order " in line:
+                    continue
+                detail_lines.append(line)
+
+            item_details = " ".join(detail_lines).strip()
+            image_data = images[idx] if idx < len(images) else (images[0] if len(images) == 1 else "")
+
+            if cert_number:
+                items.append({
+                    "submission_number": submission_number,
+                    "order_number": order_number,
+                    "cert_number": cert_number,
+                    "item_details": item_details,
+                    "grade": grade,
+                    "image_data": image_data
+                })
+
+    doc.close()
+    return submission_number, order_number, items
+
+def get_buyback_items_for_submission(submission_number):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+    SELECT cert_number, item_details, grade, image_data, interested
+    FROM card_buyback_items
+    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+    ORDER BY cert_number
+    """, (submission_number,))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return rows
 
 # =========================
 # ADMIN ROUTES
@@ -1182,6 +1344,173 @@ def admin_upload_psa():
         </form>
     </div>
     """)
+
+@app.route("/admin/upload_cards", methods=["GET", "POST"])
+@admin_required
+def admin_upload_cards():
+    if request.method == "POST":
+        try:
+            import tempfile
+            file = request.files.get("file")
+            if not file:
+                return page("<div class='card'>No card PDF uploaded.</div>")
+            filename = (file.filename or "").lower()
+            if not filename.endswith(".pdf"):
+                return page("""
+                <div class="card">
+                    <h2>Wrong File Type</h2>
+                    <p>This uploader only accepts PDF files from the PSA order/card details page.</p>
+                    <a href="/admin/upload_cards">Back to Card PDF Upload</a>
+                </div>
+                """)
+            temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+            file.save(temp.name)
+            try:
+                submission_number, order_number, items = extract_card_items_from_pdf(temp.name)
+            finally:
+                try:
+                    os.unlink(temp.name)
+                except Exception:
+                    pass
+            if not submission_number:
+                return page("""
+                <div class="card">
+                    <h2>No Submission Number Found</h2>
+                    <p>The PDF did not contain a readable Submission #. Please use the PSA order details PDF.</p>
+                    <a href="/admin/upload_cards">Try Again</a>
+                </div>
+                """)
+            conn = get_conn()
+            cur = conn.cursor()
+            saved = 0
+            for item in items:
+                if not item.get("submission_number"):
+                    item["submission_number"] = submission_number
+                cur.execute("""
+                INSERT INTO card_buyback_items
+                    (submission_number, cert_number, item_details, grade, image_data)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (submission_number, cert_number)
+                DO UPDATE SET
+                    item_details=EXCLUDED.item_details,
+                    grade=EXCLUDED.grade,
+                    image_data=COALESCE(NULLIF(EXCLUDED.image_data, ''), card_buyback_items.image_data),
+                    updated_at=NOW()
+                """, (item["submission_number"], item["cert_number"], item["item_details"], item["grade"], item["image_data"]))
+                saved += 1
+            conn.commit()
+            cur.close()
+            conn.close()
+            preview_rows = ""
+            for item in items[:50]:
+                img_html = f"<img src='{item['image_data']}' style='max-height:120px;max-width:90px;'>" if item.get("image_data") else ""
+                preview_rows += f"""
+                <tr><td>{img_html}</td><td>{item.get('cert_number','')}</td><td>{item.get('item_details','')}</td><td>{item.get('grade','')}</td></tr>
+                """
+            return page(f"""
+            <div class="card">
+                <h2>Card PDF Imported</h2>
+                <p><b>Submission #:</b> {submission_number}</p>
+                <p><b>Order #:</b> {order_number}</p>
+                <p><b>Cards found:</b> {len(items)}</p>
+                <p><b>Cards saved:</b> {saved}</p>
+                <table><tr><th>Image</th><th>Cert #</th><th>Item Details</th><th>Grade</th></tr>{preview_rows}</table>
+                <br><a class="btn" href="/admin/upload_cards">Upload Another</a>
+                <a class="btn" href="/admin/buyback_requests">View Buyback Requests</a>
+                <a class="btn" href="/admin">Back to Admin</a>
+            </div>
+            """)
+        except Exception:
+            return page(f"""
+            <div class="card">
+                <h2>Card PDF Upload Error</h2>
+                <p>The file could not be processed.</p>
+                <pre>{traceback.format_exc()}</pre>
+                <a href="/admin/upload_cards">Try again</a>
+            </div>
+            """)
+    return page("""
+    <div class="card">
+        <h2>Upload PSA Card Details PDF</h2>
+        <p>Use this for completed/card-detail PDFs that include cert numbers, card details, grades, and card images.</p>
+        <form method="post" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".pdf,application/pdf">
+            <button>Upload Card PDF</button>
+        </form>
+    </div>
+    """)
+
+@app.route("/admin/buyback_requests")
+@admin_required
+def admin_buyback_requests():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+    SELECT c.submission_number, c.cert_number, c.item_details, c.grade, c.image_data, c.interested, s.raw_data
+    FROM card_buyback_items c
+    LEFT JOIN submissions s ON REGEXP_REPLACE(s.submission_number, '\\D', '', 'g') = REGEXP_REPLACE(c.submission_number, '\\D', '', 'g')
+    ORDER BY c.interested DESC, c.updated_at DESC
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    html = "<h2>Buyback Interest</h2>"
+    if not rows:
+        html += "<div class='card'>No card buyback items have been imported yet.</div>"
+        return page(html)
+    html += "<div class='card'><table>"
+    html += "<tr><th>Interested</th><th>Image</th><th>Customer</th><th>Submission #</th><th>Cert #</th><th>Item</th><th>Grade</th></tr>"
+    for submission_number, cert_number, item_details, grade, image_data, interested, raw_data in rows:
+        customer_name = get_field(raw_data or {}, ["Customer Name", "Name"])
+        interested_text = "YES" if interested else ""
+        img_html = f"<img src='{image_data}' style='max-height:120px;max-width:90px;'>" if image_data else ""
+        html += f"""
+        <tr><td><b>{interested_text}</b></td><td>{img_html}</td><td>{customer_name}</td><td>{submission_number}</td><td>{cert_number}</td><td>{item_details}</td><td>{grade}</td></tr>
+        """
+    html += "</table></div>"
+    return page(html)
+
+@app.route("/portal/sell_interest", methods=["POST"])
+def portal_sell_interest():
+    phone = normalize_phone(session.get("phone"))
+    last = clean(session.get("last")).lower()
+    if not phone or not last:
+        return redirect("/portal")
+    certs = request.form.getlist("cert")
+    submission_number = normalize_submission(request.form.get("submission_number"))
+    if not submission_number:
+        return redirect("/portal/orders")
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+    SELECT raw_data FROM submissions
+    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+    """, (submission_number,))
+    row = cur.fetchone()
+    if not row:
+        cur.close(); conn.close(); return redirect("/portal/orders")
+    data = row[0] or {}
+    name = str(get_field(data, ["Customer Name", "Name"])).lower()
+    contact = normalize_phone(get_field(data, ["Contact Info", "Phone", "Phone Number"]))
+    phone_match = bool(contact) and (phone in contact or contact in phone)
+    name_match = bool(last) and last in name
+    if not (phone_match and name_match):
+        cur.close(); conn.close(); return redirect("/portal/orders")
+    cur.execute("""
+    UPDATE card_buyback_items SET interested=FALSE, updated_at=NOW()
+    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+    """, (submission_number,))
+    for cert in certs:
+        cert_clean = normalize_submission(cert)
+        if cert_clean:
+            cur.execute("""
+            UPDATE card_buyback_items SET interested=TRUE, updated_at=NOW()
+            WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+              AND REGEXP_REPLACE(cert_number, '\\D', '', 'g')=%s
+            """, (submission_number, cert_clean))
+    conn.commit(); cur.close(); conn.close()
+    return redirect("/portal/orders")
+
 # =========================
 # CUSTOMER PORTAL
 # =========================
@@ -1241,7 +1570,7 @@ def portal_orders():
         html += "<div class='card'>No matching orders found. Check phone number and last name.</div>"
         return page(html, mode="portal")
 
-    statuses_available = sorted(set([customer_status_label(status) for _, status in grouped.values()]))
+    statuses_available = customer_status_options()
 
     def selected(option_value, current_value):
         return "selected" if option_value == current_value else ""
@@ -1312,6 +1641,39 @@ def portal_orders():
         display_status = status or "Submitted"
         display_status_label = customer_status_label(display_status)
 
+        buyback_rows = get_buyback_items_for_submission(sub)
+        buyback_html = ""
+
+        if buyback_rows:
+            buyback_html += f"""
+            <hr>
+            <h4>Cards in This Submission</h4>
+            <p>Select any cards you may be interested in selling to Giant Sports Cards.</p>
+            <form method="post" action="/portal/sell_interest">
+                <input type="hidden" name="submission_number" value="{sub}">
+                <div class="card-grid">
+            """
+
+            for cert_number, item_details, grade, image_data, interested in buyback_rows:
+                checked = "checked" if interested else ""
+                img_html = f"<img src='{image_data}' alt='Card image'>" if image_data else ""
+                buyback_html += f"""
+                <div class="buy-card">
+                    {img_html}
+                    <div class="cert">Cert #: {cert_number}</div>
+                    <div>{item_details}</div>
+                    <div><b>Grade:</b> {grade}</div>
+                    <label class="sell-check"><input type="checkbox" name="cert" value="{cert_number}" {checked}> Interested in selling</label>
+                </div>
+                """
+
+            buyback_html += """
+                </div>
+                <br>
+                <button type="submit">Save Sell Interest</button>
+            </form>
+            """
+
         html += f"""
         <div class="card">
             <h3>{customer_name}</h3>
@@ -1323,6 +1685,7 @@ def portal_orders():
             <p><b>Service:</b> {service}</p>
             <p><b>Customer Drop-Off Date:</b> {date}</p>
             {status_bar(display_status)}
+            {buyback_html}
         </div>
         """
 
