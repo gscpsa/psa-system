@@ -837,241 +837,6 @@ def page(content, mode="admin"):
             height:20px;
             margin:0;
         }}
-
-        .portal-landing {
-            min-height: calc(100vh - 125px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 46px 18px;
-            background:
-                radial-gradient(circle at 12% 40%, rgba(25,135,84,.22), transparent 30%),
-                radial-gradient(circle at 90% 18%, rgba(15,81,50,.18), transparent 26%),
-                linear-gradient(135deg, #050807 0%, #101514 50%, #050807 100%);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .portal-landing:before {
-            content: "";
-            position: absolute;
-            left: -88px;
-            bottom: 42px;
-            width: 270px;
-            height: 390px;
-            border-radius: 18px;
-            background:
-                linear-gradient(145deg, rgba(255,255,255,.16), rgba(255,255,255,.03)),
-                linear-gradient(135deg, #111, #2a2a2a);
-            border: 3px solid rgba(255,255,255,.22);
-            box-shadow: 0 25px 70px rgba(0,0,0,.55);
-            transform: rotate(-7deg);
-            opacity: .55;
-        }
-
-        .portal-panel {
-            width: 100%;
-            max-width: 760px;
-            background: #ffffff;
-            border-radius: 18px;
-            box-shadow: 0 28px 80px rgba(0,0,0,.42);
-            padding: 44px 58px 34px;
-            text-align: center;
-            position: relative;
-            z-index: 2;
-            border: 1px solid rgba(0,0,0,.08);
-        }
-
-        .portal-icon {
-            width: 112px;
-            height: 112px;
-            border-radius: 999px;
-            border: 5px solid #e5e7eb;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 24px;
-            color: #0f5132;
-            font-size: 54px;
-            line-height: 1;
-            font-weight: 900;
-        }
-
-        .portal-panel h2 {
-            font-size: 42px;
-            letter-spacing: .5px;
-            text-transform: uppercase;
-            margin: 8px 0 14px;
-            color: #07110d;
-            font-weight: 900;
-        }
-
-        .portal-green-line {
-            width: 106px;
-            height: 5px;
-            background: #198754;
-            margin: 0 auto 24px;
-            border-radius: 999px;
-        }
-
-        .portal-panel .subtitle {
-            font-size: 22px;
-            line-height: 1.45;
-            color: #374151;
-            max-width: 560px;
-            margin: 0 auto 32px;
-        }
-
-        .portal-form {
-            max-width: 560px;
-            margin: 0 auto;
-        }
-
-        .portal-input-wrap {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            border: 1px solid #cfd4dc;
-            border-radius: 10px;
-            padding: 0 18px;
-            margin-bottom: 16px;
-            height: 70px;
-            background: #fff;
-        }
-
-        .portal-input-wrap .field-icon {
-            font-size: 26px;
-            color: #4b5563;
-            width: 32px;
-            text-align: center;
-        }
-
-        .portal-input-wrap input {
-            border: 0;
-            outline: 0;
-            flex: 1;
-            font-size: 21px;
-            padding: 0;
-            margin: 0;
-            color: #111827;
-            background: transparent;
-        }
-
-        .portal-input-wrap input::placeholder {
-            color: #6b7280;
-        }
-
-        .portal-submit {
-            width: 100%;
-            height: 72px;
-            border: 0;
-            border-radius: 10px;
-            margin: 8px 0 26px;
-            background: linear-gradient(180deg, #08783f 0%, #006b39 100%);
-            color: #fff;
-            font-size: 22px;
-            font-weight: 900;
-            letter-spacing: .3px;
-            cursor: pointer;
-            box-shadow: 0 8px 16px rgba(0,0,0,.22);
-        }
-
-        .portal-submit span {
-            font-size: 34px;
-            margin-left: 28px;
-            vertical-align: -3px;
-        }
-
-        .portal-footer-mark {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 18px;
-            margin: 8px auto 18px;
-        }
-
-        .portal-footer-mark:before,
-        .portal-footer-mark:after {
-            content: "";
-            height: 1px;
-            background: #d1d5db;
-            width: 170px;
-        }
-
-        .portal-mini-logo {
-            min-width: 72px;
-            min-height: 54px;
-            background: #0f5132;
-            color: #fff;
-            border: 3px solid #198754;
-            transform: rotate(45deg);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 6px rgba(0,0,0,.18);
-        }
-
-        .portal-mini-logo span {
-            transform: rotate(-45deg);
-            display: block;
-            font-size: 13px;
-            line-height: 1;
-            font-weight: 900;
-        }
-
-        .portal-trust {
-            color: #374151;
-            font-size: 18px;
-            line-height: 1.35;
-            margin: 0;
-        }
-
-        .portal-benefits {
-            position: relative;
-            z-index: 2;
-            display: flex;
-            gap: 70px;
-            justify-content: center;
-            color: #fff;
-            padding: 28px 20px 18px;
-            background: #030605;
-            border-top: 1px solid #198754;
-        }
-
-        .portal-benefit {
-            display: flex;
-            gap: 16px;
-            align-items: center;
-            max-width: 300px;
-        }
-
-        .portal-benefit-icon {
-            width: 58px;
-            height: 58px;
-            border-radius: 50%;
-            border: 5px solid #198754;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 25px;
-            color: #fff;
-            flex: 0 0 auto;
-        }
-
-        .portal-benefit-title {
-            font-weight: 900;
-            font-size: 18px;
-            text-transform: uppercase;
-            margin-bottom: 4px;
-        }
-
-        .portal-benefit-text {
-            color: #d1d5db;
-            font-size: 15px;
-            line-height: 1.3;
-        }
-
-
         @media (max-width: 700px) {{
             .topbar {{
                 align-items:flex-start;
@@ -2798,7 +2563,7 @@ def portal():
 
     return page("""
     <style>
-        .safe-portal-wrap {
+        .portal-center-wrap {
             min-height: calc(100vh - 120px);
             display: flex;
             align-items: center;
@@ -2806,7 +2571,7 @@ def portal():
             padding: 42px 16px;
             background: linear-gradient(135deg, #050807 0%, #111817 50%, #050807 100%);
         }
-        .safe-portal-card {
+        .portal-center-card {
             width: 100%;
             max-width: 720px;
             background: #ffffff;
@@ -2816,7 +2581,7 @@ def portal():
             text-align: center;
             border: 1px solid rgba(0,0,0,.08);
         }
-        .safe-portal-icon {
+        .portal-check-circle {
             width: 104px;
             height: 104px;
             border-radius: 999px;
@@ -2829,7 +2594,7 @@ def portal():
             font-size: 52px;
             font-weight: 900;
         }
-        .safe-portal-card h2 {
+        .portal-center-card h2 {
             font-size: 40px;
             text-transform: uppercase;
             margin: 8px 0 14px;
@@ -2837,25 +2602,25 @@ def portal():
             font-weight: 900;
             letter-spacing: .4px;
         }
-        .safe-green-line {
+        .portal-green-line {
             width: 104px;
             height: 5px;
             background: #198754;
             margin: 0 auto 24px;
             border-radius: 999px;
         }
-        .safe-subtitle {
+        .portal-subtitle {
             font-size: 21px;
             line-height: 1.45;
             color: #374151;
             max-width: 560px;
             margin: 0 auto 32px;
         }
-        .safe-form {
+        .portal-form-box {
             max-width: 560px;
             margin: 0 auto;
         }
-        .safe-input-row {
+        .portal-input-line {
             display: flex;
             align-items: center;
             gap: 14px;
@@ -2866,13 +2631,14 @@ def portal():
             height: 68px;
             background: #fff;
         }
-        .safe-input-icon {
-            font-size: 25px;
+        .portal-input-label {
+            font-size: 18px;
             color: #4b5563;
             width: 32px;
             text-align: center;
+            font-weight: 900;
         }
-        .safe-input-row input {
+        .portal-input-line input {
             border: 0;
             outline: 0;
             flex: 1;
@@ -2882,7 +2648,7 @@ def portal():
             color: #111827;
             background: transparent;
         }
-        .safe-submit {
+        .portal-submit-button {
             width: 100%;
             height: 70px;
             border: 0;
@@ -2895,26 +2661,26 @@ def portal():
             cursor: pointer;
             box-shadow: 0 8px 16px rgba(0,0,0,.22);
         }
-        .safe-submit span {
+        .portal-submit-button span {
             font-size: 32px;
             margin-left: 24px;
             vertical-align: -3px;
         }
-        .safe-divider {
+        .portal-divider {
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 18px;
             margin: 8px auto 18px;
         }
-        .safe-divider:before,
-        .safe-divider:after {
+        .portal-divider:before,
+        .portal-divider:after {
             content: "";
             height: 1px;
             background: #d1d5db;
             width: 170px;
         }
-        .safe-mini-logo {
+        .portal-mini-logo {
             width: 78px;
             height: 54px;
             border: 3px solid #198754;
@@ -2928,13 +2694,13 @@ def portal():
             justify-content: center;
             border-radius: 8px;
         }
-        .safe-trust {
+        .portal-trust-text {
             color: #374151;
             font-size: 18px;
             line-height: 1.35;
             margin: 0;
         }
-        .safe-benefits {
+        .portal-benefit-bar {
             display: flex;
             justify-content: center;
             gap: 70px;
@@ -2943,13 +2709,13 @@ def portal():
             background: #030605;
             border-top: 1px solid #198754;
         }
-        .safe-benefit {
+        .portal-benefit-item {
             display: flex;
             gap: 16px;
             align-items: center;
             max-width: 300px;
         }
-        .safe-benefit-icon {
+        .portal-benefit-icon {
             width: 58px;
             height: 58px;
             border-radius: 50%;
@@ -2957,100 +2723,76 @@ def portal():
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 25px;
+            font-size: 22px;
             flex: 0 0 auto;
         }
-        .safe-benefit-title {
+        .portal-benefit-title {
             font-weight: 900;
             font-size: 18px;
             text-transform: uppercase;
             margin-bottom: 4px;
         }
-        .safe-benefit-text {
+        .portal-benefit-text {
             color: #d1d5db;
             font-size: 15px;
             line-height: 1.3;
         }
         @media (max-width: 700px) {
-            .safe-portal-wrap {
-                min-height: auto;
-                padding: 24px 12px;
-            }
-            .safe-portal-card {
-                padding: 32px 22px 28px;
-            }
-            .safe-portal-card h2 {
-                font-size: 30px;
-            }
-            .safe-subtitle {
-                font-size: 17px;
-            }
-            .safe-input-row {
-                height: 58px;
-            }
-            .safe-input-row input {
-                font-size: 17px;
-            }
-            .safe-submit {
-                height: 60px;
-                font-size: 18px;
-            }
-            .safe-benefits {
-                display: block;
-                padding: 22px 18px;
-            }
-            .safe-benefit {
-                margin: 0 auto 18px;
-            }
-            .safe-divider:before,
-            .safe-divider:after {
-                width: 85px;
-            }
+            .portal-center-wrap { min-height: auto; padding: 24px 12px; }
+            .portal-center-card { padding: 32px 22px 28px; }
+            .portal-center-card h2 { font-size: 30px; }
+            .portal-subtitle { font-size: 17px; }
+            .portal-input-line { height: 58px; }
+            .portal-input-line input { font-size: 17px; }
+            .portal-submit-button { height: 60px; font-size: 18px; }
+            .portal-benefit-bar { display: block; padding: 22px 18px; }
+            .portal-benefit-item { margin: 0 auto 18px; }
+            .portal-divider:before, .portal-divider:after { width: 85px; }
         }
     </style>
 
-    <div class="safe-portal-wrap">
-        <div class="safe-portal-card">
-            <div class="safe-portal-icon">&#10003;</div>
+    <div class="portal-center-wrap">
+        <div class="portal-center-card">
+            <div class="portal-check-circle">&#10003;</div>
             <h2>Track Your Submission</h2>
-            <div class="safe-green-line"></div>
-            <p class="safe-subtitle">Enter your information below to view the real-time status of your PSA submission.</p>
+            <div class="portal-green-line"></div>
+            <p class="portal-subtitle">Enter your information below to view the real-time status of your PSA submission.</p>
 
-            <form class="safe-form" method="post">
-                <div class="safe-input-row">
-                    <div class="safe-input-icon">&#9742;</div>
+            <form class="portal-form-box" method="post">
+                <div class="portal-input-line">
+                    <div class="portal-input-label">P</div>
                     <input name="phone" placeholder="Phone number">
                 </div>
 
-                <div class="safe-input-row">
-                    <div class="safe-input-icon">&#9679;</div>
+                <div class="portal-input-line">
+                    <div class="portal-input-label">N</div>
                     <input name="last" placeholder="Last name">
                 </div>
 
-                <button class="safe-submit" type="submit">VIEW STATUS <span>&rarr;</span></button>
+                <button class="portal-submit-button" type="submit">VIEW STATUS <span>&rarr;</span></button>
             </form>
 
-            <div class="safe-divider">
-                <div class="safe-mini-logo">GIANT<br>SPORTS<br>CARDS</div>
+            <div class="portal-divider">
+                <div class="portal-mini-logo">GIANT<br>SPORTS<br>CARDS</div>
             </div>
 
-            <p class="safe-trust">Thank you for trusting Giant Sports Cards<br>with your valuable collection.</p>
+            <p class="portal-trust-text">Thank you for trusting Giant Sports Cards<br>with your valuable collection.</p>
         </div>
     </div>
 
-    <div class="safe-benefits">
-        <div class="safe-benefit">
-            <div class="safe-benefit-icon">&#9719;</div>
+    <div class="portal-benefit-bar">
+        <div class="portal-benefit-item">
+            <div class="portal-benefit-icon">T</div>
             <div>
-                <div class="safe-benefit-title">Real-Time Updates</div>
-                <div class="safe-benefit-text">Get the latest status on your submission in real time.</div>
+                <div class="portal-benefit-title">Real-Time Updates</div>
+                <div class="portal-benefit-text">Get the latest status on your submission in real time.</div>
             </div>
         </div>
-        <div class="safe-benefit">
-            <div class="safe-benefit-icon">&#10003;</div>
+        <div class="portal-benefit-item">
+            <div class="portal-benefit-icon">OK</div>
             <div>
-                <div class="safe-benefit-title">Expert Care</div>
-                <div class="safe-benefit-text">Your cards are handled with expert care.</div>
+                <div class="portal-benefit-title">Expert Care</div>
+                <div class="portal-benefit-text">Your cards are handled with expert care.</div>
             </div>
         </div>
     </div>
