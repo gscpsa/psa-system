@@ -1095,11 +1095,13 @@ def get_sort_date(row):
 
 def extract_card_items_from_pdf(pdf_path):
     """
-    PSA portrait PDF parser with row-crop image mapping.
+    PSA portrait PDF parser with embedded-image matching.
 
-    The card text is still parsed from Cert # blocks.
-    The image is now cropped from the rendered PDF row for that exact Cert #,
-    instead of being assigned by embedded-image order. This prevents wrong-card mapping.
+    This version DOES NOT crop the page.
+    It extracts the actual embedded card image block and matches it to the card
+    by vertical row position near that card's Cert # / title.
+
+    This avoids the bad behavior where one cropped image contained multiple cards.
     """
     items = []
     submission_number = ""
@@ -1124,14 +1126,46 @@ def extract_card_items_from_pdf(pdf_path):
                     parts.append(txt)
         return norm_text(" ".join(parts))
 
-    def image_to_data_uri(image_bytes, ext="png"):
+    def image_data_from_block(block):
         try:
+            image_bytes = block.get("image")
+            ext = block.get("ext", "png")
             if not image_bytes:
                 return ""
             image_b64 = base64.b64encode(image_bytes).decode("ascii")
             return f"data:image/{ext};base64,{image_b64}"
         except Exception:
             return ""
+
+    def is_probable_card_image(block):
+        if block.get("type") != 1:
+            return False
+
+        bbox = block.get("bbox") or (0, 0, 0, 0)
+        x0, y0, x1, y1 = bbox
+        box_w = abs(x1 - x0)
+        box_h = abs(y1 - y0)
+
+        width_px = int(block.get("width") or 0)
+        height_px = int(block.get("height") or 0)
+        area_px = width_px * height_px
+
+        if area_px < 2500:
+            return False
+
+        # Card thumbnail/slab should be taller than tiny logos, not a wide banner.
+        if width_px > height_px * 2.8:
+            return False
+
+        if box_w < 18 or box_h < 25:
+            return False
+
+        # In portrait PSA output, images sit left of the card text. Payment/logos tend not to be aligned with cert rows.
+        # Keep the x check loose enough for portrait output.
+        if x0 > 330:
+            return False
+
+        return True
 
     all_page_text = []
     page_start_offsets = []
@@ -1149,6 +1183,7 @@ def extract_card_items_from_pdf(pdf_path):
         running_offset += len(page_text) + 1
 
         text_blocks = []
+        image_blocks = []
 
         try:
             page_dict = pdf_page.get_text("dict")
@@ -1169,15 +1204,33 @@ def extract_card_items_from_pdf(pdf_path):
                             "y1": y1,
                             "y_mid": y_mid
                         })
+
+                elif is_probable_card_image(block):
+                    img_data = image_data_from_block(block)
+                    if img_data:
+                        width_px = int(block.get("width") or 0)
+                        height_px = int(block.get("height") or 0)
+                        image_blocks.append({
+                            "image_data": img_data,
+                            "bbox": bbox,
+                            "x0": x0,
+                            "y0": y0,
+                            "x1": x1,
+                            "y1": y1,
+                            "y_mid": y_mid,
+                            "area": width_px * height_px
+                        })
         except Exception:
             pass
 
         text_blocks.sort(key=lambda b: (b["y_mid"], b["x0"]))
+        image_blocks.sort(key=lambda b: (b["y_mid"], b["x0"]))
 
         page_data.append({
             "page": pdf_page,
             "text": page_text,
-            "text_blocks": text_blocks
+            "text_blocks": text_blocks,
+            "image_blocks": image_blocks
         })
 
     full_text = "\n".join(all_page_text)
@@ -1209,13 +1262,13 @@ def extract_card_items_from_pdf(pdf_path):
                 break
         return selected
 
-    def cert_bbox_on_page(page_index, cert_number):
+    def cert_y_on_page(page_index, cert_number):
         if page_index is None or page_index < 0 or page_index >= len(page_data):
             return None
 
         for block in page_data[page_index]["text_blocks"]:
             if re.search(r"Cert\s*#?\s*" + re.escape(cert_number), block["text"], re.IGNORECASE):
-                return block["bbox"]
+                return block["y_mid"]
 
         return None
 
@@ -1233,11 +1286,11 @@ def extract_card_items_from_pdf(pdf_path):
         best_score = 0
 
         for block in page_data[page_index]["text_blocks"]:
+            if fallback_y is not None and abs(block["y_mid"] - fallback_y) > 190:
+                continue
+
             block_key = re.sub(r"[^A-Z0-9]+", " ", block["text"].upper()).strip()
             score = sum(1 for w in desc_words[:6] if w in block_key)
-
-            if fallback_y is not None and abs(block["y_mid"] - fallback_y) > 210:
-                continue
 
             if score > best_score:
                 best_score = score
@@ -1248,44 +1301,45 @@ def extract_card_items_from_pdf(pdf_path):
 
         return None
 
-    def crop_card_image_from_row(page_index, cert_bbox, description):
-        try:
-            if page_index is None or page_index < 0 or page_index >= len(page_data):
-                return ""
-
-            pdf_page = page_data[page_index]["page"]
-            page_rect = pdf_page.rect
-
-            row_y = None
-
-            if cert_bbox:
-                row_y = (cert_bbox[1] + cert_bbox[3]) / 2
-
-            better_title_y = title_y_on_page(page_index, description, row_y)
-            if better_title_y is not None:
-                row_y = better_title_y
-
-            if row_y is None:
-                return ""
-
-            # Portrait PSA: visible card/slab image is left of the card details.
-            x0 = max(0, page_rect.width * 0.03)
-            x1 = min(page_rect.width * 0.36, 235)
-
-            y0 = max(0, row_y - 125)
-            y1 = min(page_rect.height, row_y + 125)
-
-            clip = fitz.Rect(x0, y0, x1, y1)
-            pix = pdf_page.get_pixmap(matrix=fitz.Matrix(2, 2), clip=clip, alpha=False)
-
-            if pix.width < 80 or pix.height < 120:
-                return ""
-
-            return image_to_data_uri(pix.tobytes("png"), "png")
-        except Exception:
+    def find_embedded_image_for_card(page_index, cert_y, description, used_images_by_page):
+        if page_index is None or page_index < 0 or page_index >= len(page_data):
             return ""
 
-    def parse_text_card(cert_matches, idx):
+        target_y = title_y_on_page(page_index, description, cert_y)
+        if target_y is None:
+            target_y = cert_y
+
+        if target_y is None:
+            return ""
+
+        used = used_images_by_page.setdefault(page_index, set())
+        scored = []
+
+        for img_index, img in enumerate(page_data[page_index]["image_blocks"]):
+            if img_index in used:
+                continue
+
+            # Card image must be on the same row.
+            dy = abs(img["y_mid"] - target_y)
+
+            # Strong limit prevents jumping to next/previous card.
+            if dy > 95:
+                continue
+
+            # Prefer left-side images and larger card thumbnails.
+            x_score = img["x0"]
+            area_score = -img.get("area", 0)
+            scored.append((dy, x_score, area_score, img_index, img))
+
+        if not scored:
+            return ""
+
+        scored.sort(key=lambda x: (x[0], x[1], x[2]))
+        chosen = scored[0]
+        used.add(chosen[3])
+        return chosen[4]["image_data"]
+
+    def parse_text_card(cert_matches, idx, used_images_by_page):
         cert_match = cert_matches[idx]
         cert_number = normalize_submission(cert_match.group(1)) or ""
 
@@ -1336,8 +1390,8 @@ def extract_card_items_from_pdf(pdf_path):
                 break
 
         page_index = page_for_offset(cert_match.start())
-        cert_bbox = cert_bbox_on_page(page_index, cert_number)
-        image_data = crop_card_image_from_row(page_index, cert_bbox, description)
+        cert_y = cert_y_on_page(page_index, cert_number)
+        image_data = find_embedded_image_for_card(page_index, cert_y, description, used_images_by_page)
 
         return {
             "submission_number": submission_number,
@@ -1359,9 +1413,10 @@ def extract_card_items_from_pdf(pdf_path):
     cert_matches = list(re.finditer(r"Cert\s*#\s*(\d+)", full_text, re.IGNORECASE))
 
     seen_certs = set()
+    used_images_by_page = {}
 
     for idx in range(len(cert_matches)):
-        item = parse_text_card(cert_matches, idx)
+        item = parse_text_card(cert_matches, idx, used_images_by_page)
         cert_number = item.get("cert_number")
 
         if not cert_number or cert_number in seen_certs:
