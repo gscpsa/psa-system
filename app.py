@@ -1095,20 +1095,11 @@ def get_sort_date(row):
 
 def extract_card_items_from_pdf(pdf_path):
     """
-    PSA portrait PDF parser.
+    PSA portrait PDF parser with row-crop image mapping.
 
-    Reliable buyback fields:
-    - certification number
-    - type
-    - description
-    - grade
-    - card image when available
-
-    Removed from buyback output:
-    - PSA Estimate
-    - Card Ladder Value
-    - Pop
-    - Pop Higher
+    The card text is still parsed from Cert # blocks.
+    The image is now cropped from the rendered PDF row for that exact Cert #,
+    instead of being assigned by embedded-image order. This prevents wrong-card mapping.
     """
     items = []
     submission_number = ""
@@ -1133,38 +1124,14 @@ def extract_card_items_from_pdf(pdf_path):
                     parts.append(txt)
         return norm_text(" ".join(parts))
 
-    def image_data_from_block(block):
+    def image_to_data_uri(image_bytes, ext="png"):
         try:
-            image_bytes = block.get("image")
-            ext = block.get("ext", "png")
             if not image_bytes:
                 return ""
             image_b64 = base64.b64encode(image_bytes).decode("ascii")
             return f"data:image/{ext};base64,{image_b64}"
         except Exception:
             return ""
-
-    def is_card_image_block(block):
-        if block.get("type") != 1:
-            return False
-
-        bbox = block.get("bbox") or (0, 0, 0, 0)
-        x0, y0, x1, y1 = bbox
-        width_px = int(block.get("width") or 0)
-        height_px = int(block.get("height") or 0)
-        area_px = width_px * height_px
-
-        if area_px < 6000:
-            return False
-        if width_px > height_px * 3.2:
-            return False
-
-        box_width = abs(x1 - x0)
-        box_height = abs(y1 - y0)
-        if box_width < 20 or box_height < 35:
-            return False
-
-        return True
 
     all_page_text = []
     page_start_offsets = []
@@ -1182,7 +1149,6 @@ def extract_card_items_from_pdf(pdf_path):
         running_offset += len(page_text) + 1
 
         text_blocks = []
-        image_blocks = []
 
         try:
             page_dict = pdf_page.get_text("dict")
@@ -1203,32 +1169,15 @@ def extract_card_items_from_pdf(pdf_path):
                             "y1": y1,
                             "y_mid": y_mid
                         })
-
-                elif is_card_image_block(block):
-                    img_data = image_data_from_block(block)
-                    if img_data:
-                        width_px = int(block.get("width") or 0)
-                        height_px = int(block.get("height") or 0)
-                        image_blocks.append({
-                            "image_data": img_data,
-                            "bbox": bbox,
-                            "x0": x0,
-                            "y0": y0,
-                            "x1": x1,
-                            "y1": y1,
-                            "y_mid": y_mid,
-                            "area": width_px * height_px
-                        })
         except Exception:
             pass
 
         text_blocks.sort(key=lambda b: (b["y_mid"], b["x0"]))
-        image_blocks.sort(key=lambda b: (b["y_mid"], b["x0"]))
 
         page_data.append({
+            "page": pdf_page,
             "text": page_text,
-            "text_blocks": text_blocks,
-            "image_blocks": image_blocks
+            "text_blocks": text_blocks
         })
 
     full_text = "\n".join(all_page_text)
@@ -1260,15 +1209,81 @@ def extract_card_items_from_pdf(pdf_path):
                 break
         return selected
 
-    def cert_y_on_page(page_index, cert_number):
+    def cert_bbox_on_page(page_index, cert_number):
         if page_index is None or page_index < 0 or page_index >= len(page_data):
             return None
 
         for block in page_data[page_index]["text_blocks"]:
             if re.search(r"Cert\s*#?\s*" + re.escape(cert_number), block["text"], re.IGNORECASE):
-                return block["y_mid"]
+                return block["bbox"]
 
         return None
+
+    def title_y_on_page(page_index, description, fallback_y=None):
+        if not description or page_index is None or page_index < 0 or page_index >= len(page_data):
+            return None
+
+        desc_key = re.sub(r"[^A-Z0-9]+", " ", description.upper()).strip()
+        desc_words = [w for w in desc_key.split() if len(w) > 1]
+
+        if not desc_words:
+            return None
+
+        best_y = None
+        best_score = 0
+
+        for block in page_data[page_index]["text_blocks"]:
+            block_key = re.sub(r"[^A-Z0-9]+", " ", block["text"].upper()).strip()
+            score = sum(1 for w in desc_words[:6] if w in block_key)
+
+            if fallback_y is not None and abs(block["y_mid"] - fallback_y) > 210:
+                continue
+
+            if score > best_score:
+                best_score = score
+                best_y = block["y_mid"]
+
+        if best_score >= min(2, len(desc_words)):
+            return best_y
+
+        return None
+
+    def crop_card_image_from_row(page_index, cert_bbox, description):
+        try:
+            if page_index is None or page_index < 0 or page_index >= len(page_data):
+                return ""
+
+            pdf_page = page_data[page_index]["page"]
+            page_rect = pdf_page.rect
+
+            row_y = None
+
+            if cert_bbox:
+                row_y = (cert_bbox[1] + cert_bbox[3]) / 2
+
+            better_title_y = title_y_on_page(page_index, description, row_y)
+            if better_title_y is not None:
+                row_y = better_title_y
+
+            if row_y is None:
+                return ""
+
+            # Portrait PSA: visible card/slab image is left of the card details.
+            x0 = max(0, page_rect.width * 0.03)
+            x1 = min(page_rect.width * 0.36, 235)
+
+            y0 = max(0, row_y - 125)
+            y1 = min(page_rect.height, row_y + 125)
+
+            clip = fitz.Rect(x0, y0, x1, y1)
+            pix = pdf_page.get_pixmap(matrix=fitz.Matrix(2, 2), clip=clip, alpha=False)
+
+            if pix.width < 80 or pix.height < 120:
+                return ""
+
+            return image_to_data_uri(pix.tobytes("png"), "png")
+        except Exception:
+            return ""
 
     def parse_text_card(cert_matches, idx):
         cert_match = cert_matches[idx]
@@ -1321,7 +1336,8 @@ def extract_card_items_from_pdf(pdf_path):
                 break
 
         page_index = page_for_offset(cert_match.start())
-        cert_y = cert_y_on_page(page_index, cert_number)
+        cert_bbox = cert_bbox_on_page(page_index, cert_number)
+        image_data = crop_card_image_from_row(page_index, cert_bbox, description)
 
         return {
             "submission_number": submission_number,
@@ -1333,97 +1349,15 @@ def extract_card_items_from_pdf(pdf_path):
             "grade": grade,
             "after_service": "",
             "images_url": "",
-            "image_data": "",
+            "image_data": image_data,
             "psa_estimate": "",
             "card_ladder_value": "",
             "pop": "",
-            "pop_higher": "",
-            "_page_index": page_index,
-            "_cert_y": cert_y
+            "pop_higher": ""
         }
-
-    def assign_images_two_pass(parsed_items):
-        page_groups = {}
-        for item_index, item in enumerate(parsed_items):
-            page_groups.setdefault(item.get("_page_index", 0), []).append((item_index, item))
-
-        used_images_by_page = {}
-
-        def take_nearest_image(page_index, target_y, max_distance=260):
-            if page_index is None or page_index < 0 or page_index >= len(page_data):
-                return ""
-
-            used = used_images_by_page.setdefault(page_index, set())
-            scored = []
-
-            for img_index, img in enumerate(page_data[page_index]["image_blocks"]):
-                if img_index in used:
-                    continue
-
-                dist = abs(img["y_mid"] - target_y) if target_y is not None else 0
-
-                if target_y is not None and dist > max_distance:
-                    continue
-
-                scored.append((dist, -img.get("area", 0), img_index, img))
-
-            if not scored:
-                return ""
-
-            scored.sort(key=lambda x: (x[0], x[1]))
-            chosen = scored[0]
-            used.add(chosen[2])
-            return chosen[3]["image_data"]
-
-        def take_by_visual_order(page_index, group_position):
-            if page_index is None or page_index < 0 or page_index >= len(page_data):
-                return ""
-
-            images = page_data[page_index]["image_blocks"]
-            used = used_images_by_page.setdefault(page_index, set())
-
-            available = [(idx, img) for idx, img in enumerate(images) if idx not in used]
-            available.sort(key=lambda x: x[1]["y_mid"])
-
-            if group_position < len(available):
-                idx, img = available[group_position]
-                used.add(idx)
-                return img["image_data"]
-
-            if available:
-                idx, img = available[0]
-                used.add(idx)
-                return img["image_data"]
-
-            return ""
-
-        for page_index in sorted(page_groups.keys()):
-            group = page_groups[page_index]
-            group.sort(key=lambda x: (x[1].get("_cert_y") if x[1].get("_cert_y") is not None else 9999, x[0]))
-
-            for group_position, (item_index, item) in enumerate(group):
-                cert_y = item.get("_cert_y")
-
-                img = ""
-                if cert_y is not None:
-                    img = take_nearest_image(page_index, cert_y)
-
-                if not img:
-                    img = take_by_visual_order(page_index, group_position)
-
-                if not img and cert_y is not None and cert_y < 140:
-                    img = take_nearest_image(page_index - 1, 560, max_distance=320)
-
-                if not img and cert_y is not None and cert_y > 500:
-                    img = take_nearest_image(page_index + 1, 90, max_distance=320)
-
-                parsed_items[item_index]["image_data"] = img
-
-        return parsed_items
 
     cert_matches = list(re.finditer(r"Cert\s*#\s*(\d+)", full_text, re.IGNORECASE))
 
-    parsed_items = []
     seen_certs = set()
 
     for idx in range(len(cert_matches)):
@@ -1434,13 +1368,6 @@ def extract_card_items_from_pdf(pdf_path):
             continue
 
         seen_certs.add(cert_number)
-        parsed_items.append(item)
-
-    parsed_items = assign_images_two_pass(parsed_items)
-
-    for item in parsed_items:
-        item.pop("_page_index", None)
-        item.pop("_cert_y", None)
         items.append(item)
 
     doc.close()
