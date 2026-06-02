@@ -837,6 +837,224 @@ def page(content, mode="admin"):
             height:20px;
             margin:0;
         }}
+
+        .portal-landing {
+            min-height: calc(100vh - 120px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 42px 18px;
+            background:
+                radial-gradient(circle at 18% 38%, rgba(15,81,50,.24), transparent 32%),
+                radial-gradient(circle at 82% 20%, rgba(25,135,84,.14), transparent 28%),
+                linear-gradient(135deg, #050807 0%, #101514 48%, #050807 100%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .portal-landing:before {
+            content: "";
+            position: absolute;
+            left: -80px;
+            bottom: 40px;
+            width: 270px;
+            height: 390px;
+            border-radius: 18px;
+            background:
+                linear-gradient(145deg, rgba(255,255,255,.16), rgba(255,255,255,.02)),
+                linear-gradient(135deg, #111, #2a2a2a);
+            border: 3px solid rgba(255,255,255,.22);
+            box-shadow: 0 25px 70px rgba(0,0,0,.55);
+            transform: rotate(-7deg);
+            opacity: .58;
+        }
+
+        .portal-panel {
+            width: 100%;
+            max-width: 760px;
+            background: #ffffff;
+            border-radius: 18px;
+            box-shadow: 0 28px 80px rgba(0,0,0,.42);
+            padding: 44px 58px 34px;
+            text-align: center;
+            position: relative;
+            z-index: 2;
+            border: 1px solid rgba(0,0,0,.08);
+        }
+
+        .portal-icon {
+            width: 112px;
+            height: 112px;
+            border-radius: 999px;
+            border: 5px solid #e5e7eb;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 24px;
+            color: #0f5132;
+            font-size: 54px;
+            line-height: 1;
+        }
+
+        .portal-panel h2 {
+            font-size: 42px;
+            letter-spacing: .5px;
+            text-transform: uppercase;
+            margin: 8px 0 14px;
+            color: #07110d;
+            font-weight: 900;
+        }
+
+        .portal-green-line {
+            width: 106px;
+            height: 5px;
+            background: #198754;
+            margin: 0 auto 24px;
+            border-radius: 999px;
+        }
+
+        .portal-panel .subtitle {
+            font-size: 22px;
+            line-height: 1.45;
+            color: #374151;
+            max-width: 560px;
+            margin: 0 auto 32px;
+        }
+
+        .portal-form {
+            max-width: 560px;
+            margin: 0 auto;
+        }
+
+        .portal-input-wrap {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            border: 1px solid #cfd4dc;
+            border-radius: 10px;
+            padding: 0 18px;
+            margin-bottom: 16px;
+            height: 70px;
+            background: #fff;
+        }
+
+        .portal-input-wrap .field-icon {
+            font-size: 26px;
+            color: #4b5563;
+            width: 32px;
+            text-align: center;
+        }
+
+        .portal-input-wrap input {
+            border: 0;
+            outline: 0;
+            flex: 1;
+            font-size: 21px;
+            padding: 0;
+            margin: 0;
+            color: #111827;
+            background: transparent;
+        }
+
+        .portal-input-wrap input::placeholder {
+            color: #6b7280;
+        }
+
+        .portal-submit {
+            width: 100%;
+            height: 72px;
+            border: 0;
+            border-radius: 10px;
+            margin: 8px 0 26px;
+            background: linear-gradient(180deg, #08783f 0%, #006b39 100%);
+            color: #fff;
+            font-size: 22px;
+            font-weight: 900;
+            letter-spacing: .3px;
+            cursor: pointer;
+            box-shadow: 0 8px 16px rgba(0,0,0,.22);
+        }
+
+        .portal-submit span {
+            font-size: 34px;
+            margin-left: 28px;
+            vertical-align: -3px;
+        }
+
+        .portal-footer-mark {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 18px;
+            margin: 8px auto 18px;
+        }
+
+        .portal-footer-mark:before,
+        .portal-footer-mark:after {
+            content: "";
+            height: 1px;
+            background: #d1d5db;
+            width: 170px;
+        }
+
+        .portal-footer-logo {
+            width: 70px;
+            height: auto;
+        }
+
+        .portal-trust {
+            color: #374151;
+            font-size: 18px;
+            line-height: 1.35;
+            margin: 0;
+        }
+
+        .portal-benefits {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            gap: 70px;
+            justify-content: center;
+            color: #fff;
+            padding: 28px 20px 18px;
+            background: #030605;
+            border-top: 1px solid #198754;
+        }
+
+        .portal-benefit {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            max-width: 300px;
+        }
+
+        .portal-benefit-icon {
+            width: 58px;
+            height: 58px;
+            border-radius: 50%;
+            border: 5px solid #198754;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 25px;
+            color: #fff;
+            flex: 0 0 auto;
+        }
+
+        .portal-benefit-title {
+            font-weight: 900;
+            font-size: 18px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .portal-benefit-text {
+            color: #d1d5db;
+            font-size: 15px;
+            line-height: 1.3;
+        }
+
+
         @media (max-width: 700px) {{
             .topbar {{
                 align-items:flex-start;
@@ -2562,14 +2780,49 @@ def portal():
         return redirect("/portal/orders")
 
     return page("""
-    <div class="card" style="max-width:420px">
-        <h2>Customer Portal</h2>
-        <p>Enter your phone number and last name.</p>
-        <form method="post">
-            <input name="phone" placeholder="Phone number" style="width:95%"><br>
-            <input name="last" placeholder="Last name" style="width:95%"><br>
-            <button>View My Orders</button>
-        </form>
+    <div class="portal-landing">
+        <div class="portal-panel">
+            <div class="portal-icon">✓</div>
+            <h2>Track Your Submission</h2>
+            <div class="portal-green-line"></div>
+            <p class="subtitle">Enter your information below to view the real-time status of your PSA submission.</p>
+
+            <form class="portal-form" method="post">
+                <div class="portal-input-wrap">
+                    <div class="field-icon">▯</div>
+                    <input name="phone" placeholder="Phone number">
+                </div>
+
+                <div class="portal-input-wrap">
+                    <div class="field-icon">●</div>
+                    <input name="last" placeholder="Last name">
+                </div>
+
+                <button class="portal-submit">VIEW STATUS <span>→</span></button>
+            </form>
+
+            <div class="portal-footer-mark">
+                <img class="portal-footer-logo" src="data:image/png;base64,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Y0hSTQAAeiYAAICEAAD6AAAAgOgAAHUwAADqYAAAOpgAABdwnLpRPAAAAAlwSFlzAAAuIwAALiMBeKU/dgAABR1pVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDkuMS1jMDAxIDc5LmE4ZDQ3NTM0OSwgMjAyMy8wMy8yMy0xMzowNTo0NSAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iIHhtbG5zOnBob3Rvc2hvcD0iaHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0RXZ0PSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VFdmVudCMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIDI0LjYgKE1hY2ludG9zaCkiIHhtcDpDcmVhdGVEYXRlPSIyMDIzLTEwLTE2VDE3OjAzOjM2LTA0OjAwIiB4bXA6TW9kaWZ5RGF0ZT0iMjAyMy0xMC0xNlQxNzowOTowOC0wNDowMCIgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyMy0xMC0xNlQxNzowOTowOC0wNDowMCIgZGM6Zm9ybWF0PSJpbWFnZS9wbmciIHBob3Rvc2hvcDpDb2xvck1vZGU9IjMiIHBob3Rvc2hvcDpJQ0NQcm9maWxlPSJzUkdCIElFQzYxOTY2LTIuMSIgeG1wTU06SW5zdGFuY2VJRD0ieG1wLmlpZDpjMTkwMjJiZC1jNWU5LTRhY2YtYWYwMy0wMzNiODBmOGVlZWMiIHhtcE1NOkRvY3VtZW50SUQ9InhtcC5kaWQ6YzE5MDIyYmQtYzVlOS00YWNmLWFmMDMtMDMzYjgwZjhlZWVjIiB4bXBNTTpPcmlnaW5hbERvY3VtZW50SUQ9InhtcC5kaWQ6YzE5MDIyYmQtYzVlOS00YWNmLWFmMDMtMDMzYjgwZjhlZWVjIj4gPHhtcE1NOkhpc3Rvcnk+IDxyZGY6U2VxPiA8cmRmOmxpIHN0RXZ0OmFjdGlvbj0iY3JlYXRlZCIgc3RFdnQ6aW5zdGFuY2VJRD0ieG1wLmlpZDpjMTkwMjJiZC1jNWU5LTRhY2YtYWYwMy0wMzNiODBmOGVlZWMiIHN0RXZ0OndoZW49IjIwMjMtMTAtMTZUMTc6MDM6MzYtMDQ6MDAiIHN0RXZ0OnNvZnR3YXJlQWdlbnQ9IkFkb2JlIFBob3Rvc2hvcCAyNC42IChNYWNpbnRvc2gpIi8+IDwvcmRmOlNlcT4gPC94bXBNTTpIaXN0b3J5PiA8L3JkZjpEZXNjcmlwdGlvbj4gPC9yZGY6UkRGPiA8L3g6eG1wbWV0YT4gPD94cGFja2V0IGVuZD0iciI/PkD4qSIAAEWUSURBVHic7d13uGVXQT7+NyShJSEhIQmElANEICBFpCiEZsEIiIiigEiTooJSFAWCNGkCShEU+UoRRPpPFBREqgJioSO9BAgEk0AKAVJnfn+sjDN35s7Mvefsvdfee30+zzOPkdy795s7+56z37PWXmufrVu3BgAAgPZcpnYAAAAA6lAIAQAAGqUQAgAANEohBAAAaJRCCAAA0CiFEAAAoFEKIQAAQKMUQgAAgEYphAAAAI1SCAEAABqlEAIAADRKIQQAAGiUQggAANAohRAAAKBRCiEAAECjFEIAAIBGKYQAAACNUggBAAAapRACAAA0SiEEAABolEIIAADQKIUQAACgUQohAABAoxRCAACARimEAAAAjVIIAQAAGqUQAgAANEohBAAAaJRCCAAA0CiFEAAAoFEKIQAAQKMUQgAAgEYphAAAAI1SCAEAABqlEAIAADRKIQQAAGiUQggAANAohRAAAKBRCiEAAECjFEIAAIBGKYQAAACNUggBAAAapRACAAA0SiEEAABolEIIAADQKIUQAACgUQohAABAoxRCAACARimEAAAAjVIIAQAAGqUQAgAANEohBAAAaJRCCAAA0CiFEAAAoFEKIQAAQKMUQgAAgEYphAAAAI1SCAEAABqlEAIAADRKIQQAAGiUQggAANAohRAAAKBRCiEAAECjFEIAAIBGKYQAAACNUggBAAAapRACAAA0SiEEAABolEIIAADQKIUQAACgUQohAABAoxRCAACARimEAAAAjVIIAQAAGqUQAgAANEohBAAAaJRCCAAA0CiFEAAAoFEKIQAAQKMUQgAAgEYphAAAAI1SCAEAABqlEAIAADRKIQQAAGiUQggAANAohRAAAKBRCiEAAECjFEIAAIBGKYQAAACNUggBAAAapRACAAA0SiEEAABolEIIAADQKIUQAACgUQohAABAoxRCAACARimEAAAAjVIIAQAAGqUQAgAANEohBAAAaJRCCAAA0CiFEAAAoFEKIQAAQKMUQgAAgEYphAAAAI1SCAEAABqlEAIAADRKIQQAAGiUQggAANAohRAAAKBRCiEAAECjFEIAAIBGKYQAAACNUggBAAAapRACAAA0SiEEAABolEIIAADQKIUQAACgUQohAABAoxRCAACARimEAAAAjVIIAQAAGqUQAgAANEohBAAAaJRCCAAA0CiFEAAAoFEKIQAAQKMUQgAAgEYphAAAAI1SCAEAABqlEAIAADRKIQQAAGiUQggAANAohRAAAKBRCiEAAECjFEIAAIBGKYQAAACNUggBAAAapRACAAA0SiEEAABolEIIAADQKIUQAACgUQohAABAoxRCAACARimEAAAAjVIIAQAAGqUQAgAANEohBAAAaJRCCAAA0CiFEAAAoFEKIQAAQKMUQgAAgEYphAAAAI1SCAEAABqlEAIAADRKIQQAAGiUQggAANAohRAAAKBRCiEAAECjFEIAAIBGKYQAAACNUggBAAAapRACAAA0SiEEAABolEIIAADQKIUQAACgUQohAABAoxRCAACARimEAAAAjVIIAQAAGqUQAgAANEohBAAAaJRCCAAA0CiFEAAAoFEKIQAAQKMUQgAAgEYphAAAAI1SCAEAABqlEAIAADRKIQQAAGiUQggAANAohRAAAKBRCiEAAECjFEIAAIBGKYQAAACNUggBAAAapRACAAA0SiEEAABolEIIAADQKIUQAACgUQohAABAoxRCAACARimEAAAAjVIIAQAAGqUQAgAANEohBAAAaJRCCAAA0CiFEAAAoFEKIQAAQKMUQgAAgEYphAAAAI1SCAEAABqlEAIAADRKIQQAAGiUQggAANAohRAAAKBRCiEAAECjFEIAAIBGKYQAAACNUggBAAAapRACAAA0SiEEAABolEIIAADQKIUQAACgUftVPv8Vk9wyyY2SnJDkqCQHJrlSzVDM2rOTvLp2iA06Osmtk1w3ybWTHJ7y+3H5mqE68uJL/7RqkeRmSW586T8fneTgenHYhJcleUHtECv61SSPrh1iIBckOSfJ2Um+lOQTST6S5HMVM3Xppkn+qnaIDmxJcm6Ss5KckuSzSf4j5e9rS71Yu/inlHtVGKOl761qFMKDkvxiknsnuU2S/StkoF2H1w6wF9dOct8kv3TpP8/VVWsHqOC6SR6Q5Ocz77/bubtF7QAdODzlg9iWfTnJPyR5VUpBnKoDM++/y+8keWuSVyZ5T+qXw+slOa5yBtidpe+thpwyepUkz0zyzSQvT/KTUQZhm1sleXvKp9aPi8IwJ7dL8u4kn0kZlfF3O23XqB2ATlwzySOSfDjJvyW5S9U07M6hSe6T5J0p74/3S/3ZbTA7QxTC/VJedL+c5A9SPs0CimOSvCnJ+5P8TOUsdOv4lJL/niS3r5yF7ixqB6BzJyb5+5Tf1RtWzsLuHZ8yoPCJJLetnAVmpe9CeI0kH0jy3JSposB2904ZNbpb7SB0ap8kD0vyqSj5c3S1zOM5XnZ1u5Tpo49J+T1mnE5I8t4kL0xyubpRYB76LIQnpbyw3rzHc8AU7ZvkL1OeXTmgcha6dYUkr0vyZ3GjMmeL2gHozb5JnpEyun9I3SjsxUNTBh0s8gIr6qsQ3ivlYe1Dejo+TNUVU6YmPbh2EDp3cMpzLnevHYTeLWoHoHd3SPLBlBWAGa8fTSmFx9cOAlPWRyG8e8rIhwVjYK39krwxyZ1qB6FzByd5R8o2OszfNWsHYBAnpDxXOPbVqVu3SJlCqrzDkrouhCem7PFmw3vY1UuS/GztEHRu3ySvienxLVnUDsBgjk/yj/Hc6NhdPeVDOfu5whK6LG5HJHl9jAzCeh6Y5P61Q9CLJ0fRb42tJ9psy... " alt="Giant Sports Cards">
+            </div>
+            <p class="portal-trust">Thank you for trusting Giant Sports Cards<br>with your valuable collection.</p>
+        </div>
+    </div>
+
+    <div class="portal-benefits">
+        <div class="portal-benefit">
+            <div class="portal-benefit-icon">◷</div>
+            <div>
+                <div class="portal-benefit-title">Real-Time Updates</div>
+                <div class="portal-benefit-text">Get the latest status on your submission in real time.</div>
+            </div>
+        </div>
+        <div class="portal-benefit">
+            <div class="portal-benefit-icon">✓</div>
+            <div>
+                <div class="portal-benefit-title">Expert Care</div>
+                <div class="portal-benefit-text">Your cards are handled with expert care.</div>
+            </div>
+        </div>
     </div>
     """, mode="portal")
 
