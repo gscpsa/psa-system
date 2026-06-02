@@ -176,6 +176,14 @@ def clean(v):
         pass
     return str(v).strip()
 
+def display_blank_loading(value):
+    text = str(value or "").strip()
+    if text.lower() in ["loading", "loadin"]:
+        return ""
+    if text.lower().startswith("loading"):
+        return ""
+    return text
+
 def normalize_submission(v):
     if not v:
         return None
@@ -994,12 +1002,17 @@ def extract_card_items_from_pdf(pdf_path):
 
     def clean_loading(value):
         value = norm_text(value)
-        if value.lower() in ["loading", "loadin", "n/a"]:
-            return "" if value.lower() in ["loading", "loadin"] else "N/A"
-        if value.lower().startswith("loading"):
+        low = value.lower()
+
+        if low in ["loading", "loadin"]:
             return ""
-        if value.lower() in ["pop hig", "pop high"]:
+
+        if low.startswith("loading"):
             return ""
+
+        if low in ["pop hig", "pop high"]:
+            return ""
+
         return value
 
     def block_text(block):
@@ -1011,81 +1024,76 @@ def extract_card_items_from_pdf(pdf_path):
                     parts.append(txt)
         return norm_text(" ".join(parts))
 
-    def is_card_image_block(block):
-        if block.get("type") != 1:
-            return False
-
-        width = int(block.get("width") or 0)
-        height = int(block.get("height") or 0)
-        bbox = block.get("bbox") or (0, 0, 0, 0)
-        x0, y0, x1, y1 = bbox
-        area = width * height
-        ratio = height / max(width, 1)
-
-        if area < 20000:
-            return False
-        if width > height * 2.5:
-            return False
-        if ratio < 1.05:
-            return False
-        if x0 > 230:
-            return False
-
-        return True
-
     def image_data_from_block(block):
         try:
             image_bytes = block.get("image")
             ext = block.get("ext", "png")
             if not image_bytes:
                 return ""
+
             image_b64 = base64.b64encode(image_bytes).decode("ascii")
             return f"data:image/{ext};base64,{image_b64}"
         except Exception:
             return ""
 
-    def render_crop_image(pdf_page, cert_y):
-        # Fallback when PSA's PDF image blocks do not map cleanly.
-        # Crop the visible left-card column around the cert row.
-        try:
-            page_rect = pdf_page.rect
+    def is_card_image_block(block):
+        if block.get("type") != 1:
+            return False
 
-            x0 = 70
-            x1 = 195
-            y0 = max(0, cert_y - 95)
-            y1 = min(page_rect.height, cert_y + 85)
+        bbox = block.get("bbox") or (0, 0, 0, 0)
+        x0, y0, x1, y1 = bbox
 
-            clip = fitz.Rect(x0, y0, x1, y1)
-            pix = pdf_page.get_pixmap(matrix=fitz.Matrix(2, 2), clip=clip, alpha=False)
+        width_px = int(block.get("width") or 0)
+        height_px = int(block.get("height") or 0)
+        area_px = width_px * height_px
+        ratio_px = height_px / max(width_px, 1)
 
-            # Do not save empty/too-small crops.
-            if pix.width < 80 or pix.height < 100:
-                return ""
+        box_width = abs(x1 - x0)
+        box_height = abs(y1 - y0)
+        ratio_box = box_height / max(box_width, 1)
 
-            image_bytes = pix.tobytes("png")
-            image_b64 = base64.b64encode(image_bytes).decode("ascii")
-            return f"data:image/png;base64,{image_b64}"
-        except Exception:
-            return ""
+        # PSA card images in the uploaded order PDFs are vertical slabs/cards in the left column.
+        # Payment logos, download icons, and UI graphics are small or not in this position.
+        if area_px < 15000:
+            return False
+
+        if ratio_px < 1.05 and ratio_box < 1.05:
+            return False
+
+        if width_px > height_px * 2.5:
+            return False
+
+        # Card-image left column. This keeps Amex/payment images out.
+        if x0 > 230:
+            return False
+
+        # Avoid tiny header/footer artifacts.
+        if box_width < 35 or box_height < 55:
+            return False
+
+        return True
 
     all_page_text = []
     page_data = []
 
     for page_index, pdf_page in enumerate(doc):
         try:
-            text = pdf_page.get_text("text") or ""
+            page_text = pdf_page.get_text("text") or ""
         except Exception:
-            text = ""
+            page_text = ""
 
-        all_page_text.append(text)
+        all_page_text.append(page_text)
 
         text_blocks = []
         image_blocks = []
 
         try:
             page_dict = pdf_page.get_text("dict")
+
             for block in page_dict.get("blocks", []):
                 bbox = block.get("bbox") or (0, 0, 0, 0)
+                x0, y0, x1, y1 = bbox
+                y_mid = (y0 + y1) / 2
 
                 if block.get("type") == 0:
                     txt = block_text(block)
@@ -1093,19 +1101,27 @@ def extract_card_items_from_pdf(pdf_path):
                         text_blocks.append({
                             "text": txt,
                             "bbox": bbox,
-                            "y_mid": (bbox[1] + bbox[3]) / 2,
-                            "x0": bbox[0]
+                            "x0": x0,
+                            "y0": y0,
+                            "x1": x1,
+                            "y1": y1,
+                            "y_mid": y_mid
                         })
 
                 elif is_card_image_block(block):
                     img_data = image_data_from_block(block)
                     if img_data:
+                        width_px = int(block.get("width") or 0)
+                        height_px = int(block.get("height") or 0)
                         image_blocks.append({
                             "image_data": img_data,
                             "bbox": bbox,
-                            "y_mid": (bbox[1] + bbox[3]) / 2,
-                            "x0": bbox[0],
-                            "area": int(block.get("width") or 0) * int(block.get("height") or 0)
+                            "x0": x0,
+                            "y0": y0,
+                            "x1": x1,
+                            "y1": y1,
+                            "y_mid": y_mid,
+                            "area": width_px * height_px
                         })
         except Exception:
             pass
@@ -1114,8 +1130,7 @@ def extract_card_items_from_pdf(pdf_path):
         image_blocks.sort(key=lambda b: (b["y_mid"], b["x0"]))
 
         page_data.append({
-            "text": text,
-            "page": pdf_page,
+            "text": page_text,
             "text_blocks": text_blocks,
             "image_blocks": image_blocks
         })
@@ -1129,8 +1144,6 @@ def extract_card_items_from_pdf(pdf_path):
     order_match = re.search(r"Order\s*#\s*(\d+)", full_text, re.IGNORECASE)
     if order_match:
         order_number = normalize_submission(order_match.group(1)) or ""
-
-    cert_matches = list(re.finditer(r"Cert\s*#\s*(\d+)", full_text, re.IGNORECASE))
 
     grade_pattern = re.compile(
         r"^(?:POOR|FAIR|GOOD|VERY GOOD|EXCELLENT|EXCELLENT-MINT|NEAR MINT|NEAR MINT-MINT|NM-MT|MINT|GEM MINT|AUTHENTIC|PR|FR|GD|VG|EX|NM|MT|GM)?\s*\d{1,2}$",
@@ -1151,30 +1164,46 @@ def extract_card_items_from_pdf(pdf_path):
         "Items 1"
     ])
 
-    def find_cert_page_and_y(cert_number):
+    def find_cert_occurrences():
+        occurrences = []
+
         for page_index, pdata in enumerate(page_data):
             for block in pdata["text_blocks"]:
-                if re.search(r"Cert\s*#?\s*" + re.escape(cert_number), block["text"], re.IGNORECASE):
-                    return page_index, block["y_mid"]
-        return None, None
+                for match in re.finditer(r"Cert\s*#\s*(\d+)", block["text"], re.IGNORECASE):
+                    cert_number = normalize_submission(match.group(1))
+                    if cert_number:
+                        occurrences.append({
+                            "cert_number": cert_number,
+                            "page_index": page_index,
+                            "cert_y": block["y_mid"],
+                            "cert_x": block["x0"],
+                            "block_text": block["text"]
+                        })
 
-    def find_grade_description_from_page(page_index, cert_y):
+        return occurrences
+
+    cert_occurrences = find_cert_occurrences()
+
+    def text_blocks_near_card(page_index, cert_y):
+        if page_index is None or cert_y is None:
+            return []
+
+        blocks = page_data[page_index]["text_blocks"]
+        return sorted(
+            [b for b in blocks if b["x0"] > 185 and abs(b["y_mid"] - cert_y) < 140],
+            key=lambda b: b["y_mid"]
+        )
+
+    def find_grade_description(page_index, cert_y, cert_number):
         grade = ""
         description = ""
 
-        if page_index is None or cert_y is None:
-            return grade, description
+        blocks = text_blocks_near_card(page_index, cert_y)
 
-        blocks = page_data[page_index]["text_blocks"]
+        above = [b for b in blocks if b["y_mid"] < cert_y]
+        above.sort(key=lambda b: b["y_mid"], reverse=True)
 
-        candidates = [
-            b for b in blocks
-            if b["y_mid"] < cert_y and b["x0"] > 190 and (cert_y - b["y_mid"]) < 120
-        ]
-
-        candidates.sort(key=lambda b: b["y_mid"], reverse=True)
-
-        for block in candidates:
+        for block in above:
             line = block["text"]
             low = line.lower()
 
@@ -1191,11 +1220,12 @@ def extract_card_items_from_pdf(pdf_path):
                     and "©" not in line
                     and "Â©" not in line
                     and not grade_pattern.match(line)
-                    and not line.lower().startswith("cert ")
-                    and not line.lower().startswith("item ")
+                    and not low.startswith("cert")
+                    and not low.startswith("item ")
                     and "estimate" not in low
                     and "ladder" not in low
                     and not low.startswith("pop")
+                    and "shipped" not in low
                 ):
                     description = line
                     continue
@@ -1205,135 +1235,126 @@ def extract_card_items_from_pdf(pdf_path):
 
         return grade, description
 
+    def value_after_label_from_nearby(page_index, cert_y, label):
+        blocks = text_blocks_near_card(page_index, cert_y)
+        text = " ".join([b["text"] for b in blocks])
+        text = norm_text(text)
+
+        if label == "psa":
+            m = re.search(r"PSA\s+Estimate\s+(\$[\d,]+(?:\.\d{2})?|N/A|Loading)", text, re.IGNORECASE)
+        elif label == "ladder":
+            m = re.search(r"Card\s+Ladder\s+Value\s+(\$[\d,]+(?:\.\d{2})?|N/A|Loading)", text, re.IGNORECASE)
+        elif label == "pop_higher":
+            m = re.search(r"Pop\s+Higher\s+(\d+|N/A|Loading)", text, re.IGNORECASE)
+        elif label == "pop":
+            m = re.search(r"(?<!Higher\s)Pop\s+(\d+|N/A|Loading)", text, re.IGNORECASE)
+        else:
+            m = None
+
+        if m:
+            return clean_loading(m.group(1))
+
+        return ""
+
+    def item_description_from_nearby(page_index, cert_y):
+        blocks = text_blocks_near_card(page_index, cert_y)
+        text = " ".join([b["text"] for b in blocks])
+        text = norm_text(text)
+
+        m = re.search(r"Item\s+(.+?)(?:\s+PSA\s+Estimate|\s+Card\s+Ladder|\s+Pop\s+|\s+Shipped|$)", text, re.IGNORECASE)
+        if m:
+            value = norm_text(m.group(1))
+            if value.lower() != "details":
+                return value
+
+        return ""
+
     def find_image_for_cert(page_index, cert_y, used_images_by_page):
         if page_index is None or cert_y is None:
             return ""
 
-        images = page_data[page_index]["image_blocks"]
-        used_indexes = used_images_by_page.setdefault(page_index, set())
+        def choose_from_page(target_page_index, target_y, max_distance=None, top_only=False):
+            images = page_data[target_page_index]["image_blocks"]
+            used = used_images_by_page.setdefault(target_page_index, set())
 
-        scored = []
-        for img_index, img in enumerate(images):
-            if img_index in used_indexes:
-                continue
+            scored = []
+            for img_index, img in enumerate(images):
+                if img_index in used:
+                    continue
 
-            distance = abs(img["y_mid"] - cert_y)
-            scored.append((distance, -img.get("area", 0), img_index, img))
+                if top_only and img["y_mid"] > 190:
+                    continue
 
-        if scored:
+                distance = abs(img["y_mid"] - target_y)
+
+                if max_distance is not None and distance > max_distance:
+                    continue
+
+                scored.append((distance, -img.get("area", 0), img_index, img))
+
+            if not scored:
+                return ""
+
             scored.sort(key=lambda x: (x[0], x[1]))
-            # Use embedded image only when it is reasonably close to the cert row.
-            if scored[0][0] <= 120:
-                chosen = scored[0]
-                used_indexes.add(chosen[2])
-                return chosen[3]["image_data"]
+            chosen = scored[0]
+            used.add(chosen[2])
+            return chosen[3]["image_data"]
 
-        # Page-break fallback: if the cert row is near the bottom of a page, the card image
-        # can be at the top of the next PDF page.
+        # Main case: card image is on same page, left of same card row.
+        image_data = choose_from_page(page_index, cert_y, max_distance=145)
+        if image_data:
+            return image_data
+
+        # Page-break case: cert at bottom of page, image/title may continue at top of next page.
         if cert_y > 500 and page_index + 1 < len(page_data):
-            next_images = page_data[page_index + 1]["image_blocks"]
-            next_used = used_images_by_page.setdefault(page_index + 1, set())
-            top_images = [
-                (img["y_mid"], idx, img)
-                for idx, img in enumerate(next_images)
-                if idx not in next_used and img["y_mid"] < 180
-            ]
-            if top_images:
-                top_images.sort(key=lambda x: x[0])
-                chosen = top_images[0]
-                next_used.add(chosen[1])
-                return chosen[2]["image_data"]
+            image_data = choose_from_page(page_index + 1, 80, max_distance=170, top_only=True)
+            if image_data:
+                return image_data
 
-        # Rendered crop fallback catches PDFs where the image is visible but not stored as a clean image block.
-        crop = render_crop_image(page_data[page_index]["page"], cert_y)
-        if crop:
-            return crop
+        # Reverse page-break case: visible image can appear above the title/cert continuation.
+        if cert_y < 100 and page_index > 0:
+            image_data = choose_from_page(page_index - 1, 560, max_distance=170)
+            if image_data:
+                return image_data
 
         return ""
 
     used_images_by_page = {}
 
-    for idx, cert_match in enumerate(cert_matches):
-        cert_number = normalize_submission(cert_match.group(1)) or ""
+    for occurrence in cert_occurrences:
+        cert_number = occurrence["cert_number"]
+        page_index = occurrence["page_index"]
+        cert_y = occurrence["cert_y"]
 
-        block_end = cert_matches[idx + 1].start() if idx + 1 < len(cert_matches) else len(full_text)
-        after_block = full_text[cert_match.end():block_end]
-        after_lines = [clean(line) for line in after_block.splitlines() if clean(line)]
+        grade, description = find_grade_description(page_index, cert_y, cert_number)
 
-        page_index, cert_y = find_cert_page_and_y(cert_number)
-        grade, description = find_grade_description_from_page(page_index, cert_y)
+        item_desc = item_description_from_nearby(page_index, cert_y)
+        if item_desc and (not description or description.lower() == "item details"):
+            description = item_desc
 
-        card_type = "Card"
-        psa_estimate = ""
-        card_ladder_value = ""
-        pop = ""
-        pop_higher = ""
-
-        for i, line in enumerate(after_lines):
-            low = line.lower()
-
-            if line in stop_lines:
-                continue
-
-            if "grader notes" in low or low == "notes":
-                continue
-
-            if "psa estimate" in low:
-                m = re.search(r"PSA\s+Estimate\s*(.+)", line, re.IGNORECASE)
-                if m:
-                    psa_estimate = clean_loading(m.group(1).strip())
-                elif i + 1 < len(after_lines):
-                    psa_estimate = clean_loading(after_lines[i + 1])
-                continue
-
-            if "card ladder value" in low:
-                m = re.search(r"Card\s+Ladder\s+Value\s*(.+)", line, re.IGNORECASE)
-                if m and m.group(1).strip():
-                    card_ladder_value = clean_loading(m.group(1).strip())
-                elif i + 1 < len(after_lines):
-                    card_ladder_value = clean_loading(after_lines[i + 1])
-                continue
-
-            if re.match(r"^pop\s+higher\b", line, re.IGNORECASE):
-                m = re.search(r"Pop\s+Higher\s*(\d+|Loading|N/A)", line, re.IGNORECASE)
-                if m:
-                    pop_higher = clean_loading(m.group(1))
-                continue
-
-            if re.match(r"^pop\b", line, re.IGNORECASE):
-                m = re.search(r"Pop\s*(\d+|Loading|N/A)", line, re.IGNORECASE)
-                if m:
-                    pop = clean_loading(m.group(1))
-                continue
-
-            if re.search(r"shipped|vault|send to vault|ship to you", low, re.IGNORECASE):
-                continue
-
-            if low.startswith("item ") and (not description or description.lower() == "item details"):
-                item_desc = re.sub(r"^Item\s+", "", line, flags=re.IGNORECASE).strip()
-                if item_desc and item_desc.lower() != "details":
-                    description = item_desc
-                continue
+        psa_estimate = value_after_label_from_nearby(page_index, cert_y, "psa")
+        card_ladder_value = value_after_label_from_nearby(page_index, cert_y, "ladder")
+        pop = value_after_label_from_nearby(page_index, cert_y, "pop")
+        pop_higher = value_after_label_from_nearby(page_index, cert_y, "pop_higher")
 
         image_data = find_image_for_cert(page_index, cert_y, used_images_by_page)
 
-        if cert_number:
-            items.append({
-                "submission_number": submission_number,
-                "order_number": order_number,
-                "cert_number": cert_number,
-                "card_type": card_type,
-                "description": description,
-                "item_details": description,
-                "grade": grade,
-                "after_service": "",
-                "images_url": "",
-                "image_data": image_data,
-                "psa_estimate": psa_estimate,
-                "card_ladder_value": card_ladder_value,
-                "pop": pop,
-                "pop_higher": pop_higher
-            })
+        items.append({
+            "submission_number": submission_number,
+            "order_number": order_number,
+            "cert_number": cert_number,
+            "card_type": "Card",
+            "description": description,
+            "item_details": description,
+            "grade": grade,
+            "after_service": "",
+            "images_url": "",
+            "image_data": image_data,
+            "psa_estimate": psa_estimate,
+            "card_ladder_value": card_ladder_value,
+            "pop": pop,
+            "pop_higher": pop_higher
+        })
 
     doc.close()
     return submission_number, order_number, items
@@ -2210,10 +2231,10 @@ def admin_buyback_requests():
         card_type = row[8] if len(row) > 8 else ""
         after_service = row[9] if len(row) > 9 else ""
         images_url = row[10] if len(row) > 10 else ""
-        psa_estimate = row[11] if len(row) > 11 else ""
-        card_ladder_value = row[12] if len(row) > 12 else ""
-        pop = row[13] if len(row) > 13 else ""
-        pop_higher = row[14] if len(row) > 14 else ""
+        psa_estimate = display_blank_loading(row[11] if len(row) > 11 else "")
+        card_ladder_value = display_blank_loading(row[12] if len(row) > 12 else "")
+        pop = display_blank_loading(row[13] if len(row) > 13 else "")
+        pop_higher = display_blank_loading(row[14] if len(row) > 14 else "")
 
         customer_name = get_field(raw_data or {}, ["Customer Name", "Name"])
         phone = get_field(raw_data or {}, ["Contact Info", "Phone", "Phone Number"])
@@ -2580,10 +2601,10 @@ def portal_orders():
                 card_type = row[5] if len(row) > 5 else ""
                 after_service = row[6] if len(row) > 6 else ""
                 images_url = row[7] if len(row) > 7 else ""
-                psa_estimate = row[8] if len(row) > 8 else ""
-                card_ladder_value = row[9] if len(row) > 9 else ""
-                pop = row[10] if len(row) > 10 else ""
-                pop_higher = row[11] if len(row) > 11 else ""
+                psa_estimate = display_blank_loading(row[8] if len(row) > 8 else "")
+                card_ladder_value = display_blank_loading(row[9] if len(row) > 9 else "")
+                pop = display_blank_loading(row[10] if len(row) > 10 else "")
+                pop_higher = display_blank_loading(row[11] if len(row) > 11 else "")
 
                 checked = "checked" if interested else ""
                 img_html = f"<img src='{image_data}' alt='Card image'>" if image_data else ""
