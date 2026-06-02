@@ -902,6 +902,40 @@ def should_hide_column(column_name):
 def build_table(rows):
     keys = []
     clean_rows = []
+
+    preferred_order = [
+        "Submission #",
+        "Submission Number",
+        "Customer Name",
+        "Name",
+        "Contact Info",
+        "Phone",
+        "Phone Number",
+        "# Of Cards",
+        "# of Cards",
+        "Cards",
+        "Service Type",
+        "Service",
+        "Customer Drop-Off Date",
+        "PSA Status",
+        "Card PDF Alert",
+        "Arrived / Completed",
+        "Estimated Completion Date"
+    ]
+
+    preferred_display_order = [
+        "Submission #",
+        "Customer Name",
+        "Contact Info",
+        "# Of Cards",
+        "Service Type",
+        "Customer Drop-Off Date",
+        "PSA Status",
+        "Card PDF Alert",
+        "Arrived / Completed",
+        "Estimated Completion Date"
+    ]
+
     force_keys = ["Arrived / Completed", "Estimated Completion Date", "Card PDF Alert"]
 
     for r in rows:
@@ -968,6 +1002,18 @@ def build_table(rows):
 
     if not clean_rows:
         return "<div class='card'>No records found.</div>"
+
+    ordered_keys = []
+
+    for wanted_key in preferred_display_order:
+        if wanted_key in keys and wanted_key not in ordered_keys:
+            ordered_keys.append(wanted_key)
+
+    for k in keys:
+        if k not in ordered_keys:
+            ordered_keys.append(k)
+
+    keys = ordered_keys
 
     html = "<table><tr>"
     for k in keys:
