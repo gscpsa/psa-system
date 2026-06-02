@@ -1050,21 +1050,18 @@ def extract_card_items_from_pdf(pdf_path):
     """
     PSA portrait PDF parser.
 
-    The portrait PDFs are now the preferred source because they expose all cert rows
-    and card images more cleanly than horizontal PDFs.
-
-    Imported/displayed:
+    Reliable buyback fields:
     - certification number
     - type
     - description
     - grade
-    - Pop
-    - Pop Higher
     - card image when available
 
-    Not displayed/imported for buyback:
+    Removed from buyback output:
     - PSA Estimate
     - Card Ladder Value
+    - Pop
+    - Pop Higher
     """
     items = []
     submission_number = ""
@@ -1079,17 +1076,6 @@ def extract_card_items_from_pdf(pdf_path):
 
     def norm_text(value):
         return re.sub(r"\s+", " ", str(value or "")).strip()
-
-    def clean_loading(value):
-        value = norm_text(value)
-        low = value.lower()
-        if low in ["loading", "loadin"]:
-            return ""
-        if low.startswith("loading"):
-            return ""
-        if low in ["pop hig", "pop high"]:
-            return ""
-        return value
 
     def block_text(block):
         parts = []
@@ -1123,11 +1109,9 @@ def extract_card_items_from_pdf(pdf_path):
 
         if area_px < 6000:
             return False
-
         if width_px > height_px * 3.2:
             return False
 
-        # Avoid tiny logos / Amex / UI icons.
         box_width = abs(x1 - x0)
         box_height = abs(y1 - y0)
         if box_width < 20 or box_height < 35:
@@ -1216,7 +1200,7 @@ def extract_card_items_from_pdf(pdf_path):
     )
 
     noise = re.compile(
-        r"(Due to extraordinary demand|Learn more|Order Arrived|Order Prep|Research & ID|Grading|Assembly|QA Checks|Grades Ready|Complete|Track Package|Tracking number|Payment Method|Payment & Address|Return Address|Download CSV|View Grades|Your grades are ready|Grader Notes|Show More|Status|Changing your address|Customer Service|Vault Terms|Amex ending|Collectors Holdings|All rights reserved|https?://|Items\s+\d+)",
+        r"(Due to extraordinary demand|Learn more|Order Arrived|Order Prep|Research & ID|Grading|Assembly|QA Checks|Grades Ready|Complete|Track Package|Tracking number|Payment Method|Payment & Address|Return Address|Download CSV|View Grades|Your grades are ready|Grader Notes|Show More|Status|Changing your address|Customer Service|Vault Terms|Amex ending|Collectors Holdings|All rights reserved|https?://|Items\s+\d+|PSA Estimate|Card Ladder|Pop\b)",
         re.IGNORECASE
     )
 
@@ -1239,19 +1223,6 @@ def extract_card_items_from_pdf(pdf_path):
 
         return None
 
-    def parse_pop_from_text(text):
-        block_norm = norm_text(text)
-
-        # Normal case:
-        # Pop 164 Pop Higher 753
-        pop_higher_match = re.search(r"\bPop\s+Higher\s+(\d+|N/A|Loading)", block_norm, re.IGNORECASE)
-        pop_match = re.search(r"\bPop\s+(?!Higher\b)(\d+|N/A|Loading)", block_norm, re.IGNORECASE)
-
-        return (
-            clean_loading(pop_match.group(1)) if pop_match else "",
-            clean_loading(pop_higher_match.group(1)) if pop_higher_match else ""
-        )
-
     def parse_text_card(cert_matches, idx):
         cert_match = cert_matches[idx]
         cert_number = normalize_submission(cert_match.group(1)) or ""
@@ -1268,10 +1239,6 @@ def extract_card_items_from_pdf(pdf_path):
         grade = ""
         description = ""
 
-        # Portrait PSA layout:
-        # grade line
-        # description line
-        # Cert # line
         for line in reversed(before_lines[-30:]):
             low = line.lower()
 
@@ -1298,7 +1265,6 @@ def extract_card_items_from_pdf(pdf_path):
             if grade and description:
                 break
 
-        # Fallback to Item line, but never use generic Item Details.
         for line in after_lines[:30]:
             low = line.lower()
             if low.startswith("item "):
@@ -1306,8 +1272,6 @@ def extract_card_items_from_pdf(pdf_path):
                 if item_desc and item_desc.lower() != "details" and (not description or description.lower() == "item details"):
                     description = item_desc
                 break
-
-        pop, pop_higher = parse_pop_from_text(after_text)
 
         page_index = page_for_offset(cert_match.start())
         cert_y = cert_y_on_page(page_index, cert_number)
@@ -1325,8 +1289,8 @@ def extract_card_items_from_pdf(pdf_path):
             "image_data": "",
             "psa_estimate": "",
             "card_ladder_value": "",
-            "pop": pop,
-            "pop_higher": pop_higher,
+            "pop": "",
+            "pop_higher": "",
             "_page_index": page_index,
             "_cert_y": cert_y
         }
@@ -1457,8 +1421,6 @@ def extract_card_items_from_csv(file):
         description = field(row, ["Description"])
         grade = field(row, ["Grade"])
         images_url = field(row, ["Images", "Image", "Image URL", "Images URL"])
-        pop = field(row, ["Pop"])
-        pop_higher = field(row, ["Pop Higher"])
 
         items.append({
             "submission_number": "",
@@ -1473,8 +1435,8 @@ def extract_card_items_from_csv(file):
             "image_data": "",
             "psa_estimate": "",
             "card_ladder_value": "",
-            "pop": pop,
-            "pop_higher": pop_higher
+            "pop": "",
+            "pop_higher": ""
         })
 
     return "", "", items
@@ -2217,8 +2179,6 @@ def admin_upload_cards():
                     <td>{item.get('card_type','')}</td>
                     <td>{item.get('description', item.get('item_details',''))}</td>
                     <td>{item.get('grade','')}</td>
-                    <td>{item.get('pop','')}</td>
-                    <td>{item.get('pop_higher','')}</td>
                 </tr>
                 """
             return page(f"""
@@ -2228,7 +2188,7 @@ def admin_upload_cards():
                 <p><b>Order #:</b> {order_number}</p>
                 <p><b>Cards found:</b> {len(items)}</p>
                 <p><b>Cards saved:</b> {saved}</p>
-                <table><tr><th>Card Image</th><th>Cert #</th><th>Type</th><th>Description</th><th>Grade</th><th>Pop</th><th>Pop Higher</th></tr>{preview_rows}</table>
+                <table><tr><th>Card Image</th><th>Cert #</th><th>Type</th><th>Description</th><th>Grade</th></tr>{preview_rows}</table>
                 <br><a class="btn" href="/admin/upload_cards">Upload Another</a>
                 <a class="btn" href="/admin/buyback_requests">View Buyback Requests</a>
                 <a class="btn" href="/admin">Back to Admin</a>
@@ -2335,7 +2295,7 @@ def admin_buyback_requests():
         return page(html)
 
     html += "<div class='card'><table>"
-    html += "<tr><th>Status</th><th>Card Image</th><th>Customer</th><th>Submission #</th><th>Cert #</th><th>Type</th><th>Description</th><th>Grade</th><th>Pop</th><th>Pop Higher</th><th>Actions</th></tr>"
+    html += "<tr><th>Status</th><th>Card Image</th><th>Customer</th><th>Submission #</th><th>Cert #</th><th>Type</th><th>Description</th><th>Grade</th><th>Actions</th></tr>"
 
     for row in rows:
         submission_number, cert_number, item_details, grade, image_data, interested, buyback_status, raw_data = row[:8]
@@ -2372,8 +2332,6 @@ def admin_buyback_requests():
             <td>{card_type}</td>
             <td>{item_details}</td>
             <td>{grade}</td>
-            <td>{pop}</td>
-            <td>{pop_higher}</td>
             <td>{action_html}</td>
         </tr>
         """
@@ -2725,8 +2683,6 @@ def portal_orders():
                     <div><b>Type:</b> {card_type}</div>
                     <div>{item_details}</div>
                     <div><b>Grade:</b> {grade}</div>
-                    <div><b>Pop:</b> {pop}</div>
-                    <div><b>Pop Higher:</b> {pop_higher}</div>
                     <label class="sell-check"><input type="checkbox" name="cert" value="{cert_number}" {checked}> Interested in selling</label>
                 </div>
                 """
