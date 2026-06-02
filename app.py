@@ -58,6 +58,16 @@ def init_db():
     """)
 
     cur.execute("""
+    ALTER TABLE submissions
+    ADD COLUMN IF NOT EXISTS card_pdf_uploaded_at TIMESTAMP
+    """)
+
+    cur.execute("""
+    ALTER TABLE submissions
+    ADD COLUMN IF NOT EXISTS card_pdf_order_number TEXT
+    """)
+
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS sms_notifications (
         id SERIAL PRIMARY KEY,
         submission_number TEXT,
@@ -608,14 +618,14 @@ def page(content, mode="admin"):
         }}
         .brand {{
             font-weight:bold;
-            font-size:20px;
+            font-size:24px;
             display:flex;
             align-items:center;
             gap:12px;
             min-width:260px;
         }}
         .brand img {{
-            max-height:78px;
+            max-height:115px;
             width:auto;
             display:block;
         }}
@@ -835,7 +845,7 @@ def page(content, mode="admin"):
                 min-width:100%;
             }}
             .brand img {{
-                max-height:68px;
+                max-height:95px;
             }}
             .links {{
                 justify-content:flex-start;
@@ -892,7 +902,7 @@ def should_hide_column(column_name):
 def build_table(rows):
     keys = []
     clean_rows = []
-    force_keys = ["Arrived / Completed", "Estimated Completion Date"]
+    force_keys = ["Arrived / Completed", "Estimated Completion Date", "Card PDF Alert"]
 
     for r in rows:
         data = r[0] or {}
@@ -940,8 +950,15 @@ def build_table(rows):
 
         row["PSA Status"] = customer_status_label(r[1] or "Submitted")
 
+        if card_pdf_needs_attention(r):
+            row["Card PDF Alert"] = card_pdf_alert_text(r)
+        else:
+            row["Card PDF Alert"] = ""
+
         if "PSA Status" not in keys:
             keys.append("PSA Status")
+        if "Card PDF Alert" not in keys:
+            keys.append("Card PDF Alert")
 
         clean_rows.append(row)
 
@@ -965,12 +982,55 @@ def build_table(rows):
 
             if k == "PSA Status":
                 html += f"<td class='status {col_class}'>{val}</td>"
+            elif k == "Card PDF Alert" and val:
+                html += f"<td class='{col_class}' style='color:#dc3545;font-weight:bold;'>{val}</td>"
             else:
                 html += f"<td class='{col_class}'>{val}</td>"
         html += "</tr>"
 
     html += "</table>"
     return html
+
+def status_needs_card_pdf(status):
+    internal_status = status or ""
+    return internal_status in ["Shipping Soon", "Complete"]
+
+def card_pdf_needs_attention(row):
+    status = row[1] or "Submitted"
+
+    if not status_needs_card_pdf(status):
+        return False
+
+    card_pdf_uploaded_at = row[2] if len(row) > 2 else None
+    card_pdf_item_count = int(row[3] or 0) if len(row) > 3 else 0
+
+    if card_pdf_item_count <= 0:
+        return True
+
+    if not card_pdf_uploaded_at:
+        return True
+
+    try:
+        uploaded_at = pd.to_datetime(card_pdf_uploaded_at, errors="coerce")
+        if pd.isna(uploaded_at):
+            return True
+        uploaded_at = uploaded_at.tz_localize(None) if getattr(uploaded_at, "tzinfo", None) else uploaded_at
+        return (pd.Timestamp.now() - uploaded_at).days > 30
+    except Exception:
+        return True
+
+def card_pdf_alert_text(row):
+    card_pdf_uploaded_at = row[2] if len(row) > 2 else None
+    card_pdf_item_count = int(row[3] or 0) if len(row) > 3 else 0
+
+    if card_pdf_item_count <= 0:
+        return "Needs card PDF upload"
+
+    if not card_pdf_uploaded_at:
+        return "Needs card PDF upload"
+
+    return "Card PDF older than 30 days"
+
 
 def get_sort_date(row):
     data = row[0] or {}
@@ -988,20 +1048,23 @@ def get_sort_date(row):
 
 def extract_card_items_from_pdf(pdf_path):
     """
-    Portrait-first PSA PDF parser.
+    PSA portrait PDF parser.
 
-    Text source of truth:
-    - Cert #
-    - Grade
-    - Description
+    The portrait PDFs are now the preferred source because they expose all cert rows
+    and card images more cleanly than horizontal PDFs.
+
+    Imported/displayed:
+    - certification number
+    - type
+    - description
+    - grade
     - Pop
     - Pop Higher
+    - card image when available
 
-    Removed from buyback output by request:
+    Not displayed/imported for buyback:
     - PSA Estimate
     - Card Ladder Value
-
-    Images are matched separately by page/visual order.
     """
     items = []
     submission_number = ""
@@ -1054,24 +1117,19 @@ def extract_card_items_from_pdf(pdf_path):
 
         bbox = block.get("bbox") or (0, 0, 0, 0)
         x0, y0, x1, y1 = bbox
-
         width_px = int(block.get("width") or 0)
         height_px = int(block.get("height") or 0)
         area_px = width_px * height_px
-        ratio_px = height_px / max(width_px, 1)
 
+        if area_px < 6000:
+            return False
+
+        if width_px > height_px * 3.2:
+            return False
+
+        # Avoid tiny logos / Amex / UI icons.
         box_width = abs(x1 - x0)
         box_height = abs(y1 - y0)
-        ratio_box = box_height / max(box_width, 1)
-
-        # Card/slab images in the portrait PDF are vertical-ish and large enough.
-        # Reject payment logos / UI icons.
-        if area_px < 8000:
-            return False
-        if width_px > height_px * 3.0:
-            return False
-        if ratio_px < 0.85 and ratio_box < 0.85:
-            return False
         if box_width < 20 or box_height < 35:
             return False
 
@@ -1181,6 +1239,19 @@ def extract_card_items_from_pdf(pdf_path):
 
         return None
 
+    def parse_pop_from_text(text):
+        block_norm = norm_text(text)
+
+        # Normal case:
+        # Pop 164 Pop Higher 753
+        pop_higher_match = re.search(r"\bPop\s+Higher\s+(\d+|N/A|Loading)", block_norm, re.IGNORECASE)
+        pop_match = re.search(r"\bPop\s+(?!Higher\b)(\d+|N/A|Loading)", block_norm, re.IGNORECASE)
+
+        return (
+            clean_loading(pop_match.group(1)) if pop_match else "",
+            clean_loading(pop_higher_match.group(1)) if pop_higher_match else ""
+        )
+
     def parse_text_card(cert_matches, idx):
         cert_match = cert_matches[idx]
         cert_number = normalize_submission(cert_match.group(1)) or ""
@@ -1198,9 +1269,9 @@ def extract_card_items_from_pdf(pdf_path):
         description = ""
 
         # Portrait PSA layout:
-        # GRADE
-        # DESCRIPTION
-        # Cert #...
+        # grade line
+        # description line
+        # Cert # line
         for line in reversed(before_lines[-30:]):
             low = line.lower()
 
@@ -1227,7 +1298,7 @@ def extract_card_items_from_pdf(pdf_path):
             if grade and description:
                 break
 
-        # Fallback to the item line, but never use "Item Details".
+        # Fallback to Item line, but never use generic Item Details.
         for line in after_lines[:30]:
             low = line.lower()
             if low.startswith("item "):
@@ -1236,14 +1307,7 @@ def extract_card_items_from_pdf(pdf_path):
                     description = item_desc
                 break
 
-        block_norm = norm_text(after_text)
-
-        # Pop values can appear:
-        # Pop 164
-        # Pop Higher 753
-        # or together on one line.
-        pop_higher_match = re.search(r"Pop\s+Higher\s+(\d+|N/A|Loading)", block_norm, re.IGNORECASE)
-        pop_match = re.search(r"(?<!Higher\s)Pop\s+(\d+|N/A|Loading)", block_norm, re.IGNORECASE)
+        pop, pop_higher = parse_pop_from_text(after_text)
 
         page_index = page_for_offset(cert_match.start())
         cert_y = cert_y_on_page(page_index, cert_number)
@@ -1261,8 +1325,8 @@ def extract_card_items_from_pdf(pdf_path):
             "image_data": "",
             "psa_estimate": "",
             "card_ladder_value": "",
-            "pop": clean_loading(pop_match.group(1)) if pop_match else "",
-            "pop_higher": clean_loading(pop_higher_match.group(1)) if pop_higher_match else "",
+            "pop": pop,
+            "pop_higher": pop_higher,
             "_page_index": page_index,
             "_cert_y": cert_y
         }
@@ -1274,7 +1338,7 @@ def extract_card_items_from_pdf(pdf_path):
 
         used_images_by_page = {}
 
-        def take_nearest_image(page_index, target_y, max_distance=250):
+        def take_nearest_image(page_index, target_y, max_distance=260):
             if page_index is None or page_index < 0 or page_index >= len(page_data):
                 return ""
 
@@ -1337,10 +1401,10 @@ def extract_card_items_from_pdf(pdf_path):
                     img = take_by_visual_order(page_index, group_position)
 
                 if not img and cert_y is not None and cert_y < 140:
-                    img = take_nearest_image(page_index - 1, 560, max_distance=300)
+                    img = take_nearest_image(page_index - 1, 560, max_distance=320)
 
                 if not img and cert_y is not None and cert_y > 500:
-                    img = take_nearest_image(page_index + 1, 90, max_distance=300)
+                    img = take_nearest_image(page_index + 1, 90, max_distance=320)
 
                 parsed_items[item_index]["image_data"] = img
 
@@ -1508,7 +1572,16 @@ def admin_dashboard():
 
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT raw_data, status FROM submissions")
+    cur.execute("""
+    SELECT s.raw_data,
+           s.status,
+           s.card_pdf_uploaded_at,
+           COALESCE(COUNT(c.id), 0) AS card_pdf_item_count
+    FROM submissions s
+    LEFT JOIN card_buyback_items c
+      ON REGEXP_REPLACE(c.submission_number, '\\D', '', 'g') = REGEXP_REPLACE(s.submission_number, '\\D', '', 'g')
+    GROUP BY s.submission_number, s.raw_data, s.status, s.card_pdf_uploaded_at
+    """)
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -1525,6 +1598,31 @@ def admin_dashboard():
     <a class="btn" href="/portal">Customer Portal</a>
     <br><br>
     """
+
+    alert_rows = [row for row in rows if card_pdf_needs_attention(row)]
+
+    if alert_rows:
+        html += "<div class='card' style='border:3px solid #dc3545;'>"
+        html += "<h2 style='color:#dc3545;'>Card PDF Needed</h2>"
+        html += "<p>These submissions are at Shipping Soon / Complete, but the card-detail PDF has not been uploaded in the last 30 days.</p>"
+        html += "<table><tr><th>Submission #</th><th>Customer</th><th>Status</th><th>Cards PDF Status</th><th>Action</th></tr>"
+
+        for alert_row in alert_rows:
+            alert_data = alert_row[0] or {}
+            alert_status = alert_row[1] or "Submitted"
+            alert_sub = normalize_submission(get_field(alert_data, ["Submission #", "Submission Number"])) or ""
+            alert_customer = get_field(alert_data, ["Customer Name", "Name"])
+            html += f"""
+            <tr>
+                <td><b>{alert_sub}</b></td>
+                <td>{alert_customer}</td>
+                <td>{customer_status_label(alert_status)}</td>
+                <td><b style='color:#dc3545;'>{card_pdf_alert_text(alert_row)}</b></td>
+                <td><a class='btn' href='/admin/upload_cards'>Upload Card PDF</a></td>
+            </tr>
+            """
+
+        html += "</table></div>"
 
     html += build_table(rows)
     return page(html)
@@ -2097,6 +2195,14 @@ def admin_upload_cards():
                     item.get("pop_higher", "")
                 ))
                 saved += 1
+            cur.execute("""
+            UPDATE submissions
+            SET card_pdf_uploaded_at=NOW(),
+                card_pdf_order_number=%s,
+                last_updated=NOW()
+            WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+            """, (order_number, submission_number))
+
             conn.commit()
             cur.close()
             conn.close()
