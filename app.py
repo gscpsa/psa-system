@@ -235,8 +235,8 @@ def clean_service_display(service):
     value = str(service or "").strip()
     if " - " in value:
         return value.split(" - ", 1)[0].strip()
-    if " – " in value:
-        return value.split(" – ", 1)[0].strip()
+    if " â " in value:
+        return value.split(" â ", 1)[0].strip()
     return value
 
 def date_only_display(value):
@@ -261,7 +261,7 @@ def date_only_display(value):
     return text
 
 def get_dropoff_date(data):
-    aliases = ["Customer Drop-Off Date", "Submission Date", "ƒand", "ƒand.", "Æand", "Æand.", "fand", "Fand", "S", "s", "Date", "date"]
+    aliases = ["Customer Drop-Off Date", "Submission Date", "Æand", "Æand.", "ÃÂand", "ÃÂand.", "fand", "Fand", "S", "s", "Date", "date"]
     value = get_field(data, aliases)
 
     if value:
@@ -272,11 +272,11 @@ def get_dropoff_date(data):
         key_lower = key.lower()
 
         # Exact/common matches
-        if key_lower in ["s", "submission date", "customer drop-off date", "date", "ƒand", "ƒand.", "æand", "æand.", "fand"]:
+        if key_lower in ["s", "submission date", "customer drop-off date", "date", "Æand", "Æand.", "Ã¦Âand", "Ã¦Âand.", "fand"]:
             return date_only_display(v)
 
         # Defensive fallback for the corrupted Excel header:
-        # catches variants like "ƒand", "Æand", or copied/pasted mojibake that still ends with "and".
+        # catches variants like "Æand", "ÃÂand", or copied/pasted mojibake that still ends with "and".
         if "and" in key_lower and len(key_lower) <= 8:
             return date_only_display(v)
 
@@ -291,8 +291,8 @@ def parse_arrived_completed_value(value):
 
     month = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
     date_single = month + r"\s+\d{1,2},\s+\d{4}"
-    date_range_same_year = month + r"\s+\d{1,2}\s*[-–]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
-    date_range_full = date_single + r"\s*[-–]\s*" + date_single
+    date_range_same_year = month + r"\s+\d{1,2}\s*[-â]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
+    date_range_full = date_single + r"\s*[-â]\s*" + date_single
 
     completed_match = re.search(r"Completed\s+(" + date_single + r")", text, re.IGNORECASE)
     if completed_match:
@@ -956,7 +956,7 @@ def build_table(rows):
 
             if key_text == "S":
                 display_key = "Customer Drop-Off Date"
-            elif normalized_key_text in ["submission date", "ƒand", "ƒand.", "fand"]:
+            elif normalized_key_text in ["submission date", "Æand", "Æand.", "fand"]:
                 display_key = "Customer Drop-Off Date"
             else:
                 display_key = key_text
@@ -1016,7 +1016,7 @@ def build_table(rows):
 
     keys = ordered_keys
 
-    html = "<table><tr>"
+    html = "<div class='table-wrap'><table><tr>"
     for k in keys:
         html += f"<th>{k}</th>"
     html += "</tr>"
@@ -1035,7 +1035,7 @@ def build_table(rows):
                 html += f"<td class='{col_class}'>{val}</td>"
         html += "</tr>"
 
-    html += "</table>"
+    html += "</table></div>"
     return html
 
 def status_needs_card_pdf(status):
@@ -1081,7 +1081,7 @@ def card_pdf_alert_text(row):
 
 def get_sort_date(row):
     data = row[0] or {}
-    date_value = get_field(data, ["Customer Drop-Off Date", "Submission Date", "ƒand", "ƒand.", "Æand", "Æand.", "fand", "Fand", "S", "s", "Date", "date"])
+    date_value = get_field(data, ["Customer Drop-Off Date", "Submission Date", "Æand", "Æand.", "ÃÂand", "ÃÂand.", "fand", "Fand", "S", "s", "Date", "date"])
 
     try:
         if date_value:
@@ -1579,24 +1579,49 @@ def admin_dashboard():
 
     rows = sorted(rows, key=get_sort_date, reverse=(sort != "old"))
 
-    html = """
+    total_count = len(rows)
+    active_count = sum(1 for r in rows if (r[1] or "Submitted") not in ["Complete", "Delivered to Us", "Picked Up"])
+    complete_count = sum(1 for r in rows if (r[1] or "") == "Complete")
+    shipping_count = sum(1 for r in rows if (r[1] or "") == "Shipping Soon")
+    pickup_count = sum(1 for r in rows if (r[1] or "") == "Delivered to Us")
+    pdf_needed_count = sum(1 for r in rows if card_pdf_needs_attention(r))
+
+    html = f"""
     <h2>Admin Dashboard</h2>
-    <a class="btn" href="/admin?sort=new">Newest First</a>
-    <a class="btn" href="/admin?sort=old">Oldest First</a>
-    <a class="btn" href="/admin/search">Search</a>
-    <a class="btn" href="/admin/upload">Upload Excel</a>
-    <a class="btn" href="/admin/upload_psa">Upload PSA PDF</a>
-    <a class="btn" href="/portal">Customer Portal</a>
-    <br><br>
+
+    <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">{total_count}</div></div>
+        <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value">{active_count}</div></div>
+        <div class="stat-card"><div class="stat-label">Complete</div><div class="stat-value">{complete_count}</div></div>
+        <div class="stat-card"><div class="stat-label">Shipping Soon</div><div class="stat-value">{shipping_count}</div></div>
+        <div class="stat-card"><div class="stat-label">Ready Pickup</div><div class="stat-value">{pickup_count}</div></div>
+        <div class="stat-card" style="border-left-color:#dc3545;"><div class="stat-label">PDF Needed</div><div class="stat-value">{pdf_needed_count}</div></div>
+    </div>
+
+    <div class="dashboard-actions">
+        <a class="btn" href="/admin?sort=new">Newest First</a>
+        <a class="btn" href="/admin?sort=old">Oldest First</a>
+        <a class="btn" href="/admin/search">Search</a>
+        <a class="btn" href="/admin/upload">Upload Excel</a>
+        <a class="btn" href="/admin/upload_psa">Upload PSA PDF</a>
+        <a class="btn" href="/admin/upload_cards">Upload Card PDF</a>
+        <a class="btn" href="/portal">Customer Portal</a>
+    </div>
     """
 
     alert_rows = [row for row in rows if card_pdf_needs_attention(row)]
 
     if alert_rows:
-        html += "<div class='card' style='border:3px solid #dc3545;'>"
-        html += "<h2 style='color:#dc3545;'>Card PDF Needed</h2>"
-        html += "<p>These submissions are at Shipping Soon / Complete, but the card-detail PDF has not been uploaded in the last 30 days.</p>"
-        html += "<table><tr><th>Submission #</th><th>Customer</th><th>Status</th><th>Cards PDF Status</th><th>Action</th></tr>"
+        html += f"""
+        <div class="alert-summary">
+            <h2>Card PDFs Needed: {len(alert_rows)}</h2>
+            <p>These submissions are at Shipping Soon / Complete, but the card-detail PDF has not been uploaded in the last 30 days.</p>
+            <details>
+                <summary>View submissions needing PDFs</summary>
+                <div class="table-wrap">
+                    <table>
+                        <tr><th>Submission #</th><th>Customer</th><th>Status</th><th>Cards PDF Status</th><th>Action</th></tr>
+        """
 
         for alert_row in alert_rows:
             alert_data = alert_row[0] or {}
@@ -1609,11 +1634,11 @@ def admin_dashboard():
                 <td>{alert_customer}</td>
                 <td>{customer_status_label(alert_status)}</td>
                 <td><b style='color:#dc3545;'>{card_pdf_alert_text(alert_row)}</b></td>
-                <td><a class='btn' href='/admin/upload_cards'>Upload Card PDF</a></td>
+                <td><a class='btn' href='/admin/upload_cards'>Upload</a></td>
             </tr>
             """
 
-        html += "</table></div>"
+        html += "</table></div></details></div>"
 
     html += build_table(rows)
     return page(html)
@@ -1756,8 +1781,8 @@ def admin_upload_psa():
 
                 month_pattern = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
                 date_pattern = month_pattern + r"\s+\d{1,2},\s+\d{4}"
-                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-–]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
-                date_range_full = date_pattern + r"\s*[-–]\s*" + date_pattern
+                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-â]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
+                date_range_full = date_pattern + r"\s*[-â]\s*" + date_pattern
 
                 value_pattern = re.compile(
                     rf"(Completed\s+{date_pattern}|Est\.\s*Complete\s*by\s+{date_range_full}|Est\.\s*Complete\s*by\s+{date_range_same_year}|Est\.\s*Complete\s*by\s+{date_pattern}|Estimated\s*Complete\s*by\s+{date_range_full}|Estimated\s*Complete\s*by\s+{date_range_same_year}|Estimated\s*Complete\s*by\s+{date_pattern}|Est\.\s*by\s+{date_range_full}|Est\.\s*by\s+{date_range_same_year}|Est\.\s*by\s+{date_pattern}|{date_pattern})",
@@ -1830,7 +1855,7 @@ def admin_upload_psa():
                             j += 1
 
                     # Split case:
-                    # • Sub
+                    # â¢ Sub
                     # #14550482
                     # Research & ID
                     elif re.search(r"\bSub\b\s*$", line, re.IGNORECASE) and i + 1 < len(lines):
@@ -1869,7 +1894,7 @@ def admin_upload_psa():
                             block_text = re.sub(r",\s+(\d{4})", r", \1", block_text)
 
                             matches = re.findall(
-                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
+                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
                                 block_text,
                                 re.IGNORECASE
                             )
@@ -2323,7 +2348,7 @@ def admin_buyback_requests():
             html += "<div class='card'>No cards in this queue.</div>"
         return page(html)
 
-    html += "<div class='card'><table>"
+    html += "<div class='card'><div class='table-wrap'><table>"
     html += "<tr><th>Status</th><th>Card Image</th><th>Customer</th><th>Submission #</th><th>Cert #</th><th>Type</th><th>Description</th><th>Grade</th><th>Actions</th></tr>"
 
     for row in rows:
@@ -2514,7 +2539,7 @@ def admin_sms_notifications():
         html += "<div class='card'>No SMS notifications have been queued yet.</div>"
         return page(html)
 
-    html += "<div class='card'><table>"
+    html += "<div class='card'><div class='table-wrap'><table>"
     html += "<tr><th>Created</th><th>Submission #</th><th>Phone</th><th>Old</th><th>New</th><th>Status</th><th>Message</th></tr>"
 
     for submission_number, phone, old_status, new_status, message, send_status, provider_response, created_at, sent_at in rows:
