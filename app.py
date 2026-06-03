@@ -59,6 +59,16 @@ def init_db():
 
     cur.execute("""
     ALTER TABLE submissions
+    ADD COLUMN IF NOT EXISTS needs_card_pdf BOOLEAN DEFAULT FALSE
+    """)
+
+    cur.execute("""
+    ALTER TABLE submissions
+    ADD COLUMN IF NOT EXISTS card_pdf_last_uploaded TIMESTAMP
+    """)
+
+    cur.execute("""
+    ALTER TABLE submissions
     ADD COLUMN IF NOT EXISTS card_pdf_uploaded_at TIMESTAMP
     """)
 
@@ -1085,51 +1095,6 @@ def should_hide_column(column_name):
     ]
 
 
-def status_needs_card_pdf(status):
-    return (status or "") in ["Shipping Soon", "Complete"]
-
-def card_pdf_needs_attention(row):
-    """
-    True when a PSA submission is Shipping Soon or Complete but no card-detail
-    PDF records have been uploaded for that submission.
-    """
-    try:
-        data = row_raw_data(row)
-        status = row_status(row)
-
-        if not status_needs_card_pdf(status):
-            return False
-
-        sub = normalize_submission(get_field(data, ["Submission #", "Submission Number"]))
-
-        if not sub:
-            return False
-
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("""
-        SELECT COUNT(*)
-        FROM card_buyback_items
-        WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-        """, (sub,))
-        count = cur.fetchone()[0] or 0
-        cur.close()
-        conn.close()
-
-        return count == 0
-    except Exception:
-        return False
-
-def card_pdf_alert_text(row):
-    try:
-        status = row[1] or "Submitted"
-        if status == "Shipping Soon":
-            return "Grades ready / card PDF needed"
-        if status == "Complete":
-            return "Completed / card PDF needed"
-        return "Card PDF needed"
-    except Exception:
-        return "Card PDF needed"
 
 
 
@@ -1144,6 +1109,123 @@ def row_status(row):
         return row[1] if len(row) > 1 else "Submitted"
     except Exception:
         return "Submitted"
+
+
+
+def status_needs_card_pdf(status):
+    return (status or "") in ["Shipping Soon", "Complete"]
+
+def refresh_needs_card_pdf_flag(submission_number, cur=None):
+    """
+    Fast saved-flag logic:
+    - Called after PSA status updates.
+    - Called after card PDF uploads.
+    - Dashboard reads this saved flag instead of scanning card records repeatedly.
+    """
+    own_conn = None
+
+    try:
+        sub = normalize_submission(submission_number)
+        if not sub:
+            return False
+
+        if cur is None:
+            own_conn = get_conn()
+            cur = own_conn.cursor()
+
+        cur.execute("""
+        SELECT status
+        FROM submissions
+        WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+        """, (sub,))
+        row = cur.fetchone()
+
+        if not row:
+            if own_conn:
+                own_conn.commit()
+                cur.close()
+                own_conn.close()
+            return False
+
+        status = row[0] or "Submitted"
+
+        cur.execute("""
+        SELECT COUNT(*)
+        FROM card_buyback_items
+        WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+        """, (sub,))
+        card_count = cur.fetchone()[0] or 0
+
+        needs_pdf = status_needs_card_pdf(status) and card_count == 0
+
+        cur.execute("""
+        UPDATE submissions
+        SET needs_card_pdf=%s,
+            last_updated=NOW()
+        WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+        """, (needs_pdf, sub))
+
+        if own_conn:
+            own_conn.commit()
+            cur.close()
+            own_conn.close()
+
+        return needs_pdf
+
+    except Exception:
+        try:
+            if own_conn:
+                own_conn.rollback()
+                cur.close()
+                own_conn.close()
+        except Exception:
+            pass
+        return False
+
+def card_pdf_needs_attention(row):
+    """
+    Dashboard helper. Reads saved flag first, with safe fallback.
+    Accepts rows with 2+ columns.
+    """
+    try:
+        if len(row) > 2:
+            return bool(row[2])
+    except Exception:
+        pass
+
+    try:
+        data = row_raw_data(row) if "row_raw_data" in globals() else (row[0] if len(row) > 0 else {})
+        status = row_status(row) if "row_status" in globals() else (row[1] if len(row) > 1 else "Submitted")
+        sub = normalize_submission(get_field(data, ["Submission #", "Submission Number"]))
+
+        if not sub or not status_needs_card_pdf(status):
+            return False
+
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+        SELECT COALESCE(needs_card_pdf, FALSE)
+        FROM submissions
+        WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+        """, (sub,))
+        result = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        return bool(result and result[0])
+    except Exception:
+        return False
+
+def card_pdf_alert_text(row):
+    try:
+        status = row_status(row) if "row_status" in globals() else (row[1] if len(row) > 1 else "Submitted")
+        if status == "Shipping Soon":
+            return "Grades ready / card PDF needed"
+        if status == "Complete":
+            return "Completed / card PDF needed"
+        return "Card PDF needed"
+    except Exception:
+        return "Card PDF needed"
 
 
 def build_table(rows):
@@ -1981,7 +2063,7 @@ def admin_search():
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
-    SELECT raw_data, status
+    SELECT raw_data, status, COALESCE(needs_card_pdf, FALSE)
     FROM submissions
     WHERE raw_data::text ILIKE %s
        OR submission_number ILIKE %s
@@ -2328,9 +2410,13 @@ def admin_upload_psa():
 
                 if cur.rowcount:
                     updated += 1
+                    refresh_needs_card_pdf_flag(sub, cur)
                     maybe_queue_status_sms(cur, sub, sms_phone, old_status, status, sms_opt_in, sms_mode, last_sms_status)
                 else:
                     skipped += 1
+
+            for flag_sub in best.keys():
+                refresh_needs_card_pdf_flag(flag_sub, cur)
 
             for sub, arrived_completed_value in ac_map.items():
                 if arrived_completed_value:
@@ -2548,6 +2634,14 @@ def admin_upload_cards():
                 last_updated=NOW()
             WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
             """, (order_number, submission_number))
+
+            cur.execute("""
+            UPDATE submissions
+            SET needs_card_pdf=FALSE,
+                card_pdf_last_uploaded=NOW(),
+                last_updated=NOW()
+            WHERE REGEXP_REPLACE(submission_number, '\D', '', 'g')=%s
+            """, (submission_number,))
 
             conn.commit()
             cur.close()
@@ -3076,16 +3170,18 @@ def portal():
             line-height:1;
         }
         .gsc-benefit-title {
-            font-weight: 900;
-            font-size: 17px;
-            text-transform: uppercase;
-            margin-bottom: 4px;
+            font-weight:900;
+            font-size:17px;
+            text-transform:uppercase;
+            margin-bottom:4px;
             letter-spacing:.3px;
+            color:#0f5132;
         }
         .gsc-benefit-text {
-            color: #d1d5db;
-            font-size: 14px;
-            line-height: 1.35;
+            color:#111827;
+            font-size:14px;
+            line-height:1.35;
+            font-weight:600;
         }
         @media (max-width: 700px) {
             .gsc-portal-wrap {
