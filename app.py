@@ -152,6 +152,11 @@ def init_db():
     ALTER TABLE card_buyback_items
     ADD COLUMN IF NOT EXISTS pop_higher TEXT
     """)
+    try:
+        reconcile_all_needs_card_pdf_flags(cur)
+    except Exception:
+        pass
+
     conn.commit()
     cur.close()
     conn.close()
@@ -1117,10 +1122,7 @@ def status_needs_card_pdf(status):
 
 def refresh_needs_card_pdf_flag(submission_number, cur=None):
     """
-    Fast saved-flag logic:
-    - Called after PSA status updates.
-    - Called after card PDF uploads.
-    - Dashboard reads this saved flag instead of scanning card records repeatedly.
+    Refresh one submission's Needs PDF flag from actual database state.
     """
     own_conn = None
 
@@ -1134,36 +1136,22 @@ def refresh_needs_card_pdf_flag(submission_number, cur=None):
             cur = own_conn.cursor()
 
         cur.execute("""
-        SELECT status
-        FROM submissions
-        WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-        """, (sub,))
+        UPDATE submissions s
+        SET needs_card_pdf =
+            (
+                COALESCE(s.status, '') IN ('Shipping Soon', 'Complete')
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM card_buyback_items c
+                    WHERE REGEXP_REPLACE(c.submission_number, '\\D', '', 'g')=%s
+                )
+            )
+        WHERE REGEXP_REPLACE(s.submission_number, '\\D', '', 'g')=%s
+        RETURNING COALESCE(needs_card_pdf, FALSE)
+        """, (sub, sub))
+
         row = cur.fetchone()
-
-        if not row:
-            if own_conn:
-                own_conn.commit()
-                cur.close()
-                own_conn.close()
-            return False
-
-        status = row[0] or "Submitted"
-
-        cur.execute("""
-        SELECT COUNT(*)
-        FROM card_buyback_items
-        WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-        """, (sub,))
-        card_count = cur.fetchone()[0] or 0
-
-        needs_pdf = status_needs_card_pdf(status) and card_count == 0
-
-        cur.execute("""
-        UPDATE submissions
-        SET needs_card_pdf=%s,
-            last_updated=NOW()
-        WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-        """, (needs_pdf, sub))
+        needs_pdf = bool(row and row[0])
 
         if own_conn:
             own_conn.commit()
@@ -1184,8 +1172,10 @@ def refresh_needs_card_pdf_flag(submission_number, cur=None):
 
 def card_pdf_needs_attention(row):
     """
-    Dashboard helper. Reads saved flag first, with safe fallback.
-    Accepts rows with 2+ columns.
+    Dashboard helper.
+
+    Preferred: row[2] from dashboard SQL is the live computed Needs PDF value.
+    Fallback: check actual DB/card records, not a stale saved flag.
     """
     try:
         if len(row) > 2:
@@ -1204,9 +1194,11 @@ def card_pdf_needs_attention(row):
         conn = get_conn()
         cur = conn.cursor()
         cur.execute("""
-        SELECT COALESCE(needs_card_pdf, FALSE)
-        FROM submissions
-        WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+        SELECT NOT EXISTS (
+            SELECT 1
+            FROM card_buyback_items c
+            WHERE REGEXP_REPLACE(c.submission_number, '\\D', '', 'g')=%s
+        )
         """, (sub,))
         result = cur.fetchone()
         cur.close()
@@ -1226,6 +1218,55 @@ def card_pdf_alert_text(row):
         return "Card PDF needed"
     except Exception:
         return "Card PDF needed"
+
+
+
+def reconcile_all_needs_card_pdf_flags(cur=None):
+    """
+    Repairs stale Needs PDF flags.
+
+    Correct rule:
+    Needs PDF = status is Shipping Soon or Complete
+                AND no card_buyback_items exist for that submission.
+
+    This fixes old submissions that already had card PDFs uploaded before the
+    needs_card_pdf flag existed or before the flag logic was corrected.
+    """
+    own_conn = None
+    try:
+        if cur is None:
+            own_conn = get_conn()
+            cur = own_conn.cursor()
+
+        cur.execute("""
+        UPDATE submissions s
+        SET needs_card_pdf =
+            (
+                COALESCE(s.status, '') IN ('Shipping Soon', 'Complete')
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM card_buyback_items c
+                    WHERE REGEXP_REPLACE(c.submission_number, '\\D', '', 'g')
+                        = REGEXP_REPLACE(s.submission_number, '\\D', '', 'g')
+                )
+            )
+        """)
+
+        if own_conn:
+            own_conn.commit()
+            cur.close()
+            own_conn.close()
+
+        return True
+    except Exception:
+        try:
+            if own_conn:
+                own_conn.rollback()
+                cur.close()
+                own_conn.close()
+        except Exception:
+            pass
+        return False
 
 
 def build_table(rows):
@@ -2063,7 +2104,16 @@ def admin_search():
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
-    SELECT raw_data, status, COALESCE(needs_card_pdf, FALSE)
+    SELECT raw_data, status,
+           (
+               COALESCE(status, '') IN ('Shipping Soon', 'Complete')
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM card_buyback_items c
+                   WHERE REGEXP_REPLACE(c.submission_number, '\D', '', 'g')
+                       = REGEXP_REPLACE(submissions.submission_number, '\D', '', 'g')
+               )
+           ) AS needs_card_pdf
     FROM submissions
     WHERE raw_data::text ILIKE %s
        OR submission_number ILIKE %s
