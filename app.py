@@ -202,6 +202,42 @@ def normalize_submission(v):
 def normalize_phone(v):
     return re.sub(r"\D", "", str(v or ""))
 
+
+def normalize_key_text(value):
+    text = str(value or "").strip().lower()
+    text = text.replace("ƒ", "f")
+    text = text.replace("æ", "f")
+    text = text.replace("â\x80\x99", "'")
+    text = text.replace(".", "")
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+def is_dropoff_date_key(key):
+    normalized = normalize_key_text(key)
+
+    if normalized in [
+        "fand",
+        "and",
+        "submission date",
+        "customer drop-off date",
+        "customer drop off date",
+        "drop-off date",
+        "drop off date",
+        "date",
+        "s"
+    ]:
+        return True
+
+    # Some Excel exports produce broken short text around the original date field.
+    if "fand" in normalized:
+        return True
+
+    if normalized.startswith("f") and "and" in normalized and len(normalized) <= 12:
+        return True
+
+    return False
+
+
 def get_field(data, names):
     for wanted in names:
         for k, v in data.items():
@@ -235,8 +271,8 @@ def clean_service_display(service):
     value = str(service or "").strip()
     if " - " in value:
         return value.split(" - ", 1)[0].strip()
-    if " â " in value:
-        return value.split(" â ", 1)[0].strip()
+    if " – " in value:
+        return value.split(" – ", 1)[0].strip()
     return value
 
 def date_only_display(value):
@@ -261,26 +297,33 @@ def date_only_display(value):
     return text
 
 def get_dropoff_date(data):
-    aliases = ["Customer Drop-Off Date", "Submission Date", "Æand", "Æand.", "ÃÂand", "ÃÂand.", "fand", "Fand", "S", "s", "Date", "date"]
-    value = get_field(data, aliases)
+    # First use known normal names.
+    value = get_field(data, [
+        "Customer Drop-Off Date",
+        "Customer Drop Off Date",
+        "Submission Date",
+        "ƒand",
+        "ƒand.",
+        "Æand",
+        "Æand.",
+        "fand",
+        "Fand",
+        "S",
+        "s",
+        "Date",
+        "date"
+    ])
 
     if value:
         return date_only_display(value)
 
+    # Then scan every raw key because the Excel column may be mojibake.
     for k, v in (data or {}).items():
-        key = str(k).strip()
-        key_lower = key.lower()
-
-        # Exact/common matches
-        if key_lower in ["s", "submission date", "customer drop-off date", "date", "Æand", "Æand.", "Ã¦Âand", "Ã¦Âand.", "fand"]:
-            return date_only_display(v)
-
-        # Defensive fallback for the corrupted Excel header:
-        # catches variants like "Æand", "ÃÂand", or copied/pasted mojibake that still ends with "and".
-        if "and" in key_lower and len(key_lower) <= 8:
+        if is_dropoff_date_key(k):
             return date_only_display(v)
 
     return ""
+
 
 def parse_arrived_completed_value(value):
     text = str(value or "").strip()
@@ -291,8 +334,8 @@ def parse_arrived_completed_value(value):
 
     month = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
     date_single = month + r"\s+\d{1,2},\s+\d{4}"
-    date_range_same_year = month + r"\s+\d{1,2}\s*[-â]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
-    date_range_full = date_single + r"\s*[-â]\s*" + date_single
+    date_range_same_year = month + r"\s+\d{1,2}\s*[-–]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
+    date_range_full = date_single + r"\s*[-–]\s*" + date_single
 
     completed_match = re.search(r"Completed\s+(" + date_single + r")", text, re.IGNORECASE)
     if completed_match:
@@ -956,7 +999,7 @@ def build_table(rows):
 
             if key_text == "S":
                 display_key = "Customer Drop-Off Date"
-            elif normalized_key_text in ["submission date", "Æand", "Æand.", "fand"]:
+            elif normalized_key_text in ["submission date", "ƒand", "ƒand.", "fand"]:
                 display_key = "Customer Drop-Off Date"
             else:
                 display_key = key_text
@@ -1081,16 +1124,41 @@ def card_pdf_alert_text(row):
 
 def get_sort_date(row):
     data = row[0] or {}
-    date_value = get_field(data, ["Customer Drop-Off Date", "Submission Date", "Æand", "Æand.", "ÃÂand", "ÃÂand.", "fand", "Fand", "S", "s", "Date", "date"])
+
+    # Use the same drop-off date detector used for portal/display.
+    date_value = ""
+
+    for k, v in (data or {}).items():
+        if is_dropoff_date_key(k):
+            date_value = v
+            break
+
+    if not date_value:
+        date_value = get_field(data, [
+            "Customer Drop-Off Date",
+            "Customer Drop Off Date",
+            "Submission Date",
+            "ƒand",
+            "ƒand.",
+            "Æand",
+            "Æand.",
+            "fand",
+            "Fand",
+            "S",
+            "s",
+            "Date",
+            "date"
+        ])
 
     try:
         if date_value:
-            return pd.to_datetime(date_value)
+            parsed = pd.to_datetime(date_value, errors="coerce")
+            if not pd.isna(parsed):
+                return parsed
     except Exception:
         pass
 
     return pd.Timestamp.min
-
 
 
 def extract_card_items_from_pdf(pdf_path):
@@ -1797,8 +1865,8 @@ def admin_upload_psa():
 
                 month_pattern = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
                 date_pattern = month_pattern + r"\s+\d{1,2},\s+\d{4}"
-                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-â]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
-                date_range_full = date_pattern + r"\s*[-â]\s*" + date_pattern
+                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-–]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
+                date_range_full = date_pattern + r"\s*[-–]\s*" + date_pattern
 
                 value_pattern = re.compile(
                     rf"(Completed\s+{date_pattern}|Est\.\s*Complete\s*by\s+{date_range_full}|Est\.\s*Complete\s*by\s+{date_range_same_year}|Est\.\s*Complete\s*by\s+{date_pattern}|Estimated\s*Complete\s*by\s+{date_range_full}|Estimated\s*Complete\s*by\s+{date_range_same_year}|Estimated\s*Complete\s*by\s+{date_pattern}|Est\.\s*by\s+{date_range_full}|Est\.\s*by\s+{date_range_same_year}|Est\.\s*by\s+{date_pattern}|{date_pattern})",
@@ -1871,7 +1939,7 @@ def admin_upload_psa():
                             j += 1
 
                     # Split case:
-                    # â¢ Sub
+                    # • Sub
                     # #14550482
                     # Research & ID
                     elif re.search(r"\bSub\b\s*$", line, re.IGNORECASE) and i + 1 < len(lines):
@@ -1910,7 +1978,7 @@ def admin_upload_psa():
                             block_text = re.sub(r",\s+(\d{4})", r", \1", block_text)
 
                             matches = re.findall(
-                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
+                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
                                 block_text,
                                 re.IGNORECASE
                             )
