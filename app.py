@@ -1081,6 +1081,57 @@ def should_hide_column(column_name):
         "customer status"
     ]
 
+
+def status_needs_card_pdf(status):
+    return (status or "") in ["Shipping Soon", "Complete"]
+
+def card_pdf_needs_attention(row):
+    """
+    Dashboard alert helper.
+
+    A submission needs attention when PSA says the order is Shipping Soon or Complete,
+    but no card-detail PDF/card records have been uploaded for that submission recently.
+    """
+    try:
+        data = row[0] or {}
+        status = row[1] or "Submitted"
+
+        if not status_needs_card_pdf(status):
+            return False
+
+        sub = normalize_submission(get_field(data, ["Submission #", "Submission Number"]))
+        if not sub:
+            return False
+
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+        SELECT COUNT(*)
+        FROM card_buyback_items
+        WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+        """, (sub,))
+        count = cur.fetchone()[0] or 0
+        cur.close()
+        conn.close()
+
+        return count == 0
+    except Exception:
+        # Do not let the dashboard crash because of the alert helper.
+        # If there is uncertainty, hide the alert rather than breaking admin.
+        return False
+
+def card_pdf_alert_text(row):
+    try:
+        status = row[1] or "Submitted"
+        if status == "Shipping Soon":
+            return "Grades ready / card PDF needed"
+        if status == "Complete":
+            return "Completed / card PDF needed"
+        return "Card PDF needed"
+    except Exception:
+        return "Card PDF needed"
+
+
 def build_table(rows):
     """
     Professional compact admin table.
