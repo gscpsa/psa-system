@@ -1212,13 +1212,14 @@ def is_psa_grade_line(line):
 
 def extract_card_items_from_pdf(pdf_path):
     """
-    PSA portrait PDF parser with embedded-image matching.
+    PSA portrait PDF parser with strict thumbnail mapping.
 
-    This version DOES NOT crop the page.
-    It extracts the actual embedded card image block and matches it to the card
-    by vertical row position near that card's Cert # / title.
-
-    This avoids the bad behavior where one cropped image contained multiple cards.
+    Fixes larger-order image skips:
+    - Ignores PSA header/banner/page-background images.
+    - Keeps only small left-column PSA card thumbnail images.
+    - Matches card thumbnails by page and vertical row.
+    - Falls back to same-page card order if row matching misses.
+    - Supports PSA qualified grades such as MC / OC and N-grade lines.
     """
     items = []
     submission_number = ""
@@ -1254,7 +1255,16 @@ def extract_card_items_from_pdf(pdf_path):
         except Exception:
             return ""
 
-    def is_probable_card_image(block):
+    def is_strict_card_thumbnail(block):
+        """
+        PSA portrait card thumbnails are small vertical images in the left column.
+
+        This intentionally rejects:
+        - full page screenshot/background images
+        - PSA red header/banner image
+        - payment/logo images
+        - wide UI images
+        """
         if block.get("type") != 1:
             return False
 
@@ -1267,21 +1277,27 @@ def extract_card_items_from_pdf(pdf_path):
         height_px = int(block.get("height") or 0)
         area_px = width_px * height_px
 
-        if area_px < 2500:
+        # Card thumbnails from PSA print around x=60, width ~27, height ~45 page units.
+        if not (35 <= x0 <= 115):
             return False
 
-        # Card thumbnail/slab should be taller than tiny logos, not a wide banner.
-        if width_px > height_px * 2.8:
+        if not (12 <= box_w <= 75):
             return False
 
-        if box_w < 18 or box_h < 25:
+        if not (22 <= box_h <= 95):
             return False
 
-        # In portrait PSA output, images sit left of the card text. Payment/logos tend not to be aligned with cert rows.
-        # Keep the x check loose enough for portrait output.
-        if x0 > 330:
+        # Embedded image is usually card-shaped/tall-ish, not wide.
+        if width_px <= 0 or height_px <= 0:
             return False
 
+        if width_px > height_px * 1.25:
+            return False
+
+        if area_px < 10000:
+            return False
+
+        # Reject footer/header-ish positions only if size is not thumbnail.
         return True
 
     all_page_text = []
@@ -1322,7 +1338,7 @@ def extract_card_items_from_pdf(pdf_path):
                             "y_mid": y_mid
                         })
 
-                elif is_probable_card_image(block):
+                elif is_strict_card_thumbnail(block):
                     img_data = image_data_from_block(block)
                     if img_data:
                         width_px = int(block.get("width") or 0)
@@ -1344,7 +1360,6 @@ def extract_card_items_from_pdf(pdf_path):
         image_blocks.sort(key=lambda b: (b["y_mid"], b["x0"]))
 
         page_data.append({
-            "page": pdf_page,
             "text": page_text,
             "text_blocks": text_blocks,
             "image_blocks": image_blocks
@@ -1369,6 +1384,14 @@ def extract_card_items_from_pdf(pdf_path):
         r"(Due to extraordinary demand|Learn more|Order Arrived|Order Prep|Research & ID|Grading|Assembly|QA Checks|Grades Ready|Complete|Track Package|Tracking number|Payment Method|Payment & Address|Return Address|Download CSV|View Grades|Your grades are ready|Grader Notes|Show More|Status|Changing your address|Customer Service|Vault Terms|Amex ending|Collectors Holdings|All rights reserved|https?://|Items\s+\d+|PSA Estimate|Card Ladder|Pop\b)",
         re.IGNORECASE
     )
+
+    def local_is_grade_line(line):
+        try:
+            if "is_psa_grade_line" in globals():
+                return is_psa_grade_line(line)
+        except Exception:
+            pass
+        return bool(grade_pattern.match(str(line or "").strip()))
 
     def page_for_offset(global_offset):
         selected = 0
@@ -1407,7 +1430,7 @@ def extract_card_items_from_pdf(pdf_path):
                 continue
 
             block_key = re.sub(r"[^A-Z0-9]+", " ", block["text"].upper()).strip()
-            score = sum(1 for w in desc_words[:6] if w in block_key)
+            score = sum(1 for w in desc_words[:8] if w in block_key)
 
             if score > best_score:
                 best_score = score
@@ -1418,47 +1441,63 @@ def extract_card_items_from_pdf(pdf_path):
 
         return None
 
-    def find_embedded_image_for_card(page_index, cert_y, description, used_images_by_page):
+    def find_image_for_item(page_index, target_y, used_images_by_page, page_order_index=None):
         if page_index is None or page_index < 0 or page_index >= len(page_data):
             return ""
 
-        target_y = title_y_on_page(page_index, description, cert_y)
-        if target_y is None:
-            target_y = cert_y
-
-        if target_y is None:
-            return ""
-
+        images = page_data[page_index]["image_blocks"]
         used = used_images_by_page.setdefault(page_index, set())
-        scored = []
 
-        for img_index, img in enumerate(page_data[page_index]["image_blocks"]):
-            if img_index in used:
-                continue
+        # First pass: nearest available thumbnail by same visual row.
+        if target_y is not None:
+            scored = []
+            for img_index, img in enumerate(images):
+                if img_index in used:
+                    continue
 
-            # Card image must be on the same row.
-            dy = abs(img["y_mid"] - target_y)
+                dy = abs(img["y_mid"] - target_y)
 
-            # Strong limit prevents jumping to next/previous card.
-            if dy > 95:
-                continue
+                # Allow enough tolerance for PSA text/image y-offsets, but not enough to jump rows.
+                if dy <= 70:
+                    scored.append((dy, img["x0"], -img.get("area", 0), img_index, img))
 
-            # Prefer left-side images and larger card thumbnails.
-            x_score = img["x0"]
-            area_score = -img.get("area", 0)
-            scored.append((dy, x_score, area_score, img_index, img))
+            if scored:
+                scored.sort(key=lambda x: (x[0], x[1], x[2]))
+                chosen = scored[0]
+                used.add(chosen[3])
+                return chosen[4]["image_data"]
 
-        if not scored:
-            return ""
+        # Second pass: same-page order fallback.
+        # This fixes cases where text y and image y differ or one row's title match fails.
+        available = [(idx, img) for idx, img in enumerate(images) if idx not in used]
+        available.sort(key=lambda x: x[1]["y_mid"])
 
-        scored.sort(key=lambda x: (x[0], x[1], x[2]))
-        chosen = scored[0]
-        used.add(chosen[3])
-        return chosen[4]["image_data"]
+        if page_order_index is not None and 0 <= page_order_index < len(available):
+            idx, img = available[page_order_index]
+            used.add(idx)
+            return img["image_data"]
 
-    def parse_text_card(cert_matches, idx, used_images_by_page):
-        cert_match = cert_matches[idx]
+        if available:
+            # If no exact order slot exists, take closest by y if possible.
+            if target_y is not None:
+                available.sort(key=lambda x: abs(x[1]["y_mid"] - target_y))
+            idx, img = available[0]
+            used.add(idx)
+            return img["image_data"]
+
+        return ""
+
+    cert_matches = list(re.finditer(r"Cert\s*#\s*(\d+)", full_text, re.IGNORECASE))
+
+    parsed_items = []
+    seen_certs = set()
+    page_item_counts = {}
+
+    for idx, cert_match in enumerate(cert_matches):
         cert_number = normalize_submission(cert_match.group(1)) or ""
+
+        if not cert_number or cert_number in seen_certs:
+            continue
 
         block_start = cert_matches[idx - 1].end() if idx > 0 else 0
         block_end = cert_matches[idx + 1].start() if idx + 1 < len(cert_matches) else len(full_text)
@@ -1472,17 +1511,17 @@ def extract_card_items_from_pdf(pdf_path):
         grade = ""
         description = ""
 
-        for line in reversed(before_lines[-30:]):
+        for line in reversed(before_lines[-35:]):
             low = line.lower()
 
-            if not grade and is_psa_grade_line(line):
+            if not grade and local_is_grade_line(line):
                 grade = line
                 continue
 
             if not description:
                 if (
                     not noise.search(line)
-                    and not is_psa_grade_line(line)
+                    and not local_is_grade_line(line)
                     and "order " not in low
                     and "submission #" not in low
                     and not low.startswith("cert")
@@ -1498,7 +1537,7 @@ def extract_card_items_from_pdf(pdf_path):
             if grade and description:
                 break
 
-        for line in after_lines[:30]:
+        for line in after_lines[:35]:
             low = line.lower()
             if low.startswith("item "):
                 item_desc = re.sub(r"^Item\s+", "", line, flags=re.IGNORECASE).strip()
@@ -1508,9 +1547,12 @@ def extract_card_items_from_pdf(pdf_path):
 
         page_index = page_for_offset(cert_match.start())
         cert_y = cert_y_on_page(page_index, cert_number)
-        image_data = find_embedded_image_for_card(page_index, cert_y, description, used_images_by_page)
+        row_y = title_y_on_page(page_index, description, cert_y) or cert_y
 
-        return {
+        page_order_index = page_item_counts.get(page_index, 0)
+        page_item_counts[page_index] = page_order_index + 1
+
+        parsed_items.append({
             "submission_number": submission_number,
             "order_number": order_number,
             "cert_number": cert_number,
@@ -1520,26 +1562,33 @@ def extract_card_items_from_pdf(pdf_path):
             "grade": grade,
             "after_service": "",
             "images_url": "",
-            "image_data": image_data,
+            "image_data": "",
             "psa_estimate": "",
             "card_ladder_value": "",
             "pop": "",
-            "pop_higher": ""
-        }
+            "pop_higher": "",
+            "_page_index": page_index,
+            "_row_y": row_y,
+            "_page_order_index": page_order_index
+        })
+        seen_certs.add(cert_number)
 
-    cert_matches = list(re.finditer(r"Cert\s*#\s*(\d+)", full_text, re.IGNORECASE))
-
-    seen_certs = set()
     used_images_by_page = {}
 
-    for idx in range(len(cert_matches)):
-        item = parse_text_card(cert_matches, idx, used_images_by_page)
-        cert_number = item.get("cert_number")
+    # Assign images after all text rows are known.
+    for item in parsed_items:
+        image_data = find_image_for_item(
+            item.get("_page_index"),
+            item.get("_row_y"),
+            used_images_by_page,
+            item.get("_page_order_index")
+        )
+        item["image_data"] = image_data
 
-        if not cert_number or cert_number in seen_certs:
-            continue
+        item.pop("_page_index", None)
+        item.pop("_row_y", None)
+        item.pop("_page_order_index", None)
 
-        seen_certs.add(cert_number)
         items.append(item)
 
     doc.close()
