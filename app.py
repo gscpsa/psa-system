@@ -1161,6 +1161,55 @@ def get_sort_date(row):
     return pd.Timestamp.min
 
 
+
+def is_psa_grade_line(line):
+    text = re.sub(r"\s+", " ", str(line or "")).strip().upper()
+    if not text:
+        return False
+
+    # Standard PSA numeric grades, with optional qualifiers:
+    # VERY GOOD 3 MC
+    # NEAR MINT-MINT 8 OC
+    # EXCELLENT 5 ST
+    qualifiers = r"(?:OC|MC|ST|PD|OF|MK|MKD|QUAL|Q)"
+    numeric_grade = re.compile(
+        r"^(?:"
+        r"POOR|FAIR|GOOD|VERY GOOD|VERY GOOD-EXCELLENT|EXCELLENT|"
+        r"EXCELLENT-MINT|NEAR MINT|NEAR MINT-MINT|NM-MT|MINT|GEM MINT|"
+        r"AUTHENTIC|PR|FR|GD|VG|VG-EX|EX|EX-MT|NM|MT|GM"
+        r")?\s*\d{1,2}(?:\s+" + qualifiers + r")?$",
+        re.IGNORECASE
+    )
+
+    if numeric_grade.match(text):
+        return True
+
+    # PSA no-grade / qualifier lines:
+    # N6: MINIMUM SIZE REQUIREMENT
+    # N5: ALTERED STOCK
+    # AUTHENTIC ALTERED
+    if re.match(r"^N\d+\s*:\s*.+", text, re.IGNORECASE):
+        return True
+
+    non_numeric = [
+        "AUTHENTIC",
+        "AUTHENTIC ALTERED",
+        "MINIMUM SIZE REQUIREMENT",
+        "ALTERED STOCK",
+        "EVIDENCE OF TRIMMING",
+        "QUESTIONABLE AUTHENTICITY",
+        "MISCUT",
+        "OFF CENTER",
+        "STAINING",
+        "MARKED"
+    ]
+
+    if text in non_numeric:
+        return True
+
+    return False
+
+
 def extract_card_items_from_pdf(pdf_path):
     """
     PSA portrait PDF parser with embedded-image matching.
@@ -1312,7 +1361,7 @@ def extract_card_items_from_pdf(pdf_path):
         order_number = normalize_submission(order_match.group(1)) or ""
 
     grade_pattern = re.compile(
-        r"^(?:POOR|FAIR|GOOD|VERY GOOD|VERY GOOD-EXCELLENT|EXCELLENT|EXCELLENT-MINT|NEAR MINT|NEAR MINT-MINT|NM-MT|MINT|GEM MINT|AUTHENTIC|PR|FR|GD|VG|EX|NM|MT|GM)?\s*\d{1,2}$",
+        r"^(?:POOR|FAIR|GOOD|VERY GOOD|VERY GOOD-EXCELLENT|EXCELLENT|EXCELLENT-MINT|NEAR MINT|NEAR MINT-MINT|NM-MT|MINT|GEM MINT|AUTHENTIC|PR|FR|GD|VG|VG-EX|EX|EX-MT|NM|MT|GM)?\s*\d{1,2}(?:\s+(?:OC|MC|ST|PD|OF|MK|MKD|QUAL|Q))?$|^N\d+\s*:\s*.+$",
         re.IGNORECASE
     )
 
@@ -1426,14 +1475,14 @@ def extract_card_items_from_pdf(pdf_path):
         for line in reversed(before_lines[-30:]):
             low = line.lower()
 
-            if not grade and grade_pattern.match(line):
+            if not grade and is_psa_grade_line(line):
                 grade = line
                 continue
 
             if not description:
                 if (
                     not noise.search(line)
-                    and not grade_pattern.match(line)
+                    and not is_psa_grade_line(line)
                     and "order " not in low
                     and "submission #" not in low
                     and not low.startswith("cert")
