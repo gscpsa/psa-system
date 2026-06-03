@@ -1628,6 +1628,8 @@ def clear_submissions():
 @admin_required
 def admin_dashboard():
     sort = request.args.get("sort", "new")
+    view = request.args.get("view", "all")
+    status_filter = request.args.get("status", "all").replace("+", " ")
 
     conn = get_conn()
     cur = conn.cursor()
@@ -1646,50 +1648,109 @@ def admin_dashboard():
     conn.close()
 
     rows = sorted(rows, key=get_sort_date, reverse=(sort != "old"))
+    all_rows = rows[:]
 
-    total_count = len(rows)
-    active_count = sum(1 for r in rows if (r[1] or "Submitted") not in ["Complete", "Delivered to Us", "Picked Up"])
-    complete_count = sum(1 for r in rows if (r[1] or "") == "Complete")
-    shipping_count = sum(1 for r in rows if (r[1] or "") == "Shipping Soon")
-    pickup_count = sum(1 for r in rows if (r[1] or "") == "Delivered to Us")
-    pdf_needed_count = sum(1 for r in rows if card_pdf_needs_attention(r))
+    if view == "active":
+        rows = [r for r in rows if (r[1] or "Submitted") not in ["Complete", "Delivered to Us", "Picked Up"]]
+    elif view == "complete":
+        rows = [r for r in rows if (r[1] or "") == "Complete"]
+    elif view == "shipping":
+        rows = [r for r in rows if (r[1] or "") == "Shipping Soon"]
+    elif view == "pickup":
+        rows = [r for r in rows if (r[1] or "") == "Delivered to Us"]
+    elif view == "pdf_needed":
+        rows = [r for r in rows if card_pdf_needs_attention(r)]
+
+    if status_filter != "all":
+        rows = [r for r in rows if customer_status_label(r[1] or "Submitted") == status_filter]
+
+    total_count = len(all_rows)
+    active_count = sum(1 for r in all_rows if (r[1] or "Submitted") not in ["Complete", "Delivered to Us", "Picked Up"])
+    complete_count = sum(1 for r in all_rows if (r[1] or "") == "Complete")
+    shipping_count = sum(1 for r in all_rows if (r[1] or "") == "Shipping Soon")
+    pickup_count = sum(1 for r in all_rows if (r[1] or "") == "Delivered to Us")
+    pdf_needed_count = sum(1 for r in all_rows if card_pdf_needs_attention(r))
 
     html = f"""
     <h2 style="font-size:34px;margin:8px 0 18px;">Admin Dashboard</h2>
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:12px 0 22px;">
-        <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
-            <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Total</div>
-            <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{total_count}</div>
-        </div>
-        <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
-            <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Active</div>
-            <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{active_count}</div>
-        </div>
-        <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
-            <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Complete</div>
-            <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{complete_count}</div>
-        </div>
-        <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
-            <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Shipping Soon</div>
-            <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{shipping_count}</div>
-        </div>
-        <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
-            <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Ready Pickup</div>
-            <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{pickup_count}</div>
-        </div>
-        <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #dc3545;">
-            <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">PDF Needed</div>
-            <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{pdf_needed_count}</div>
-        </div>
+        <a href="/admin?view=all&sort={sort}" style="text-decoration:none;color:inherit;">
+            <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
+                <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Total</div>
+                <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{total_count}</div>
+            </div>
+        </a>
+        <a href="/admin?view=active&sort={sort}" style="text-decoration:none;color:inherit;">
+            <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
+                <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Active</div>
+                <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{active_count}</div>
+            </div>
+        </a>
+        <a href="/admin?view=complete&sort={sort}" style="text-decoration:none;color:inherit;">
+            <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
+                <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Complete</div>
+                <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{complete_count}</div>
+            </div>
+        </a>
+        <a href="/admin?view=shipping&sort={sort}" style="text-decoration:none;color:inherit;">
+            <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
+                <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Shipping Soon</div>
+                <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{shipping_count}</div>
+            </div>
+        </a>
+        <a href="/admin?view=pickup&sort={sort}" style="text-decoration:none;color:inherit;">
+            <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
+                <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Ready Pickup</div>
+                <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{pickup_count}</div>
+            </div>
+        </a>
+        <a href="/admin?view=pdf_needed&sort={sort}" style="text-decoration:none;color:inherit;">
+            <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #dc3545;">
+                <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">PDF Needed</div>
+                <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{pdf_needed_count}</div>
+            </div>
+        </a>
     </div>
     """
 
+    status_options = customer_status_options()
+    status_select_html = ""
+    for option in status_options:
+        selected_attr = "selected" if option == status_filter else ""
+        status_select_html += f"<option value='{option}' {selected_attr}>{option}</option>"
 
-    html += """
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:0 0 18px;">
-        <a class="btn" href="/admin?sort=new">Newest First</a>
-        <a class="btn" href="/admin?sort=old">Oldest First</a>
+    html += f"""
+    <div class="filterbar">
+        <form method="get" action="/admin">
+            <div>
+                <label>Sort</label>
+                <select name="sort">
+                    <option value="new" {'selected' if sort == 'new' else ''}>Newest First</option>
+                    <option value="old" {'selected' if sort == 'old' else ''}>Oldest First</option>
+                </select>
+            </div>
+            <div>
+                <label>View</label>
+                <select name="view">
+                    <option value="all" {'selected' if view == 'all' else ''}>All Submissions</option>
+                    <option value="active" {'selected' if view == 'active' else ''}>Active</option>
+                    <option value="complete" {'selected' if view == 'complete' else ''}>Complete</option>
+                    <option value="shipping" {'selected' if view == 'shipping' else ''}>Shipping Soon</option>
+                    <option value="pickup" {'selected' if view == 'pickup' else ''}>Ready Pickup</option>
+                    <option value="pdf_needed" {'selected' if view == 'pdf_needed' else ''}>PDF Needed</option>
+                </select>
+            </div>
+            <div>
+                <label>Status</label>
+                <select name="status">
+                    <option value="all" {'selected' if status_filter == 'all' else ''}>All Statuses</option>
+                    {status_select_html}
+                </select>
+            </div>
+            <button type="submit">Apply</button>
+            <a class="reset-link" href="/admin">Reset</a>
+        </form>
     </div>
     """
 
@@ -2666,10 +2727,7 @@ def portal():
             align-items: center;
             justify-content: center;
             padding: 46px 16px;
-            background:
-                radial-gradient(circle at 12% 40%, rgba(25,135,84,.22), transparent 30%),
-                radial-gradient(circle at 90% 18%, rgba(15,81,50,.18), transparent 26%),
-                linear-gradient(135deg, #050807 0%, #111817 50%, #050807 100%);
+            background:#000;
         }
         .gsc-portal-card {
             width: 100%;
@@ -2802,7 +2860,7 @@ def portal():
             justify-content: center;
             color: #fff;
             padding: 28px 20px 18px;
-            background: #030605;
+            background:#000;
             border-top: 1px solid #198754;
         }
         .gsc-benefit {
@@ -2887,12 +2945,12 @@ def portal():
 
             <form class="gsc-portal-form" method="post">
                 <div class="gsc-input-row">
-                    <div class="gsc-input-icon">P</div>
+                    <div class="gsc-input-icon">&#9742;</div>
                     <input name="phone" placeholder="Phone number">
                 </div>
 
                 <div class="gsc-input-row">
-                    <div class="gsc-input-icon">N</div>
+                    <div class="gsc-input-icon">&#128100;</div>
                     <input name="last" placeholder="Last name">
                 </div>
 
@@ -2909,14 +2967,14 @@ def portal():
 
     <div class="gsc-benefits">
         <div class="gsc-benefit">
-            <div class="gsc-benefit-icon">R</div>
+            <div class="gsc-benefit-icon">&#8635;</div>
             <div>
                 <div class="gsc-benefit-title">Real-Time Updates</div>
                 <div class="gsc-benefit-text">Get the latest status on your submission in real time.</div>
             </div>
         </div>
         <div class="gsc-benefit">
-            <div class="gsc-benefit-icon">&#10003;</div>
+            <div class="gsc-benefit-icon">&#128737;</div>
             <div>
                 <div class="gsc-benefit-title">Expert Care</div>
                 <div class="gsc-benefit-text">Your cards are handled with expert care.</div>
