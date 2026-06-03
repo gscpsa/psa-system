@@ -1617,6 +1617,14 @@ def admin_dashboard():
     </div>
     """
 
+
+    html += """
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:0 0 18px;">
+        <a class="btn" href="/admin?sort=new">Newest First</a>
+        <a class="btn" href="/admin?sort=old">Oldest First</a>
+    </div>
+    """
+
     alert_rows = [row for row in rows if card_pdf_needs_attention(row)]
 
     if alert_rows:
@@ -2336,8 +2344,11 @@ def admin_buyback_requests():
 
     html = """
     <h2>Buyback Interest</h2>
+    <div class="card">
+        <p><b>Workflow:</b> Cards selected by customers appear under <b>New Interest</b>. If a card is moved to Sold or Pass by mistake, use <b>Back to New Interest</b>.</p>
+    </div>
     <div class="filterbar">
-        <a class="reset-link {new_active}" href="/admin/buyback_requests?queue=new">New Interested</a>
+        <a class="reset-link {new_active}" href="/admin/buyback_requests?queue=new">New Interest</a>
         <a class="reset-link {sold_active}" href="/admin/buyback_requests?queue=sold">Sold</a>
         <a class="reset-link {pass_active}" href="/admin/buyback_requests?queue=pass">Pass</a>
         <a class="reset-link {all_active}" href="/admin/buyback_requests?queue=all">All Interested</a>
@@ -2380,13 +2391,13 @@ def admin_buyback_requests():
             <input type="hidden" name="cert_number" value="{cert_number}">
             <button name="status" value="Sold">Sold</button>
             <button name="status" value="Pass">Pass</button>
-            <button name="status" value="New">Back to New</button>
+            <button name="status" value="New">Back to New Interest</button>
         </form>
         """
 
         html += f"""
         <tr>
-            <td><b>{buyback_status}</b></td>
+            <td><b>{'New Interest' if buyback_status == 'New' else buyback_status}</b></td>
             <td>{img_html}</td>
             <td>{customer_name}<br><small>{phone}</small></td>
             <td>{submission_number}</td>
