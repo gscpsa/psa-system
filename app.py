@@ -1587,25 +1587,33 @@ def admin_dashboard():
     pdf_needed_count = sum(1 for r in rows if card_pdf_needs_attention(r))
 
     html = f"""
-    <h2>Admin Dashboard</h2>
+    <h2 style="font-size:34px;margin:8px 0 18px;">Admin Dashboard</h2>
 
-    <div class="stats-grid">
-        <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">{total_count}</div></div>
-        <div class="stat-card"><div class="stat-label">Active</div><div class="stat-value">{active_count}</div></div>
-        <div class="stat-card"><div class="stat-label">Complete</div><div class="stat-value">{complete_count}</div></div>
-        <div class="stat-card"><div class="stat-label">Shipping Soon</div><div class="stat-value">{shipping_count}</div></div>
-        <div class="stat-card"><div class="stat-label">Ready Pickup</div><div class="stat-value">{pickup_count}</div></div>
-        <div class="stat-card" style="border-left-color:#dc3545;"><div class="stat-label">PDF Needed</div><div class="stat-value">{pdf_needed_count}</div></div>
-    </div>
-
-    <div class="dashboard-actions">
-        <a class="btn" href="/admin?sort=new">Newest First</a>
-        <a class="btn" href="/admin?sort=old">Oldest First</a>
-        <a class="btn" href="/admin/search">Search</a>
-        <a class="btn" href="/admin/upload">Upload Excel</a>
-        <a class="btn" href="/admin/upload_psa">Upload PSA PDF</a>
-        <a class="btn" href="/admin/upload_cards">Upload Card PDF</a>
-        <a class="btn" href="/portal">Customer Portal</a>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:12px 0 22px;">
+        <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
+            <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Total</div>
+            <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{total_count}</div>
+        </div>
+        <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
+            <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Active</div>
+            <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{active_count}</div>
+        </div>
+        <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
+            <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Complete</div>
+            <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{complete_count}</div>
+        </div>
+        <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
+            <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Shipping Soon</div>
+            <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{shipping_count}</div>
+        </div>
+        <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
+            <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Ready Pickup</div>
+            <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{pickup_count}</div>
+        </div>
+        <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #dc3545;">
+            <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">PDF Needed</div>
+            <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{pdf_needed_count}</div>
+        </div>
     </div>
     """
 
