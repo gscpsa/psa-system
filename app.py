@@ -1167,17 +1167,20 @@ def is_psa_grade_line(line):
     if not text:
         return False
 
-    # Standard PSA numeric grades, with optional qualifiers:
+    # PSA numeric grades, including half grades and qualifiers:
+    # VERY GOOD+ 3.5
     # VERY GOOD 3 MC
     # NEAR MINT-MINT 8 OC
     # EXCELLENT 5 ST
     qualifiers = r"(?:OC|MC|ST|PD|OF|MK|MKD|QUAL|Q)"
-    numeric_grade = re.compile(
-        r"^(?:"
-        r"POOR|FAIR|GOOD|VERY GOOD|VERY GOOD-EXCELLENT|EXCELLENT|"
+    grade_words = (
+        r"POOR|FAIR|GOOD|VERY GOOD\+?|VERY GOOD-EXCELLENT|EXCELLENT|"
         r"EXCELLENT-MINT|NEAR MINT|NEAR MINT-MINT|NM-MT|MINT|GEM MINT|"
         r"AUTHENTIC|PR|FR|GD|VG|VG-EX|EX|EX-MT|NM|MT|GM"
-        r")?\s*\d{1,2}(?:\s+" + qualifiers + r")?$",
+    )
+
+    numeric_grade = re.compile(
+        r"^(?:" + grade_words + r")?\s*\d{1,2}(?:\.\d)?(?:\s+" + qualifiers + r")?$",
         re.IGNORECASE
     )
 
@@ -1187,7 +1190,6 @@ def is_psa_grade_line(line):
     # PSA no-grade / qualifier lines:
     # N6: MINIMUM SIZE REQUIREMENT
     # N5: ALTERED STOCK
-    # AUTHENTIC ALTERED
     if re.match(r"^N\d+\s*:\s*.+", text, re.IGNORECASE):
         return True
 
@@ -1376,7 +1378,7 @@ def extract_card_items_from_pdf(pdf_path):
         order_number = normalize_submission(order_match.group(1)) or ""
 
     grade_pattern = re.compile(
-        r"^(?:POOR|FAIR|GOOD|VERY GOOD|VERY GOOD-EXCELLENT|EXCELLENT|EXCELLENT-MINT|NEAR MINT|NEAR MINT-MINT|NM-MT|MINT|GEM MINT|AUTHENTIC|PR|FR|GD|VG|VG-EX|EX|EX-MT|NM|MT|GM)?\s*\d{1,2}(?:\s+(?:OC|MC|ST|PD|OF|MK|MKD|QUAL|Q))?$|^N\d+\s*:\s*.+$",
+        r"^(?:POOR|FAIR|GOOD|VERY GOOD\+?|VERY GOOD-EXCELLENT|EXCELLENT|EXCELLENT-MINT|NEAR MINT|NEAR MINT-MINT|NM-MT|MINT|GEM MINT|AUTHENTIC|PR|FR|GD|VG|VG-EX|EX|EX-MT|NM|MT|GM)?\s*\d{1,2}(?:\.\d)?(?:\s+(?:OC|MC|ST|PD|OF|MK|MKD|QUAL|Q))?$|^N\d+\s*:\s*.+$",
         re.IGNORECASE
     )
 
@@ -1387,11 +1389,9 @@ def extract_card_items_from_pdf(pdf_path):
 
     def local_is_grade_line(line):
         try:
-            if "is_psa_grade_line" in globals():
-                return is_psa_grade_line(line)
+            return is_psa_grade_line(line)
         except Exception:
-            pass
-        return bool(grade_pattern.match(str(line or "").strip()))
+            return bool(grade_pattern.match(str(line or "").strip()))
 
     def page_for_offset(global_offset):
         selected = 0
