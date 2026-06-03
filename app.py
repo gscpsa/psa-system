@@ -1087,19 +1087,18 @@ def status_needs_card_pdf(status):
 
 def card_pdf_needs_attention(row):
     """
-    Dashboard alert helper.
-
-    A submission needs attention when PSA says the order is Shipping Soon or Complete,
-    but no card-detail PDF/card records have been uploaded for that submission recently.
+    True when a PSA submission is Shipping Soon or Complete but no card-detail
+    PDF records have been uploaded for that submission.
     """
     try:
-        data = row[0] or {}
-        status = row[1] or "Submitted"
+        data = row_raw_data(row)
+        status = row_status(row)
 
         if not status_needs_card_pdf(status):
             return False
 
         sub = normalize_submission(get_field(data, ["Submission #", "Submission Number"]))
+
         if not sub:
             return False
 
@@ -1116,8 +1115,6 @@ def card_pdf_needs_attention(row):
 
         return count == 0
     except Exception:
-        # Do not let the dashboard crash because of the alert helper.
-        # If there is uncertainty, hide the alert rather than breaking admin.
         return False
 
 def card_pdf_alert_text(row):
@@ -1130,6 +1127,20 @@ def card_pdf_alert_text(row):
         return "Card PDF needed"
     except Exception:
         return "Card PDF needed"
+
+
+
+def row_raw_data(row):
+    try:
+        return row[0] if len(row) > 0 else {}
+    except Exception:
+        return {}
+
+def row_status(row):
+    try:
+        return row[1] if len(row) > 1 else "Submitted"
+    except Exception:
+        return "Submitted"
 
 
 def build_table(rows):
@@ -1160,7 +1171,9 @@ def build_table(rows):
         </tr>
     """
 
-    for raw_data, status in rows:
+    for row in rows:
+        raw_data = row[0] if len(row) > 0 else {}
+        status = row[1] if len(row) > 1 else "Submitted"
         data = raw_data or {}
 
         sub = normalize_submission(get_field(data, ["Submission #", "Submission Number"])) or ""
@@ -1820,24 +1833,24 @@ def admin_dashboard():
     all_rows = rows[:]
 
     if view == "active":
-        rows = [r for r in rows if (r[1] or "Submitted") not in ["Complete", "Delivered to Us", "Picked Up"]]
+        rows = [r for r in rows if (row_status(r) or "Submitted") not in ["Complete", "Delivered to Us", "Picked Up"]]
     elif view == "complete":
-        rows = [r for r in rows if (r[1] or "") == "Complete"]
+        rows = [r for r in rows if (row_status(r) or "") == "Complete"]
     elif view == "shipping":
-        rows = [r for r in rows if (r[1] or "") == "Shipping Soon"]
+        rows = [r for r in rows if (row_status(r) or "") == "Shipping Soon"]
     elif view == "pickup":
-        rows = [r for r in rows if (r[1] or "") == "Delivered to Us"]
+        rows = [r for r in rows if (row_status(r) or "") == "Delivered to Us"]
     elif view == "pdf_needed":
         rows = [r for r in rows if card_pdf_needs_attention(r)]
 
     if status_filter != "all":
-        rows = [r for r in rows if customer_status_label(r[1] or "Submitted") == status_filter]
+        rows = [r for r in rows if customer_status_label(row_status(r) or "Submitted") == status_filter]
 
     total_count = len(all_rows)
-    active_count = sum(1 for r in all_rows if (r[1] or "Submitted") not in ["Complete", "Delivered to Us", "Picked Up"])
-    complete_count = sum(1 for r in all_rows if (r[1] or "") == "Complete")
-    shipping_count = sum(1 for r in all_rows if (r[1] or "") == "Shipping Soon")
-    pickup_count = sum(1 for r in all_rows if (r[1] or "") == "Delivered to Us")
+    active_count = sum(1 for r in all_rows if (row_status(r) or "Submitted") not in ["Complete", "Delivered to Us", "Picked Up"])
+    complete_count = sum(1 for r in all_rows if (row_status(r) or "") == "Complete")
+    shipping_count = sum(1 for r in all_rows if (row_status(r) or "") == "Shipping Soon")
+    pickup_count = sum(1 for r in all_rows if (row_status(r) or "") == "Delivered to Us")
     pdf_needed_count = sum(1 for r in all_rows if card_pdf_needs_attention(r))
 
     html = f"""
