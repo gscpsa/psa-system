@@ -869,6 +869,43 @@ def page(content, mode="admin"):
             font-weight:bold;
             color:#0f5132;
         }}
+
+        .buyback-collapsible {
+            margin-top:16px;
+            border:1px solid #e5e7eb;
+            border-radius:12px;
+            background:#ffffff;
+            overflow:hidden;
+        }
+        .buyback-collapsible summary {
+            cursor:pointer;
+            padding:14px 16px;
+            background:#f3f7f5;
+            color:#0f5132;
+            font-weight:900;
+            font-size:17px;
+            list-style:none;
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            gap:12px;
+        }
+        .buyback-collapsible summary::-webkit-details-marker {
+            display:none;
+        }
+        .buyback-collapsible summary:after {
+            content:"+";
+            font-size:24px;
+            font-weight:900;
+            color:#198754;
+        }
+        .buyback-collapsible[open] summary:after {
+            content:"–";
+        }
+        .buyback-collapsible .buyback-inner {
+            padding:14px;
+        }
+
         .sell-check {{
             display:flex;
             align-items:center;
@@ -2953,43 +2990,52 @@ def portal():
             margin: 0;
         }
         .gsc-benefits {
-            display: flex;
-            gap: 70px;
-            justify-content: center;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 16px;
             color: #fff;
-            padding: 28px 20px 18px;
+            padding: 28px 20px 22px;
             background:#000;
             border-top: 1px solid #198754;
+            max-width: 900px;
+            margin: 0 auto;
         }
         .gsc-benefit {
             display: flex;
-            gap: 16px;
+            gap: 14px;
             align-items: center;
-            max-width: 300px;
+            background: #07110d;
+            border: 1px solid rgba(25,135,84,.65);
+            border-radius: 14px;
+            padding: 16px;
+            box-shadow: 0 8px 20px rgba(0,0,0,.28);
         }
         .gsc-benefit-icon {
-            width: 58px;
-            height: 58px;
-            border-radius: 50%;
-            border: 5px solid #198754;
+            width: 46px;
+            height: 46px;
+            border-radius: 12px;
+            background: linear-gradient(180deg, #198754 0%, #0f5132 100%);
+            border: 0;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 25px;
+            font-size: 22px;
             color: #fff;
             flex: 0 0 auto;
             font-weight: 900;
+            line-height:1;
         }
         .gsc-benefit-title {
             font-weight: 900;
-            font-size: 18px;
+            font-size: 17px;
             text-transform: uppercase;
             margin-bottom: 4px;
+            letter-spacing:.3px;
         }
         .gsc-benefit-text {
             color: #d1d5db;
-            font-size: 15px;
-            line-height: 1.3;
+            font-size: 14px;
+            line-height: 1.35;
         }
         @media (max-width: 700px) {
             .gsc-portal-wrap {
@@ -3065,14 +3111,14 @@ def portal():
 
     <div class="gsc-benefits">
         <div class="gsc-benefit">
-            <div class="gsc-benefit-icon">&#8635;</div>
+            <div class="gsc-benefit-icon">&#128337;</div>
             <div>
                 <div class="gsc-benefit-title">Real-Time Updates</div>
                 <div class="gsc-benefit-text">Get the latest status on your submission in real time.</div>
             </div>
         </div>
         <div class="gsc-benefit">
-            <div class="gsc-benefit-icon">&#128737;</div>
+            <div class="gsc-benefit-icon">&#9733;</div>
             <div>
                 <div class="gsc-benefit-title">Expert Care</div>
                 <div class="gsc-benefit-text">Your cards are handled with expert care.</div>
@@ -3208,13 +3254,16 @@ def portal_orders():
         buyback_html = ""
 
         if buyback_rows:
+            buyback_count = len(buyback_rows)
             buyback_html += f"""
             <hr>
-            <h4>Cards in This Submission</h4>
-            <p>Select any cards you may be interested in selling to Giant Sports Cards.</p>
-            <form method="post" action="/portal/sell_interest">
-                <input type="hidden" name="submission_number" value="{sub}">
-                <div class="card-grid">
+            <details class="buyback-collapsible">
+                <summary>View cards / select cards to sell ({buyback_count})</summary>
+                <div class="buyback-inner">
+                    <p>Select any cards you may be interested in selling to Giant Sports Cards.</p>
+                    <form method="post" action="/portal/sell_interest">
+                        <input type="hidden" name="submission_number" value="{sub}">
+                        <div class="card-grid">
             """
 
             for row in buyback_rows:
@@ -3242,10 +3291,12 @@ def portal_orders():
                 """
 
             buyback_html += """
+                        </div>
+                        <br>
+                        <button type="submit">Save Sell Interest</button>
+                    </form>
                 </div>
-                <br>
-                <button type="submit">Save Sell Interest</button>
-            </form>
+            </details>
             """
 
         sms_mode = sms_mode or "none"
