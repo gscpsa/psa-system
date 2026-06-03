@@ -875,14 +875,14 @@ def page(content, mode="admin"):
             color:#0f5132;
         }}
 
-        .buyback-collapsible {
+        .buyback-collapsible {{
             margin-top:16px;
             border:1px solid #e5e7eb;
             border-radius:12px;
             background:#ffffff;
             overflow:hidden;
-        }
-        .buyback-collapsible summary {
+        }}
+        .buyback-collapsible summary {{
             cursor:pointer;
             padding:14px 16px;
             background:#f3f7f5;
@@ -894,22 +894,22 @@ def page(content, mode="admin"):
             justify-content:space-between;
             align-items:center;
             gap:12px;
-        }
-        .buyback-collapsible summary::-webkit-details-marker {
+        }}
+        .buyback-collapsible summary::-webkit-details-marker {{
             display:none;
-        }
-        .buyback-collapsible summary:after {
+        }}
+        .buyback-collapsible summary:after {{
             content:"+";
             font-size:24px;
             font-weight:900;
             color:#198754;
-        }
-        .buyback-collapsible[open] summary:after {
+        }}
+        .buyback-collapsible[open] summary:after {{
             content:"–";
-        }
-        .buyback-collapsible .buyback-inner {
+        }}
+        .buyback-collapsible .buyback-inner {{
             padding:14px;
-        }
+        }}
 
         .sell-check {{
             display:flex;
