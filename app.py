@@ -2970,29 +2970,29 @@ def portal():
             padding: 28px 20px 22px;
             background:#000;
             border-top: 1px solid #198754;
-            max-width: 900px;
-            margin: 0 auto;
+            max-width: 100%;
+            margin: 0;
         }
         .gsc-benefit {
             display: flex;
             gap: 14px;
             align-items: center;
-            background: #07110d;
-            border: 1px solid rgba(25,135,84,.65);
+            background: #000;
+            border: 1px solid rgba(25,135,84,.75);
             border-radius: 14px;
             padding: 16px;
-            box-shadow: 0 8px 20px rgba(0,0,0,.28);
+            box-shadow: none;
         }
         .gsc-benefit-icon {
-            width: 46px;
-            height: 46px;
-            border-radius: 12px;
-            background: linear-gradient(180deg, #198754 0%, #0f5132 100%);
-            border: 0;
+            width: 52px;
+            height: 52px;
+            border-radius: 14px;
+            background: #0f5132;
+            border: 2px solid #198754;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 22px;
+            font-size: 25px;
             color: #fff;
             flex: 0 0 auto;
             font-weight: 900;
