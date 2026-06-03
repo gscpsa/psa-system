@@ -977,6 +977,48 @@ def page(content, mode="admin"):
         }}
 
 
+
+        .admin-section-title {{
+            font-size:22px;
+            margin:18px 0 10px;
+            color:#111827;
+        }}
+
+        .compact-table th:nth-child(1), .compact-table td:nth-child(1) {{ width:105px; }}
+        .compact-table th:nth-child(2), .compact-table td:nth-child(2) {{ width:145px; }}
+        .compact-table th:nth-child(3), .compact-table td:nth-child(3) {{ width:135px; }}
+        .compact-table th:nth-child(4), .compact-table td:nth-child(4) {{ width:70px; }}
+        .compact-table th:nth-child(5), .compact-table td:nth-child(5) {{ width:135px; }}
+        .compact-table th:nth-child(6), .compact-table td:nth-child(6) {{ width:120px; }}
+        .compact-table th:nth-child(7), .compact-table td:nth-child(7) {{ width:110px; }}
+
+        .details-cell {{
+            white-space:normal;
+            max-width:260px;
+            color:#374151;
+            line-height:1.35;
+        }}
+
+        details.row-details summary {{
+            cursor:pointer;
+            color:#0f5132;
+            font-weight:bold;
+            display:inline-block;
+            padding:3px 6px;
+            border-radius:6px;
+            background:#eef6f2;
+        }}
+
+        details.row-details div {{
+            margin-top:7px;
+            background:#f9fafb;
+            border:1px solid #e5e7eb;
+            border-radius:8px;
+            padding:8px;
+            white-space:normal;
+            max-width:320px;
+        }}
+
         @media (max-width: 700px) {{
             .topbar {{
                 align-items:flex-start;
@@ -1040,182 +1082,96 @@ def should_hide_column(column_name):
     ]
 
 def build_table(rows):
-    keys = []
-    clean_rows = []
+    """
+    Professional compact admin table.
 
-    preferred_order = [
-        "Submission #",
-        "Submission Number",
-        "Customer Name",
-        "Name",
-        "Contact Info",
-        "Phone",
-        "Phone Number",
-        "# Of Cards",
-        "# of Cards",
-        "Cards",
-        "Service Type",
-        "Service",
-        "Customer Drop-Off Date",
-        "PSA Status",
-        "Card PDF Alert",
-        "Arrived / Completed",
-        "Estimated Completion Date"
-    ]
+    Instead of exposing every raw Excel/PSA column like a giant spreadsheet,
+    this table shows the operational columns staff actually need.
+    Extra/raw fields are placed behind a Details expander.
+    """
+    if not rows:
+        return "<div class='card'>No records found.</div>"
 
-    preferred_display_order = [
-        "Submission #",
-        "Customer Name",
-        "Contact Info",
-        "# Of Cards",
-        "Service Type",
-        "Customer Drop-Off Date",
-        "PSA Status",
-        "Card PDF Alert",
-        "Arrived / Completed",
-        "Estimated Completion Date"
-    ]
+    html = """
+    <h3 class="admin-section-title">Submissions</h3>
+    <div class='table-wrap'>
+    <table class='compact-table'>
+        <tr>
+            <th>Submission #</th>
+            <th>Customer</th>
+            <th>Phone</th>
+            <th>Cards</th>
+            <th>Service</th>
+            <th>Status</th>
+            <th>Drop-Off</th>
+            <th>Est. Complete</th>
+            <th>Details</th>
+        </tr>
+    """
 
-    force_keys = ["Arrived / Completed", "Estimated Completion Date", "Card PDF Alert"]
+    for raw_data, status in rows:
+        data = raw_data or {}
 
-    for r in rows:
-        data = r[0] or {}
-        row = {}
+        sub = normalize_submission(get_field(data, ["Submission #", "Submission Number"])) or ""
+        customer = get_field(data, ["Customer Name", "Name"])
+        phone = get_field(data, ["Contact Info", "Phone", "Phone Number"])
+        cards = get_field(data, ["# Of Cards", "# of Cards", "Cards"])
+        service = clean_service_display(get_field(data, ["Service Type", "Service"]))
+        dropoff = get_dropoff_date(data)
+        display_status = customer_status_label(status or "Submitted")
+
+        arrived_completed_raw = get_field(data, ["Arrived / Completed"])
+        arrived_completed_data = parse_arrived_completed_value(arrived_completed_raw)
+        estimated_completion = get_field(data, ["Estimated Completion Date"]) or arrived_completed_data["estimated"]
+
+        details_parts = []
 
         for k, v in data.items():
             key_text = str(k).strip()
 
-            if "unnamed" in key_text.lower():
+            if not key_text or "unnamed" in key_text.lower():
                 continue
 
             if should_hide_column(key_text):
                 continue
 
-            normalized_key_text = key_text.strip().lower()
+            if is_dropoff_date_key(key_text):
+                continue
 
-            if key_text == "S":
-                display_key = "Customer Drop-Off Date"
-            elif normalized_key_text in ["submission date", "ƒand", "ƒand.", "fand"]:
-                display_key = "Customer Drop-Off Date"
-            else:
-                display_key = key_text
+            normalized_key = key_text.strip().lower()
+            if normalized_key in [
+                "submission #", "submission number", "customer name", "name",
+                "contact info", "phone", "phone number", "# of cards", "# Of Cards".lower(),
+                "cards", "service type", "service", "arrived / completed",
+                "estimated completion date"
+            ]:
+                continue
 
-            display_value = v
+            val = clean(v)
+            if val:
+                details_parts.append(f"<b>{html_escape(key_text)}:</b> {html_escape(val)}")
 
-            if display_key.strip().lower() == "service type":
-                display_value = clean_service_display(v)
-
-            if display_key == "Customer Drop-Off Date":
-                display_value = date_only_display(v)
-
-            if display_key == "Arrived / Completed":
-                parsed_ac = parse_arrived_completed_value(v)
-                display_value = parsed_ac["display"]
-
-                if parsed_ac["estimated"]:
-                    row["Estimated Completion Date"] = parsed_ac["estimated"]
-                    if "Estimated Completion Date" not in keys:
-                        keys.append("Estimated Completion Date")
-
-            row[display_key] = display_value
-
-            if display_key not in keys:
-                keys.append(display_key)
-
-        row["PSA Status"] = customer_status_label(r[1] or "Submitted")
-
-        if card_pdf_needs_attention(r):
-            row["Card PDF Alert"] = card_pdf_alert_text(r)
+        if not details_parts:
+            details_html = "<span style='color:#6b7280;'>—</span>"
         else:
-            row["Card PDF Alert"] = ""
+            details_html = "<details class='row-details'><summary>Details</summary><div>" + "<br>".join(details_parts[:12]) + "</div></details>"
 
-        if "PSA Status" not in keys:
-            keys.append("PSA Status")
-        if "Card PDF Alert" not in keys:
-            keys.append("Card PDF Alert")
-
-        clean_rows.append(row)
-
-    for forced_key in force_keys:
-        if forced_key not in keys:
-            keys.append(forced_key)
-
-    if not clean_rows:
-        return "<div class='card'>No records found.</div>"
-
-    ordered_keys = []
-
-    for wanted_key in preferred_display_order:
-        if wanted_key in keys and wanted_key not in ordered_keys:
-            ordered_keys.append(wanted_key)
-
-    for k in keys:
-        if k not in ordered_keys:
-            ordered_keys.append(k)
-
-    keys = ordered_keys
-
-    html = "<div class='table-wrap'><table><tr>"
-    for k in keys:
-        html += f"<th>{k}</th>"
-    html += "</tr>"
-
-    for row in clean_rows:
-        html += "<tr>"
-        for k in keys:
-            val = row.get(k, "")
-            col_class = "notes-col" if "note" in k.lower() else ""
-
-            if k == "PSA Status":
-                html += f"<td class='status {col_class}'>{val}</td>"
-            elif k == "Card PDF Alert" and val:
-                html += f"<td class='{col_class}' style='color:#dc3545;font-weight:bold;'>{val}</td>"
-            else:
-                html += f"<td class='{col_class}'>{val}</td>"
-        html += "</tr>"
+        html += f"""
+        <tr>
+            <td><b>{html_escape(sub)}</b></td>
+            <td>{html_escape(customer)}</td>
+            <td>{html_escape(phone)}</td>
+            <td>{html_escape(cards)}</td>
+            <td>{html_escape(service)}</td>
+            <td class="status">{html_escape(display_status)}</td>
+            <td>{html_escape(dropoff)}</td>
+            <td>{html_escape(estimated_completion)}</td>
+            <td class="details-cell">{details_html}</td>
+        </tr>
+        """
 
     html += "</table></div>"
     return html
-
-def status_needs_card_pdf(status):
-    internal_status = status or ""
-    return internal_status in ["Shipping Soon", "Complete"]
-
-def card_pdf_needs_attention(row):
-    status = row[1] or "Submitted"
-
-    if not status_needs_card_pdf(status):
-        return False
-
-    card_pdf_uploaded_at = row[2] if len(row) > 2 else None
-    card_pdf_item_count = int(row[3] or 0) if len(row) > 3 else 0
-
-    if card_pdf_item_count <= 0:
-        return True
-
-    if not card_pdf_uploaded_at:
-        return True
-
-    try:
-        uploaded_at = pd.to_datetime(card_pdf_uploaded_at, errors="coerce")
-        if pd.isna(uploaded_at):
-            return True
-        uploaded_at = uploaded_at.tz_localize(None) if getattr(uploaded_at, "tzinfo", None) else uploaded_at
-        return (pd.Timestamp.now() - uploaded_at).days > 30
-    except Exception:
-        return True
-
-def card_pdf_alert_text(row):
-    card_pdf_uploaded_at = row[2] if len(row) > 2 else None
-    card_pdf_item_count = int(row[3] or 0) if len(row) > 3 else 0
-
-    if card_pdf_item_count <= 0:
-        return "Needs card PDF upload"
-
-    if not card_pdf_uploaded_at:
-        return "Needs card PDF upload"
-
-    return "Card PDF older than 30 days"
 
 
 def get_sort_date(row):
@@ -1834,43 +1790,43 @@ def admin_dashboard():
     pdf_needed_count = sum(1 for r in all_rows if card_pdf_needs_attention(r))
 
     html = f"""
-    <h2 style="font-size:34px;margin:8px 0 18px;">Admin Dashboard</h2>
+    <h2 style="font-size:28px;margin:6px 0 14px;">Admin Dashboard</h2>
 
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:12px 0 22px;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:10px;margin:10px 0 18px;">
         <a href="/admin?view=all&sort={sort}" style="text-decoration:none;color:inherit;">
             <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
                 <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Total</div>
-                <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{total_count}</div>
+                <div style="font-size:24px;font-weight:900;color:#111827;margin-top:3px;">{total_count}</div>
             </div>
         </a>
         <a href="/admin?view=active&sort={sort}" style="text-decoration:none;color:inherit;">
             <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
                 <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Active</div>
-                <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{active_count}</div>
+                <div style="font-size:24px;font-weight:900;color:#111827;margin-top:3px;">{active_count}</div>
             </div>
         </a>
         <a href="/admin?view=complete&sort={sort}" style="text-decoration:none;color:inherit;">
             <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
                 <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Complete</div>
-                <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{complete_count}</div>
+                <div style="font-size:24px;font-weight:900;color:#111827;margin-top:3px;">{complete_count}</div>
             </div>
         </a>
         <a href="/admin?view=shipping&sort={sort}" style="text-decoration:none;color:inherit;">
             <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
                 <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Shipping Soon</div>
-                <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{shipping_count}</div>
+                <div style="font-size:24px;font-weight:900;color:#111827;margin-top:3px;">{shipping_count}</div>
             </div>
         </a>
         <a href="/admin?view=pickup&sort={sort}" style="text-decoration:none;color:inherit;">
             <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
                 <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Ready Pickup</div>
-                <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{pickup_count}</div>
+                <div style="font-size:24px;font-weight:900;color:#111827;margin-top:3px;">{pickup_count}</div>
             </div>
         </a>
         <a href="/admin?view=pdf_needed&sort={sort}" style="text-decoration:none;color:inherit;">
             <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #dc3545;">
                 <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">PDF Needed</div>
-                <div style="font-size:28px;font-weight:900;color:#111827;margin-top:4px;">{pdf_needed_count}</div>
+                <div style="font-size:24px;font-weight:900;color:#111827;margin-top:3px;">{pdf_needed_count}</div>
             </div>
         </a>
     </div>
