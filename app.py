@@ -377,7 +377,7 @@ def parse_arrived_completed_value(value):
 
     parts = []
     if result["arrived"]:
-        parts.append(f"Arrived: {result['arrived']}")
+        parts.append(f"Arrived at PSA: {result['arrived']}")
     if result["estimated"]:
         parts.append(f"Estimated Completion: {result['estimated']}")
     if result["completed"]:
@@ -3415,7 +3415,7 @@ def portal_orders():
             <h3>{customer_name}</h3>
             <p><b>Submission #:</b> {sub}</p>
             <p><b>Status:</b> <span class="status">{display_status_label}</span></p>
-            <p><b>Arrived:</b> {arrived_completed}</p>
+            <p><b>Arrived at PSA:</b> {arrived_completed}</p>
             <p><b>Estimated Completion Date:</b> {estimated_completion}</p>
             <p><b>Cards:</b> {cards}</p>
             <p><b>Service:</b> {service}</p>
