@@ -1022,6 +1022,33 @@ def page(content, mode="admin"):
             max-width:320px;
         }}
 
+
+        /* Customer portal bottom feature text readability fix */
+        .gsc-benefit-title {
+            color:#0f5132 !important;
+            font-weight:900 !important;
+        }
+        .gsc-benefit-text {
+            color:#111827 !important;
+            font-weight:600 !important;
+        }
+        .safe-benefit-title {
+            color:#0f5132 !important;
+            font-weight:900 !important;
+        }
+        .safe-benefit-text {
+            color:#111827 !important;
+            font-weight:600 !important;
+        }
+        .portal-feature-title {
+            color:#0f5132 !important;
+            font-weight:900 !important;
+        }
+        .portal-feature-text {
+            color:#111827 !important;
+            font-weight:600 !important;
+        }
+
         @media (max-width: 700px) {{
             .topbar {{
                 align-items:flex-start;
