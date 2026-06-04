@@ -1,4 +1,3 @@
-
 from flask import Flask, request, session, redirect
 import pandas as pd
 import psycopg2
@@ -56,16 +55,6 @@ def init_db():
     cur.execute("""
     ALTER TABLE submissions
     ADD COLUMN IF NOT EXISTS last_sms_sent TIMESTAMP
-    """)
-
-    cur.execute("""
-    ALTER TABLE submissions
-    ADD COLUMN IF NOT EXISTS needs_card_pdf BOOLEAN DEFAULT FALSE
-    """)
-
-    cur.execute("""
-    ALTER TABLE submissions
-    ADD COLUMN IF NOT EXISTS card_pdf_last_uploaded TIMESTAMP
     """)
 
     cur.execute("""
@@ -153,11 +142,6 @@ def init_db():
     ALTER TABLE card_buyback_items
     ADD COLUMN IF NOT EXISTS pop_higher TEXT
     """)
-    try:
-        reconcile_all_needs_card_pdf_flags(cur)
-    except Exception:
-        pass
-
     conn.commit()
     cur.close()
     conn.close()
@@ -226,9 +210,9 @@ def normalize_phone(v):
 
 def normalize_key_text(value):
     text = str(value or "").strip().lower()
-    text = text.replace("Æ", "f")
-    text = text.replace("Ã¦Â", "f")
-    text = text.replace("Ã¢\x80\x99", "'")
+    text = text.replace("ƒ", "f")
+    text = text.replace("æ", "f")
+    text = text.replace("â\x80\x99", "'")
     text = text.replace(".", "")
     text = re.sub(r"\s+", " ", text)
     return text
@@ -292,8 +276,8 @@ def clean_service_display(service):
     value = str(service or "").strip()
     if " - " in value:
         return value.split(" - ", 1)[0].strip()
-    if " â " in value:
-        return value.split(" â ", 1)[0].strip()
+    if " – " in value:
+        return value.split(" – ", 1)[0].strip()
     return value
 
 def date_only_display(value):
@@ -323,10 +307,10 @@ def get_dropoff_date(data):
         "Customer Drop-Off Date",
         "Customer Drop Off Date",
         "Submission Date",
+        "ƒand",
+        "ƒand.",
         "Æand",
         "Æand.",
-        "ÃÂand",
-        "ÃÂand.",
         "fand",
         "Fand",
         "S",
@@ -355,8 +339,8 @@ def parse_arrived_completed_value(value):
 
     month = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
     date_single = month + r"\s+\d{1,2},\s+\d{4}"
-    date_range_same_year = month + r"\s+\d{1,2}\s*[-â]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
-    date_range_full = date_single + r"\s*[-â]\s*" + date_single
+    date_range_same_year = month + r"\s+\d{1,2}\s*[-–]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
+    date_range_full = date_single + r"\s*[-–]\s*" + date_single
 
     completed_match = re.search(r"Completed\s+(" + date_single + r")", text, re.IGNORECASE)
     if completed_match:
@@ -393,7 +377,11 @@ def parse_arrived_completed_value(value):
 
     parts = []
     if result["arrived"]:
-        parts.append(result["arrived"])
+        parts.append(f"Arrived: {result['arrived']}")
+    if result["estimated"]:
+        parts.append(f"Estimated Completion: {result['estimated']}")
+    if result["completed"]:
+        parts.append(f"Completed: {result['completed']}")
 
     if parts:
         result["display"] = " | ".join(parts)
@@ -920,7 +908,7 @@ def page(content, mode="admin"):
             color:#198754;
         }}
         .buyback-collapsible[open] summary:after {{
-            content:"â";
+            content:"–";
         }}
         .buyback-collapsible .buyback-inner {{
             padding:14px;
@@ -1097,85 +1085,13 @@ def should_hide_column(column_name):
     ]
 
 
-
-
-
-def row_raw_data(row):
-    try:
-        return row[0] if len(row) > 0 else {}
-    except Exception:
-        return {}
-
-def row_status(row):
-    try:
-        return row[1] if len(row) > 1 else "Submitted"
-    except Exception:
-        return "Submitted"
-
-
-
 def status_needs_card_pdf(status):
     return (status or "") in ["Shipping Soon", "Complete"]
 
-def refresh_needs_card_pdf_flag(submission_number, cur=None):
-    own_conn = None
-    try:
-        sub = normalize_submission(submission_number)
-        if not sub:
-            return False
-
-        if cur is None:
-            own_conn = get_conn()
-            cur = own_conn.cursor()
-
-        cur.execute("""
-        SELECT raw_data, status
-        FROM submissions
-        WHERE REGEXP_REPLACE(COALESCE(submission_number::text, ''), '\D', '', 'g')=%s
-        """, (sub,))
-        row = cur.fetchone()
-
-        if not row:
-            if own_conn:
-                cur.close()
-                own_conn.close()
-            return False
-
-        data = row[0] or {}
-        status = row[1] or "Submitted"
-        order = get_order_number_from_raw(data)
-        has_cards = card_records_exist_for_submission_or_order(sub, order, cur)
-        needs_pdf = status_needs_card_pdf(status) and not has_cards
-
-        cur.execute("""
-        UPDATE submissions
-        SET needs_card_pdf=%s
-        WHERE REGEXP_REPLACE(COALESCE(submission_number::text, ''), '\D', '', 'g')=%s
-        RETURNING COALESCE(needs_card_pdf, FALSE)
-        """, (needs_pdf, sub))
-        result = cur.fetchone()
-        final_value = bool(result and result[0])
-
-        if own_conn:
-            own_conn.commit()
-            cur.close()
-            own_conn.close()
-
-        return final_value
-    except Exception:
-        try:
-            if own_conn:
-                own_conn.rollback()
-                cur.close()
-                own_conn.close()
-        except Exception:
-            pass
-        return False
-
 def card_pdf_needs_attention(row):
     """
-    True only when status is Shipping Soon/Complete and no card PDF/card records exist.
-    Checks both PSA submission number and PSA order number.
+    True when a PSA submission is Shipping Soon or Complete but no card-detail
+    PDF records have been uploaded for that submission.
     """
     try:
         data = row_raw_data(row)
@@ -1185,15 +1101,28 @@ def card_pdf_needs_attention(row):
             return False
 
         sub = normalize_submission(get_field(data, ["Submission #", "Submission Number"]))
-        order = get_order_number_from_raw(data)
 
-        return not card_records_exist_for_submission_or_order(sub, order)
+        if not sub:
+            return False
+
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+        SELECT COUNT(*)
+        FROM card_buyback_items
+        WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+        """, (sub,))
+        count = cur.fetchone()[0] or 0
+        cur.close()
+        conn.close()
+
+        return count == 0
     except Exception:
         return False
 
 def card_pdf_alert_text(row):
     try:
-        status = row_status(row)
+        status = row[1] or "Submitted"
         if status == "Shipping Soon":
             return "Grades ready / card PDF needed"
         if status == "Complete":
@@ -1202,55 +1131,7 @@ def card_pdf_alert_text(row):
     except Exception:
         return "Card PDF needed"
 
-def reconcile_all_needs_card_pdf_flags(cur=None):
-    own_conn = None
-    try:
-        if cur is None:
-            own_conn = get_conn()
-            cur = own_conn.cursor()
 
-        cur.execute("""
-        SELECT submission_number, raw_data, status
-        FROM submissions
-        """)
-        rows = cur.fetchall()
-
-        for submission_number, raw_data, status in rows:
-            data = raw_data or {}
-            sub = normalize_submission(submission_number)
-            order = get_order_number_from_raw(data)
-            has_cards = card_records_exist_for_submission_or_order(sub, order, cur)
-            needs_pdf = status_needs_card_pdf(status) and not has_cards
-
-            cur.execute("""
-            UPDATE submissions
-            SET needs_card_pdf=%s
-            WHERE REGEXP_REPLACE(COALESCE(submission_number::text, ''), '\D', '', 'g')=%s
-            """, (needs_pdf, sub))
-
-        if own_conn:
-            own_conn.commit()
-            cur.close()
-            own_conn.close()
-
-        return True
-    except Exception:
-        try:
-            if own_conn:
-                own_conn.rollback()
-                cur.close()
-                own_conn.close()
-        except Exception:
-            pass
-        return False
-
-def get_order_number_from_raw(data):
-    return normalize_submission(
-        get_field(data or {}, ["Order #", "Order Number", "PSA Order #", "PSA Order Number"])
-    )
-
-def status_needs_card_pdf(status):
-    return (status or "") in ["Shipping Soon", "Complete"]
 
 def row_raw_data(row):
     try:
@@ -1263,41 +1144,6 @@ def row_status(row):
         return row[1] if len(row) > 1 else "Submitted"
     except Exception:
         return "Submitted"
-
-def card_records_exist_for_submission_or_order(submission_number, order_number=None, cur=None):
-    own_conn = None
-    try:
-        sub = normalize_submission(submission_number)
-        order = normalize_submission(order_number)
-        keys = [k for k in [sub, order] if k]
-
-        if not keys:
-            return False
-
-        if cur is None:
-            own_conn = get_conn()
-            cur = own_conn.cursor()
-
-        cur.execute("""
-        SELECT COUNT(*)
-        FROM card_buyback_items
-        WHERE REGEXP_REPLACE(COALESCE(submission_number::text, ''), '\\D', '', 'g') = ANY(%s)
-        """, (keys,))
-        count = cur.fetchone()[0] or 0
-
-        if own_conn:
-            cur.close()
-            own_conn.close()
-
-        return count > 0
-    except Exception:
-        try:
-            if own_conn:
-                cur.close()
-                own_conn.close()
-        except Exception:
-            pass
-        return False
 
 
 def build_table(rows):
@@ -1373,7 +1219,7 @@ def build_table(rows):
                 details_parts.append(f"<b>{html_escape(key_text)}:</b> {html_escape(val)}")
 
         if not details_parts:
-            details_html = "<span style='color:#6b7280;'>â</span>"
+            details_html = "<span style='color:#6b7280;'>—</span>"
         else:
             details_html = "<details class='row-details'><summary>Details</summary><div>" + "<br>".join(details_parts[:12]) + "</div></details>"
 
@@ -1411,10 +1257,10 @@ def get_sort_date(row):
             "Customer Drop-Off Date",
             "Customer Drop Off Date",
             "Submission Date",
+            "ƒand",
+            "ƒand.",
             "Æand",
             "Æand.",
-            "ÃÂand",
-            "ÃÂand.",
             "fand",
             "Fand",
             "S",
@@ -1963,37 +1809,6 @@ def clear_submissions():
         </div>
         """)
 
-
-@app.route("/admin/repair_needs_pdf")
-@admin_required
-def admin_repair_needs_pdf():
-    try:
-        ok = reconcile_all_needs_card_pdf_flags()
-        if ok:
-            return page("""
-            <div class="card">
-                <h2>Needs PDF Flags Repaired</h2>
-                <p>The system recalculated Needs PDF from actual uploaded card PDF records.</p>
-                <a class="btn" href="/admin">Back to Dashboard</a>
-            </div>
-            """)
-        return page("""
-        <div class="card">
-            <h2>Repair Could Not Complete</h2>
-            <p>The repair did not finish. Check the app error log.</p>
-            <a class="btn" href="/admin">Back to Dashboard</a>
-        </div>
-        """)
-    except Exception:
-        return page(f"""
-        <div class="card">
-            <h2>Repair Error</h2>
-            <pre>{html_escape(traceback.format_exc())}</pre>
-            <a class="btn" href="/admin">Back to Dashboard</a>
-        </div>
-        """)
-
-
 @app.route("/admin")
 @admin_required
 def admin_dashboard():
@@ -2155,11 +1970,6 @@ def admin_dashboard():
 
         html += "</table></div></details></div>"
 
-    html += """
-    <div style="margin:10px 0 16px;">
-        <a class="btn" href="/admin/repair_needs_pdf">Repair Needs PDF Flags</a>
-    </div>
-    """
     html += build_table(rows)
     return page(html)
 
@@ -2171,16 +1981,7 @@ def admin_search():
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
-    SELECT raw_data, status,
-           (
-               COALESCE(status, '') IN ('Shipping Soon', 'Complete')
-               AND NOT EXISTS (
-                   SELECT 1
-                   FROM card_buyback_items c
-                   WHERE REGEXP_REPLACE(COALESCE(c.submission_number::text, ''), '\D', '', 'g')
-                       = REGEXP_REPLACE(COALESCE(submissions.submission_number::text, ''), '\D', '', 'g')
-               )
-           ) AS needs_card_pdf
+    SELECT raw_data, status
     FROM submissions
     WHERE raw_data::text ILIKE %s
        OR submission_number ILIKE %s
@@ -2310,8 +2111,8 @@ def admin_upload_psa():
 
                 month_pattern = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
                 date_pattern = month_pattern + r"\s+\d{1,2},\s+\d{4}"
-                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-â]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
-                date_range_full = date_pattern + r"\s*[-â]\s*" + date_pattern
+                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-–]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
+                date_range_full = date_pattern + r"\s*[-–]\s*" + date_pattern
 
                 value_pattern = re.compile(
                     rf"(Completed\s+{date_pattern}|Est\.\s*Complete\s*by\s+{date_range_full}|Est\.\s*Complete\s*by\s+{date_range_same_year}|Est\.\s*Complete\s*by\s+{date_pattern}|Estimated\s*Complete\s*by\s+{date_range_full}|Estimated\s*Complete\s*by\s+{date_range_same_year}|Estimated\s*Complete\s*by\s+{date_pattern}|Est\.\s*by\s+{date_range_full}|Est\.\s*by\s+{date_range_same_year}|Est\.\s*by\s+{date_pattern}|{date_pattern})",
@@ -2384,7 +2185,7 @@ def admin_upload_psa():
                             j += 1
 
                     # Split case:
-                    # â¢ Sub
+                    # • Sub
                     # #14550482
                     # Research & ID
                     elif re.search(r"\bSub\b\s*$", line, re.IGNORECASE) and i + 1 < len(lines):
@@ -2416,14 +2217,14 @@ def admin_upload_psa():
 
                         if status:
                             best[sub] = status
-                            # Extract Arrived
+                            # Extract Arrived / Completed
                             block_text = " ".join(search_parts)
 
                             # Fix broken PDF line breaks (Apr 22, \n 2026)
                             block_text = re.sub(r",\s+(\d{4})", r", \1", block_text)
 
                             matches = re.findall(
-                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
+                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
                                 block_text,
                                 re.IGNORECASE
                             )
@@ -2476,7 +2277,7 @@ def admin_upload_psa():
                 except Exception:
                     pass
 
-            # Full-text pass for Arrived.
+            # Full-text pass for Arrived / Completed.
             # This is independent from status updates so protected/skipped statuses do not block the date field.
             full_text_ac_map = extract_arrived_completed_from_full_text("\n".join(pdf_text_parts))
             for ac_sub, ac_value in full_text_ac_map.items():
@@ -2527,13 +2328,9 @@ def admin_upload_psa():
 
                 if cur.rowcount:
                     updated += 1
-                    refresh_needs_card_pdf_flag(sub, cur)
                     maybe_queue_status_sms(cur, sub, sms_phone, old_status, status, sms_opt_in, sms_mode, last_sms_status)
                 else:
                     skipped += 1
-
-            for flag_sub in best.keys():
-                refresh_needs_card_pdf_flag(flag_sub, cur)
 
             for sub, arrived_completed_value in ac_map.items():
                 if arrived_completed_value:
@@ -2632,7 +2429,7 @@ def admin_upload_psa():
                         <th>Submission #</th>
                         <th>PDF Parsed Status</th>
                         <th>Database Status After Upload</th>
-                        <th>Arrived</th>
+                        <th>Arrived / Completed</th>
                         <th>Estimated Completion Date</th>
                         <th>Result</th>
                     </tr>
@@ -2751,33 +2548,6 @@ def admin_upload_cards():
                 last_updated=NOW()
             WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
             """, (order_number, submission_number))
-
-            cur.execute("""
-            UPDATE submissions
-            SET needs_card_pdf=FALSE,
-                card_pdf_last_uploaded=NOW(),
-                last_updated=NOW()
-            WHERE REGEXP_REPLACE(submission_number, '\D', '', 'g')=%s
-            """, (submission_number,))
-
-            
-            # clear by submission/order after card upload
-            try:
-                clear_keys = [normalize_submission(submission_number), normalize_submission(order_number)]
-                clear_keys = [k for k in clear_keys if k]
-                if clear_keys:
-                    cur.execute("""
-                    UPDATE submissions
-                    SET needs_card_pdf=FALSE,
-                        card_pdf_last_uploaded=NOW(),
-                        last_updated=NOW()
-                    WHERE REGEXP_REPLACE(COALESCE(submission_number::text, ''), '\\D', '', 'g') = ANY(%s)
-                       OR REGEXP_REPLACE(COALESCE(raw_data->>'Order #', ''), '\\D', '', 'g') = ANY(%s)
-                       OR REGEXP_REPLACE(COALESCE(raw_data->>'Order Number', ''), '\\D', '', 'g') = ANY(%s)
-                    """, (clear_keys, clear_keys, clear_keys))
-            except Exception:
-                pass
-
 
             conn.commit()
             cur.close()
@@ -3306,18 +3076,16 @@ def portal():
             line-height:1;
         }
         .gsc-benefit-title {
-            font-weight:900;
-            font-size:17px;
-            text-transform:uppercase;
-            margin-bottom:4px;
+            font-weight: 900;
+            font-size: 17px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
             letter-spacing:.3px;
-            color:#0f5132;
         }
         .gsc-benefit-text {
-            color:#111827;
-            font-size:14px;
-            line-height:1.35;
-            font-weight:600;
+            color: #d1d5db;
+            font-size: 14px;
+            line-height: 1.35;
         }
         @media (max-width: 700px) {
             .gsc-portal-wrap {
@@ -3620,7 +3388,7 @@ def portal_orders():
             <h3>{customer_name}</h3>
             <p><b>Submission #:</b> {sub}</p>
             <p><b>Status:</b> <span class="status">{display_status_label}</span></p>
-            <p><b>Arrived:</b> {arrived_completed}</p>
+            <p><b>Arrived / Completed:</b> {arrived_completed}</p>
             <p><b>Estimated Completion Date:</b> {estimated_completion}</p>
             <p><b>Cards:</b> {cards}</p>
             <p><b>Service:</b> {service}</p>
