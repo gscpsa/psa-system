@@ -3415,7 +3415,7 @@ def portal_orders():
             <h3>{customer_name}</h3>
             <p><b>Submission #:</b> {sub}</p>
             <p><b>Status:</b> <span class="status">{display_status_label}</span></p>
-            <p><b>Arrived / Completed:</b> {arrived_completed}</p>
+            <p><b>Arrived:</b> {arrived_completed}</p>
             <p><b>Estimated Completion Date:</b> {estimated_completion}</p>
             <p><b>Cards:</b> {cards}</p>
             <p><b>Service:</b> {service}</p>
