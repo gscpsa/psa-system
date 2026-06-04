@@ -1024,30 +1024,30 @@ def page(content, mode="admin"):
 
 
         /* Customer portal bottom feature text readability fix */
-        .gsc-benefit-title {
+        .gsc-benefit-title {{
             color:#0f5132 !important;
             font-weight:900 !important;
-        }
-        .gsc-benefit-text {
+        }}
+        .gsc-benefit-text {{
             color:#111827 !important;
             font-weight:600 !important;
-        }
-        .safe-benefit-title {
+        }}
+        .safe-benefit-title {{
             color:#0f5132 !important;
             font-weight:900 !important;
-        }
-        .safe-benefit-text {
+        }}
+        .safe-benefit-text {{
             color:#111827 !important;
             font-weight:600 !important;
-        }
-        .portal-feature-title {
+        }}
+        .portal-feature-title {{
             color:#0f5132 !important;
             font-weight:900 !important;
-        }
-        .portal-feature-text {
+        }}
+        .portal-feature-text {{
             color:#111827 !important;
             font-weight:600 !important;
-        }
+        }}
 
         @media (max-width: 700px) {{
             .topbar {{
