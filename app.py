@@ -330,6 +330,17 @@ def get_dropoff_date(data):
     return ""
 
 
+
+def strip_arrived_at_psa_prefix(value):
+    text = str(value or "").strip()
+    # Remove one or more leading labels, including accidental duplicates.
+    while text.lower().startswith("arrived at psa:"):
+        text = text.split(":", 1)[1].strip()
+    while text.lower().startswith("arrived:"):
+        text = text.split(":", 1)[1].strip()
+    return text
+
+
 def parse_arrived_completed_value(value):
     text = str(value or "").strip()
     result = {"arrived": "", "estimated": "", "completed": "", "display": text}
@@ -375,9 +386,11 @@ def parse_arrived_completed_value(value):
             if not estimated_start or first_date.lower() != estimated_start.lower():
                 result["arrived"] = first_date
 
+    result["arrived"] = strip_arrived_at_psa_prefix(result["arrived"])
+
     parts = []
     if result["arrived"]:
-        parts.append(f"Arrived at PSA: {result['arrived']}")
+        parts.append(result["arrived"])
     if result["estimated"]:
         parts.append(f"Estimated Completion: {result['estimated']}")
     if result["completed"]:
@@ -3326,6 +3339,7 @@ def portal_orders():
         arrived_completed_raw = get_field(data, ["Arrived / Completed"])
         arrived_completed_data = parse_arrived_completed_value(arrived_completed_raw)
         arrived_completed = arrived_completed_data["display"]
+        arrived_completed = strip_arrived_at_psa_prefix(arrived_completed)
         estimated_completion = get_field(data, ["Estimated Completion Date"]) or arrived_completed_data["estimated"]
         display_status = status or "Submitted"
         display_status_label = customer_status_label(display_status)
