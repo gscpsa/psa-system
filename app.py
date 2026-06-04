@@ -335,11 +335,7 @@ def parse_arrived_completed_value(value):
     result = {"arrived": "", "estimated": "", "completed": "", "display": text}
 
     if not text:
-        
-    if isinstance(result.get("arrived"), str) and result["arrived"].startswith("Arrived at PSA:"):
-        result["arrived"] = result["arrived"].replace("Arrived at PSA:", "", 1).strip()
-
-    return result
+        return result
 
     month = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
     date_single = month + r"\s+\d{1,2},\s+\d{4}"
