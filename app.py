@@ -393,11 +393,7 @@ def parse_arrived_completed_value(value):
 
     parts = []
     if result["arrived"]:
-        parts.append(f"Arrived: {result['arrived']}")
-    if result["estimated"]:
-        parts.append(f"Estimated Completion: {result['estimated']}")
-    if result["completed"]:
-        parts.append(f"Completed: {result['completed']}")
+        parts.append(result["arrived"])
 
     if parts:
         result["display"] = " | ".join(parts)
@@ -1122,9 +1118,6 @@ def status_needs_card_pdf(status):
     return (status or "") in ["Shipping Soon", "Complete"]
 
 def refresh_needs_card_pdf_flag(submission_number, cur=None):
-    """
-    Refresh one submission's Needs PDF flag from actual uploaded card PDF records.
-    """
     own_conn = None
     try:
         sub = normalize_submission(submission_number)
@@ -1136,30 +1129,39 @@ def refresh_needs_card_pdf_flag(submission_number, cur=None):
             cur = own_conn.cursor()
 
         cur.execute("""
-        UPDATE submissions s
-        SET needs_card_pdf =
-            (
-                COALESCE(s.status, '') IN ('Shipping Soon', 'Complete')
-                AND NOT EXISTS (
-                    SELECT 1
-                    FROM card_buyback_items c
-                    WHERE REGEXP_REPLACE(COALESCE(c.submission_number::text, ''), '\D', '', 'g')
-                        = REGEXP_REPLACE(COALESCE(s.submission_number::text, ''), '\D', '', 'g')
-                )
-            )
-        WHERE REGEXP_REPLACE(COALESCE(s.submission_number::text, ''), '\D', '', 'g')=%s
-        RETURNING COALESCE(needs_card_pdf, FALSE)
+        SELECT raw_data, status
+        FROM submissions
+        WHERE REGEXP_REPLACE(COALESCE(submission_number::text, ''), '\D', '', 'g')=%s
         """, (sub,))
-
         row = cur.fetchone()
-        needs_pdf = bool(row and row[0])
+
+        if not row:
+            if own_conn:
+                cur.close()
+                own_conn.close()
+            return False
+
+        data = row[0] or {}
+        status = row[1] or "Submitted"
+        order = get_order_number_from_raw(data)
+        has_cards = card_records_exist_for_submission_or_order(sub, order, cur)
+        needs_pdf = status_needs_card_pdf(status) and not has_cards
+
+        cur.execute("""
+        UPDATE submissions
+        SET needs_card_pdf=%s
+        WHERE REGEXP_REPLACE(COALESCE(submission_number::text, ''), '\D', '', 'g')=%s
+        RETURNING COALESCE(needs_card_pdf, FALSE)
+        """, (needs_pdf, sub))
+        result = cur.fetchone()
+        final_value = bool(result and result[0])
 
         if own_conn:
             own_conn.commit()
             cur.close()
             own_conn.close()
 
-        return needs_pdf
+        return final_value
     except Exception:
         try:
             if own_conn:
@@ -1172,38 +1174,20 @@ def refresh_needs_card_pdf_flag(submission_number, cur=None):
 
 def card_pdf_needs_attention(row):
     """
-    Dashboard helper.
-    Uses computed row[2] when available. Fallback checks actual card records,
-    not stale needs_card_pdf flags.
+    True only when status is Shipping Soon/Complete and no card PDF/card records exist.
+    Checks both PSA submission number and PSA order number.
     """
-    try:
-        if len(row) > 2:
-            return bool(row[2])
-    except Exception:
-        pass
-
     try:
         data = row_raw_data(row)
         status = row_status(row)
-        sub = normalize_submission(get_field(data, ["Submission #", "Submission Number"]))
 
-        if not sub or not status_needs_card_pdf(status):
+        if not status_needs_card_pdf(status):
             return False
 
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("""
-        SELECT NOT EXISTS (
-            SELECT 1
-            FROM card_buyback_items c
-            WHERE REGEXP_REPLACE(COALESCE(c.submission_number::text, ''), '\D', '', 'g')=%s
-        )
-        """, (sub,))
-        result = cur.fetchone()
-        cur.close()
-        conn.close()
+        sub = normalize_submission(get_field(data, ["Submission #", "Submission Number"]))
+        order = get_order_number_from_raw(data)
 
-        return bool(result and result[0])
+        return not card_records_exist_for_submission_or_order(sub, order)
     except Exception:
         return False
 
@@ -1219,11 +1203,6 @@ def card_pdf_alert_text(row):
         return "Card PDF needed"
 
 def reconcile_all_needs_card_pdf_flags(cur=None):
-    """
-    Repair stale Needs PDF flags using actual uploaded card PDF records.
-    Correct rule:
-    Needs PDF = status is Shipping Soon or Complete AND no card_buyback_items rows exist.
-    """
     own_conn = None
     try:
         if cur is None:
@@ -1231,18 +1210,23 @@ def reconcile_all_needs_card_pdf_flags(cur=None):
             cur = own_conn.cursor()
 
         cur.execute("""
-        UPDATE submissions s
-        SET needs_card_pdf =
-            (
-                COALESCE(s.status, '') IN ('Shipping Soon', 'Complete')
-                AND NOT EXISTS (
-                    SELECT 1
-                    FROM card_buyback_items c
-                    WHERE REGEXP_REPLACE(COALESCE(c.submission_number::text, ''), '\D', '', 'g')
-                        = REGEXP_REPLACE(COALESCE(s.submission_number::text, ''), '\D', '', 'g')
-                )
-            )
+        SELECT submission_number, raw_data, status
+        FROM submissions
         """)
+        rows = cur.fetchall()
+
+        for submission_number, raw_data, status in rows:
+            data = raw_data or {}
+            sub = normalize_submission(submission_number)
+            order = get_order_number_from_raw(data)
+            has_cards = card_records_exist_for_submission_or_order(sub, order, cur)
+            needs_pdf = status_needs_card_pdf(status) and not has_cards
+
+            cur.execute("""
+            UPDATE submissions
+            SET needs_card_pdf=%s
+            WHERE REGEXP_REPLACE(COALESCE(submission_number::text, ''), '\D', '', 'g')=%s
+            """, (needs_pdf, sub))
 
         if own_conn:
             own_conn.commit()
@@ -1259,6 +1243,62 @@ def reconcile_all_needs_card_pdf_flags(cur=None):
         except Exception:
             pass
         return False
+
+def get_order_number_from_raw(data):
+    return normalize_submission(
+        get_field(data or {}, ["Order #", "Order Number", "PSA Order #", "PSA Order Number"])
+    )
+
+def status_needs_card_pdf(status):
+    return (status or "") in ["Shipping Soon", "Complete"]
+
+def row_raw_data(row):
+    try:
+        return row[0] if len(row) > 0 else {}
+    except Exception:
+        return {}
+
+def row_status(row):
+    try:
+        return row[1] if len(row) > 1 else "Submitted"
+    except Exception:
+        return "Submitted"
+
+def card_records_exist_for_submission_or_order(submission_number, order_number=None, cur=None):
+    own_conn = None
+    try:
+        sub = normalize_submission(submission_number)
+        order = normalize_submission(order_number)
+        keys = [k for k in [sub, order] if k]
+
+        if not keys:
+            return False
+
+        if cur is None:
+            own_conn = get_conn()
+            cur = own_conn.cursor()
+
+        cur.execute("""
+        SELECT COUNT(*)
+        FROM card_buyback_items
+        WHERE REGEXP_REPLACE(COALESCE(submission_number::text, ''), '\\D', '', 'g') = ANY(%s)
+        """, (keys,))
+        count = cur.fetchone()[0] or 0
+
+        if own_conn:
+            cur.close()
+            own_conn.close()
+
+        return count > 0
+    except Exception:
+        try:
+            if own_conn:
+                cur.close()
+                own_conn.close()
+        except Exception:
+            pass
+        return False
+
 
 def build_table(rows):
     """
@@ -1301,7 +1341,7 @@ def build_table(rows):
         dropoff = get_dropoff_date(data)
         display_status = customer_status_label(status or "Submitted")
 
-        arrived_completed_raw = get_field(data, ["Arrived"])
+        arrived_completed_raw = get_field(data, ["Arrived / Completed"])
         arrived_completed_data = parse_arrived_completed_value(arrived_completed_raw)
         estimated_completion = get_field(data, ["Estimated Completion Date"]) or arrived_completed_data["estimated"]
 
@@ -2476,7 +2516,7 @@ def admin_upload_psa():
                 SET status=%s,
                     raw_data = jsonb_set(
                         COALESCE(raw_data, '{}'::jsonb),
-                        '{Arrived}',
+                        '{Arrived / Completed}',
                         to_jsonb(%s::text),
                         true
                     ),
@@ -2505,7 +2545,7 @@ def admin_upload_psa():
                         jsonb_set(
                             jsonb_set(
                                 COALESCE(raw_data, '{}'::jsonb),
-                                '{Arrived}',
+                                '{Arrived / Completed}',
                                 to_jsonb(%s::text),
                                 true
                             ),
@@ -2525,7 +2565,7 @@ def admin_upload_psa():
             # Show the first 150 parsed submissions so verification is clearly visible after upload.
             for sub, parsed_status in list(best.items())[:150]:
                 cur.execute("""
-                SELECT status, COALESCE(raw_data->>'Arrived', ''), COALESCE(raw_data->>'Estimated Completion Date', '') FROM submissions
+                SELECT status, COALESCE(raw_data->>'Arrived / Completed', ''), COALESCE(raw_data->>'Estimated Completion Date', '') FROM submissions
                 WHERE REGEXP_REPLACE(submission_number, '\D', '', 'g')=%s
                 """, (sub,))
 
@@ -2719,6 +2759,25 @@ def admin_upload_cards():
                 last_updated=NOW()
             WHERE REGEXP_REPLACE(submission_number, '\D', '', 'g')=%s
             """, (submission_number,))
+
+            
+            # clear by submission/order after card upload
+            try:
+                clear_keys = [normalize_submission(submission_number), normalize_submission(order_number)]
+                clear_keys = [k for k in clear_keys if k]
+                if clear_keys:
+                    cur.execute("""
+                    UPDATE submissions
+                    SET needs_card_pdf=FALSE,
+                        card_pdf_last_uploaded=NOW(),
+                        last_updated=NOW()
+                    WHERE REGEXP_REPLACE(COALESCE(submission_number::text, ''), '\\D', '', 'g') = ANY(%s)
+                       OR REGEXP_REPLACE(COALESCE(raw_data->>'Order #', ''), '\\D', '', 'g') = ANY(%s)
+                       OR REGEXP_REPLACE(COALESCE(raw_data->>'Order Number', ''), '\\D', '', 'g') = ANY(%s)
+                    """, (clear_keys, clear_keys, clear_keys))
+            except Exception:
+                pass
+
 
             conn.commit()
             cur.close()
@@ -3469,7 +3528,7 @@ def portal_orders():
         cards = get_field(data, ["# Of Cards", "# of Cards", "Cards"])
         service = clean_service_display(get_field(data, ["Service Type", "Service"]))
         date = get_dropoff_date(data)
-        arrived_completed_raw = get_field(data, ["Arrived"])
+        arrived_completed_raw = get_field(data, ["Arrived / Completed"])
         arrived_completed_data = parse_arrived_completed_value(arrived_completed_raw)
         arrived_completed = arrived_completed_data["display"]
         estimated_completion = get_field(data, ["Estimated Completion Date"]) or arrived_completed_data["estimated"]
