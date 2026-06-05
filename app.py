@@ -142,6 +142,21 @@ def init_db():
     ALTER TABLE card_buyback_items
     ADD COLUMN IF NOT EXISTS pop_higher TEXT
     """)
+
+    cur.execute("""
+    ALTER TABLE card_buyback_items
+    ADD COLUMN IF NOT EXISTS offer_amount TEXT
+    """)
+
+    cur.execute("""
+    ALTER TABLE card_buyback_items
+    ADD COLUMN IF NOT EXISTS offer_notes TEXT
+    """)
+
+    cur.execute("""
+    ALTER TABLE card_buyback_items
+    ADD COLUMN IF NOT EXISTS offer_updated_at TIMESTAMP
+    """)
     conn.commit()
     cur.close()
     conn.close()
@@ -1778,7 +1793,10 @@ def get_buyback_items_for_submission(submission_number):
            COALESCE(psa_estimate, ''),
            COALESCE(card_ladder_value, ''),
            COALESCE(pop, ''),
-           COALESCE(pop_higher, '')
+           COALESCE(pop_higher, ''),
+           COALESCE(offer_amount, ''),
+           COALESCE(offer_notes, ''),
+           COALESCE(buyback_status, 'New')
     FROM card_buyback_items
     WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
     ORDER BY cert_number
@@ -2661,7 +2679,8 @@ def admin_buyback_requests():
         SELECT c.submission_number, c.cert_number, COALESCE(c.description, c.item_details, ''), c.grade, c.image_data,
                c.interested, COALESCE(c.buyback_status, 'New'), s.raw_data,
                COALESCE(c.card_type, ''), COALESCE(c.after_service, ''), COALESCE(c.images_url, ''),
-               COALESCE(c.psa_estimate, ''), COALESCE(c.card_ladder_value, ''), COALESCE(c.pop, ''), COALESCE(c.pop_higher, '')
+               COALESCE(c.psa_estimate, ''), COALESCE(c.card_ladder_value, ''), COALESCE(c.pop, ''), COALESCE(c.pop_higher, ''),
+               COALESCE(c.offer_amount, ''), COALESCE(c.offer_notes, '')
         FROM card_buyback_items c
         LEFT JOIN submissions s
           ON REGEXP_REPLACE(s.submission_number, '\\D', '', 'g') = REGEXP_REPLACE(c.submission_number, '\\D', '', 'g')
@@ -2669,9 +2688,12 @@ def admin_buyback_requests():
         ORDER BY
             CASE COALESCE(c.buyback_status, 'New')
                 WHEN 'New' THEN 0
-                WHEN 'Sold' THEN 1
-                WHEN 'Pass' THEN 2
-                ELSE 3
+                WHEN 'Offer Sent' THEN 1
+                WHEN 'Accepted' THEN 2
+                WHEN 'Declined' THEN 3
+                WHEN 'Sold' THEN 4
+                WHEN 'Pass' THEN 5
+                ELSE 6
             END,
             c.updated_at DESC
         """)
@@ -2680,7 +2702,8 @@ def admin_buyback_requests():
         SELECT c.submission_number, c.cert_number, COALESCE(c.description, c.item_details, ''), c.grade, c.image_data,
                c.interested, COALESCE(c.buyback_status, 'New'), s.raw_data,
                COALESCE(c.card_type, ''), COALESCE(c.after_service, ''), COALESCE(c.images_url, ''),
-               COALESCE(c.psa_estimate, ''), COALESCE(c.card_ladder_value, ''), COALESCE(c.pop, ''), COALESCE(c.pop_higher, '')
+               COALESCE(c.psa_estimate, ''), COALESCE(c.card_ladder_value, ''), COALESCE(c.pop, ''), COALESCE(c.pop_higher, ''),
+               COALESCE(c.offer_amount, ''), COALESCE(c.offer_notes, '')
         FROM card_buyback_items c
         LEFT JOIN submissions s
           ON REGEXP_REPLACE(s.submission_number, '\\D', '', 'g') = REGEXP_REPLACE(c.submission_number, '\\D', '', 'g')
@@ -2722,7 +2745,7 @@ def admin_buyback_requests():
         return page(html)
 
     html += "<div class='card'><div class='table-wrap'><table>"
-    html += "<tr><th>Status</th><th>Card Image</th><th>Customer</th><th>Submission #</th><th>Cert #</th><th>Type</th><th>Description</th><th>Grade</th><th>Actions</th></tr>"
+    html += "<tr><th>Status</th><th>Card Image</th><th>Customer</th><th>Submission #</th><th>Cert #</th><th>Type</th><th>Description</th><th>Grade</th><th>Offer</th><th>Actions</th></tr>"
 
     for row in rows:
         submission_number, cert_number, item_details, grade, image_data, interested, buyback_status, raw_data = row[:8]
@@ -2733,17 +2756,32 @@ def admin_buyback_requests():
         card_ladder_value = display_blank_loading(row[12] if len(row) > 12 else "")
         pop = display_blank_loading(row[13] if len(row) > 13 else "")
         pop_higher = display_blank_loading(row[14] if len(row) > 14 else "")
+        offer_amount = row[15] if len(row) > 15 else ""
+        offer_notes = row[16] if len(row) > 16 else ""
 
         customer_name = get_field(raw_data or {}, ["Customer Name", "Name"])
         phone = get_field(raw_data or {}, ["Contact Info", "Phone", "Phone Number"])
         img_html = f"<img src='{image_data}' style='max-height:120px;max-width:90px;'>" if image_data else ""
         image_link = ""
 
+        offer_html = f"""
+        <form method="post" action="/admin/buyback_offer" style="min-width:180px;">
+            <input type="hidden" name="submission_number" value="{submission_number}">
+            <input type="hidden" name="cert_number" value="{cert_number}">
+            <input type="text" name="offer_amount" value="{html_escape(offer_amount)}" placeholder="Offer amount" style="width:120px;">
+            <br>
+            <input type="text" name="offer_notes" value="{html_escape(offer_notes)}" placeholder="Notes" style="width:160px;">
+            <br>
+            <button type="submit">Save Offer</button>
+        </form>
+        """
+
         action_html = f"""
         <form method="post" action="/admin/buyback_status" style="display:inline;">
             <input type="hidden" name="submission_number" value="{submission_number}">
             <input type="hidden" name="cert_number" value="{cert_number}">
-            <button name="status" value="Sold">Sold</button>
+            <button name="status" value="Offer Sent">Offer Sent</button>
+            <button name="status" value="Sold">Purchased</button>
             <button name="status" value="Pass">Pass</button>
             <button name="status" value="New">Back to Interest</button>
         </form>
@@ -2759,12 +2797,45 @@ def admin_buyback_requests():
             <td>{card_type}</td>
             <td>{item_details}</td>
             <td>{grade}</td>
+            <td>{offer_html}</td>
             <td>{action_html}</td>
         </tr>
         """
 
     html += "</table></div>"
     return page(html)
+
+
+@app.route("/admin/buyback_offer", methods=["POST"])
+@admin_required
+def admin_buyback_offer():
+    submission_number = normalize_submission(request.form.get("submission_number"))
+    cert_number = normalize_submission(request.form.get("cert_number"))
+    offer_amount = clean(request.form.get("offer_amount"))
+    offer_notes = clean(request.form.get("offer_notes"))
+
+    if submission_number and cert_number:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+        UPDATE card_buyback_items
+        SET offer_amount=%s,
+            offer_notes=%s,
+            buyback_status=CASE
+                WHEN COALESCE(%s, '') <> '' THEN 'Offer Sent'
+                ELSE COALESCE(buyback_status, 'New')
+            END,
+            offer_updated_at=NOW(),
+            updated_at=NOW()
+        WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+          AND REGEXP_REPLACE(cert_number, '\\D', '', 'g')=%s
+        """, (offer_amount, offer_notes, offer_amount, submission_number, cert_number))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+    return redirect("/admin/buyback_requests")
+
 
 @app.route("/admin/buyback_status", methods=["POST"])
 @admin_required
@@ -2773,7 +2844,7 @@ def admin_buyback_status():
     cert_number = normalize_submission(request.form.get("cert_number"))
     status = clean(request.form.get("status"))
 
-    if status not in ["New", "Sold", "Pass"]:
+    if status not in ["New", "Offer Sent", "Accepted", "Declined", "Sold", "Pass"]:
         status = "New"
 
     if submission_number and cert_number:
@@ -3369,9 +3440,33 @@ def portal_orders():
                 card_ladder_value = display_blank_loading(row[9] if len(row) > 9 else "")
                 pop = display_blank_loading(row[10] if len(row) > 10 else "")
                 pop_higher = display_blank_loading(row[11] if len(row) > 11 else "")
+                offer_amount = row[12] if len(row) > 12 else ""
+                offer_notes = row[13] if len(row) > 13 else ""
+                buyback_status = row[14] if len(row) > 14 else ""
 
                 checked = "checked" if interested else ""
                 img_html = f"<img src='{image_data}' alt='Card image'>" if image_data else ""
+
+                offer_display = ""
+                if offer_amount:
+                    response_buttons = ""
+                    if buyback_status == "Offer Sent":
+                        response_buttons = f"""
+                        <form method="post" action="/portal/buyback_offer_response" style="margin-top:8px;">
+                            <input type="hidden" name="submission_number" value="{sub}">
+                            <input type="hidden" name="cert_number" value="{cert_number}">
+                            <button name="response" value="Accepted">Accept Offer</button>
+                            <button name="response" value="Declined">Decline</button>
+                        </form>
+                        """
+                    offer_display = f"""
+                    <div style="margin-top:10px;padding:10px;border:1px solid #d1e7dd;border-radius:8px;background:#f3f7f5;">
+                        <b>Giant Buyback Offer:</b> {html_escape(offer_amount)}<br>
+                        <small>{html_escape(offer_notes)}</small><br>
+                        <b>Status:</b> {html_escape('Interest' if buyback_status == 'New' else buyback_status)}
+                        {response_buttons}
+                    </div>
+                    """
 
                 buyback_html += f"""
                 <div class="buy-card">
@@ -3380,6 +3475,7 @@ def portal_orders():
                     <div><b>Type:</b> {card_type}</div>
                     <div>{item_details}</div>
                     <div><b>Grade:</b> {grade}</div>
+                    {offer_display}
                     <label class="sell-check"><input type="checkbox" name="cert" value="{cert_number}" {checked}> Interested in selling</label>
                 </div>
                 """
@@ -3442,6 +3538,68 @@ def portal_orders():
 
     html += "<a href='/portal/logout'>Log out</a>"
     return page(html, mode="portal")
+
+
+@app.route("/portal/buyback_offer_response", methods=["POST"])
+def portal_buyback_offer_response():
+    phone = normalize_phone(session.get("phone"))
+    last = clean(session.get("last")).lower()
+
+    if not phone or not last:
+        return redirect("/portal")
+
+    submission_number = normalize_submission(request.form.get("submission_number"))
+    cert_number = normalize_submission(request.form.get("cert_number"))
+    response = clean(request.form.get("response"))
+
+    if response not in ["Accepted", "Declined"]:
+        return redirect("/portal/orders")
+
+    if not submission_number or not cert_number:
+        return redirect("/portal/orders")
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT raw_data
+    FROM submissions
+    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+    """, (submission_number,))
+    row = cur.fetchone()
+
+    if not row:
+        cur.close()
+        conn.close()
+        return redirect("/portal/orders")
+
+    data = row[0] or {}
+    name = str(get_field(data, ["Customer Name", "Name"])).lower()
+    contact = normalize_phone(get_field(data, ["Contact Info", "Phone", "Phone Number"]))
+
+    phone_match = bool(contact) and (phone in contact or contact in phone)
+    name_match = bool(last) and last in name
+
+    if not (phone_match and name_match):
+        cur.close()
+        conn.close()
+        return redirect("/portal/orders")
+
+    cur.execute("""
+    UPDATE card_buyback_items
+    SET buyback_status=%s,
+        updated_at=NOW()
+    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+      AND REGEXP_REPLACE(cert_number, '\\D', '', 'g')=%s
+      AND COALESCE(offer_amount, '') <> ''
+    """, (response, submission_number, cert_number))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return redirect("/portal/orders")
+
 
 @app.route("/portal/logout")
 def portal_logout():
