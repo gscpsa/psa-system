@@ -225,9 +225,9 @@ def normalize_phone(v):
 
 def normalize_key_text(value):
     text = str(value or "").strip().lower()
-    text = text.replace("ƒ", "f")
-    text = text.replace("æ", "f")
-    text = text.replace("â\x80\x99", "'")
+    text = text.replace("Æ", "f")
+    text = text.replace("Ã¦Â", "f")
+    text = text.replace("Ã¢\x80\x99", "'")
     text = text.replace(".", "")
     text = re.sub(r"\s+", " ", text)
     return text
@@ -291,8 +291,8 @@ def clean_service_display(service):
     value = str(service or "").strip()
     if " - " in value:
         return value.split(" - ", 1)[0].strip()
-    if " – " in value:
-        return value.split(" – ", 1)[0].strip()
+    if " â " in value:
+        return value.split(" â ", 1)[0].strip()
     return value
 
 def date_only_display(value):
@@ -322,10 +322,10 @@ def get_dropoff_date(data):
         "Customer Drop-Off Date",
         "Customer Drop Off Date",
         "Submission Date",
-        "ƒand",
-        "ƒand.",
         "Æand",
         "Æand.",
+        "ÃÂand",
+        "ÃÂand.",
         "fand",
         "Fand",
         "S",
@@ -365,8 +365,8 @@ def parse_arrived_completed_value(value):
 
     month = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
     date_single = month + r"\s+\d{1,2},\s+\d{4}"
-    date_range_same_year = month + r"\s+\d{1,2}\s*[-–]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
-    date_range_full = date_single + r"\s*[-–]\s*" + date_single
+    date_range_same_year = month + r"\s+\d{1,2}\s*[-â]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
+    date_range_full = date_single + r"\s*[-â]\s*" + date_single
 
     completed_match = re.search(r"Completed\s+(" + date_single + r")", text, re.IGNORECASE)
     if completed_match:
@@ -505,6 +505,105 @@ def send_sms_or_queue(submission_number, phone, old_status, new_status, message)
             provider_response = traceback.format_exc()
 
     return send_status, provider_response
+
+
+def build_buyback_offer_message(submission_number, cert_number, item_details, grade, offer_amount, offer_notes=""):
+    item = str(item_details or "").strip()
+    grade_text = str(grade or "").strip()
+    amount = str(offer_amount or "").strip()
+    notes = str(offer_notes or "").strip()
+
+    parts = [
+        "Giant Sports Cards: We have a buyback offer ready.",
+        f"Submission #{submission_number}."
+    ]
+
+    if cert_number:
+        parts.append(f"Cert #{cert_number}.")
+
+    if item:
+        parts.append(f"Card: {item}.")
+
+    if grade_text:
+        parts.append(f"Grade: {grade_text}.")
+
+    if amount:
+        parts.append(f"Offer: {amount}.")
+
+    if notes:
+        parts.append(f"Note: {notes}.")
+
+    parts.append(f"View and respond here: {PUBLIC_PORTAL_URL}")
+    parts.append("Reply STOP to opt out.")
+
+    return " ".join(parts)
+
+def queue_buyback_offer_sms(cur, submission_number, cert_number, offer_amount, offer_notes):
+    if not offer_amount:
+        return False
+
+    cur.execute("""
+    SELECT s.raw_data,
+           COALESCE(s.sms_opt_in, FALSE),
+           COALESCE(s.sms_mode, 'none'),
+           COALESCE(c.description, c.item_details, ''),
+           COALESCE(c.grade, '')
+    FROM submissions s
+    JOIN card_buyback_items c
+      ON REGEXP_REPLACE(c.submission_number, '\\D', '', 'g') = REGEXP_REPLACE(s.submission_number, '\\D', '', 'g')
+    WHERE REGEXP_REPLACE(s.submission_number, '\\D', '', 'g')=%s
+      AND REGEXP_REPLACE(c.cert_number, '\\D', '', 'g')=%s
+    LIMIT 1
+    """, (submission_number, cert_number))
+
+    row = cur.fetchone()
+    if not row:
+        return False
+
+    raw_data, sms_opt_in, sms_mode, item_details, grade = row
+    raw_data = raw_data or {}
+
+    phone = normalize_phone(get_field(raw_data, ["Contact Info", "Phone", "Phone Number"]))
+    if not phone:
+        return False
+
+    if not sms_opt_in or str(sms_mode or "none").lower() == "none":
+        return False
+
+    message = build_buyback_offer_message(
+        submission_number,
+        cert_number,
+        item_details,
+        grade,
+        offer_amount,
+        offer_notes
+    )
+
+    send_status, provider_response = send_sms_or_queue(
+        submission_number,
+        phone,
+        "Buyback Interest",
+        "Buyback Offer Sent",
+        message
+    )
+
+    cur.execute("""
+    INSERT INTO sms_notifications
+        (submission_number, phone, old_status, new_status, message, send_status, provider_response, sent_at)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, CASE WHEN %s='Sent' THEN NOW() ELSE NULL END)
+    """, (
+        submission_number,
+        phone,
+        "Buyback Interest",
+        "Buyback Offer Sent",
+        message,
+        send_status,
+        provider_response,
+        send_status
+    ))
+
+    return True
+
 
 def maybe_queue_status_sms(cur, submission_number, phone, old_status, new_status, sms_opt_in, sms_mode, last_sms_status):
     sms_mode = str(sms_mode or "none").lower()
@@ -936,7 +1035,7 @@ def page(content, mode="admin"):
             color:#198754;
         }}
         .buyback-collapsible[open] summary:after {{
-            content:"–";
+            content:"â";
         }}
         .buyback-collapsible .buyback-inner {{
             padding:14px;
@@ -1084,8 +1183,21 @@ def page(content, mode="admin"):
             .brand {{
                 min-width:100%;
             }}
+            .brand {{
+                min-width:100%;
+                flex-direction:column;
+                align-items:flex-start;
+                gap:6px;
+            }}
+            .brand span {{
+                white-space:normal;
+                font-size:20px;
+                line-height:1.15;
+                max-width:100%;
+            }}
             .brand img {{
                 max-height:105px;
+                max-width:100%;
             }}
             .links {{
                 justify-content:flex-start;
@@ -1274,7 +1386,7 @@ def build_table(rows):
                 details_parts.append(f"<b>{html_escape(key_text)}:</b> {html_escape(val)}")
 
         if not details_parts:
-            details_html = "<span style='color:#6b7280;'>—</span>"
+            details_html = "<span style='color:#6b7280;'>â</span>"
         else:
             details_html = "<details class='row-details'><summary>Details</summary><div>" + "<br>".join(details_parts[:12]) + "</div></details>"
 
@@ -1312,10 +1424,10 @@ def get_sort_date(row):
             "Customer Drop-Off Date",
             "Customer Drop Off Date",
             "Submission Date",
-            "ƒand",
-            "ƒand.",
             "Æand",
             "Æand.",
+            "ÃÂand",
+            "ÃÂand.",
             "fand",
             "Fand",
             "S",
@@ -2169,8 +2281,8 @@ def admin_upload_psa():
 
                 month_pattern = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
                 date_pattern = month_pattern + r"\s+\d{1,2},\s+\d{4}"
-                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-–]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
-                date_range_full = date_pattern + r"\s*[-–]\s*" + date_pattern
+                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-â]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
+                date_range_full = date_pattern + r"\s*[-â]\s*" + date_pattern
 
                 value_pattern = re.compile(
                     rf"(Completed\s+{date_pattern}|Est\.\s*Complete\s*by\s+{date_range_full}|Est\.\s*Complete\s*by\s+{date_range_same_year}|Est\.\s*Complete\s*by\s+{date_pattern}|Estimated\s*Complete\s*by\s+{date_range_full}|Estimated\s*Complete\s*by\s+{date_range_same_year}|Estimated\s*Complete\s*by\s+{date_pattern}|Est\.\s*by\s+{date_range_full}|Est\.\s*by\s+{date_range_same_year}|Est\.\s*by\s+{date_pattern}|{date_pattern})",
@@ -2243,7 +2355,7 @@ def admin_upload_psa():
                             j += 1
 
                     # Split case:
-                    # • Sub
+                    # â¢ Sub
                     # #14550482
                     # Research & ID
                     elif re.search(r"\bSub\b\s*$", line, re.IGNORECASE) and i + 1 < len(lines):
@@ -2282,7 +2394,7 @@ def admin_upload_psa():
                             block_text = re.sub(r",\s+(\d{4})", r", \1", block_text)
 
                             matches = re.findall(
-                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
+                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
                                 block_text,
                                 re.IGNORECASE
                             )
@@ -2659,32 +2771,50 @@ def admin_upload_cards():
 @app.route("/admin/buyback_requests")
 @admin_required
 def admin_buyback_requests():
-    selected_queue = request.args.get("queue", "new").lower()
+    selected_queue = request.args.get("queue", "interest").lower()
 
-    allowed_queues = {
-        "new": "New",
-        "sold": "Sold",
+    queue_map = {
+        "interest": "New",
+        "offer": "Offer Sent",
+        "accepted": "Accepted",
+        "declined": "Declined",
+        "purchased": "Sold",
         "pass": "Pass",
         "all": "All"
     }
 
-    if selected_queue not in allowed_queues:
-        selected_queue = "new"
+    if selected_queue not in queue_map:
+        selected_queue = "interest"
 
     conn = get_conn()
     cur = conn.cursor()
 
-    if selected_queue == "all":
-        cur.execute("""
-        SELECT c.submission_number, c.cert_number, COALESCE(c.description, c.item_details, ''), c.grade, c.image_data,
-               c.interested, COALESCE(c.buyback_status, 'New'), s.raw_data,
-               COALESCE(c.card_type, ''), COALESCE(c.after_service, ''), COALESCE(c.images_url, ''),
-               COALESCE(c.psa_estimate, ''), COALESCE(c.card_ladder_value, ''), COALESCE(c.pop, ''), COALESCE(c.pop_higher, ''),
-               COALESCE(c.offer_amount, ''), COALESCE(c.offer_notes, '')
+    base_select = """
+        SELECT c.submission_number,
+               c.cert_number,
+               COALESCE(c.description, c.item_details, ''),
+               c.grade,
+               c.image_data,
+               c.interested,
+               COALESCE(c.buyback_status, 'New'),
+               s.raw_data,
+               COALESCE(c.card_type, ''),
+               COALESCE(c.after_service, ''),
+               COALESCE(c.images_url, ''),
+               COALESCE(c.psa_estimate, ''),
+               COALESCE(c.card_ladder_value, ''),
+               COALESCE(c.pop, ''),
+               COALESCE(c.pop_higher, ''),
+               COALESCE(c.offer_amount, ''),
+               COALESCE(c.offer_notes, '')
         FROM card_buyback_items c
         LEFT JOIN submissions s
           ON REGEXP_REPLACE(s.submission_number, '\\D', '', 'g') = REGEXP_REPLACE(c.submission_number, '\\D', '', 'g')
         WHERE c.interested=TRUE
+    """
+
+    if selected_queue == "all":
+        cur.execute(base_select + """
         ORDER BY
             CASE COALESCE(c.buyback_status, 'New')
                 WHEN 'New' THEN 0
@@ -2698,60 +2828,98 @@ def admin_buyback_requests():
             c.updated_at DESC
         """)
     else:
-        cur.execute("""
-        SELECT c.submission_number, c.cert_number, COALESCE(c.description, c.item_details, ''), c.grade, c.image_data,
-               c.interested, COALESCE(c.buyback_status, 'New'), s.raw_data,
-               COALESCE(c.card_type, ''), COALESCE(c.after_service, ''), COALESCE(c.images_url, ''),
-               COALESCE(c.psa_estimate, ''), COALESCE(c.card_ladder_value, ''), COALESCE(c.pop, ''), COALESCE(c.pop_higher, ''),
-               COALESCE(c.offer_amount, ''), COALESCE(c.offer_notes, '')
-        FROM card_buyback_items c
-        LEFT JOIN submissions s
-          ON REGEXP_REPLACE(s.submission_number, '\\D', '', 'g') = REGEXP_REPLACE(c.submission_number, '\\D', '', 'g')
-        WHERE c.interested=TRUE
+        cur.execute(base_select + """
           AND COALESCE(c.buyback_status, 'New')=%s
         ORDER BY c.updated_at DESC
-        """, (allowed_queues[selected_queue],))
+        """, (queue_map[selected_queue],))
 
     rows = cur.fetchall()
+
+    cur.execute("""
+    SELECT COALESCE(buyback_status, 'New'), COUNT(*)
+    FROM card_buyback_items
+    WHERE interested=TRUE
+    GROUP BY COALESCE(buyback_status, 'New')
+    """)
+    count_rows = cur.fetchall()
+
     cur.close()
     conn.close()
+
+    counts = {"interest": 0, "offer": 0, "accepted": 0, "declined": 0, "purchased": 0, "pass": 0, "all": 0}
+    for status_value, count_value in count_rows:
+        if status_value == "New":
+            counts["interest"] = count_value
+        elif status_value == "Offer Sent":
+            counts["offer"] = count_value
+        elif status_value == "Accepted":
+            counts["accepted"] = count_value
+        elif status_value == "Declined":
+            counts["declined"] = count_value
+        elif status_value == "Sold":
+            counts["purchased"] = count_value
+        elif status_value == "Pass":
+            counts["pass"] = count_value
+        counts["all"] += count_value
 
     def active(q):
         return "active" if selected_queue == q else ""
 
-    html = """
-    <h2>Buyback Interest</h2>
+    html = f"""
+    <h2>Buyback Offers</h2>
     <div class="card">
-        <p><b>Workflow:</b> Cards selected by customers appear under <b>New Interest</b>. If a card is moved to Sold or Pass by mistake, use <b>Back to Interest</b>.</p>
+        <p><b>Workflow:</b> Customer Interest â Send Offer â Customer Accepts/Declines â Mark Purchased or Reset to Interest.</p>
+        <p style="color:#374151;margin-bottom:0;">Every queue has a clear path back to <b>Interest</b>.</p>
     </div>
+
     <div class="filterbar">
-        <a class="reset-link {new_active}" href="/admin/buyback_requests?queue=new">Interest</a>
-        <a class="reset-link {sold_active}" href="/admin/buyback_requests?queue=sold">Sold</a>
-        <a class="reset-link {pass_active}" href="/admin/buyback_requests?queue=pass">Pass</a>
-        <a class="reset-link {all_active}" href="/admin/buyback_requests?queue=all">All Interested</a>
+        <a class="reset-link {active("interest")}" href="/admin/buyback_requests?queue=interest">Interest ({counts["interest"]})</a>
+        <a class="reset-link {active("offer")}" href="/admin/buyback_requests?queue=offer">Offers Sent ({counts["offer"]})</a>
+        <a class="reset-link {active("accepted")}" href="/admin/buyback_requests?queue=accepted">Accepted ({counts["accepted"]})</a>
+        <a class="reset-link {active("declined")}" href="/admin/buyback_requests?queue=declined">Declined ({counts["declined"]})</a>
+        <a class="reset-link {active("purchased")}" href="/admin/buyback_requests?queue=purchased">Purchased ({counts["purchased"]})</a>
+        <a class="reset-link {active("pass")}" href="/admin/buyback_requests?queue=pass">Pass ({counts["pass"]})</a>
+        <a class="reset-link {active("all")}" href="/admin/buyback_requests?queue=all">All ({counts["all"]})</a>
     </div>
-    """.format(
-        new_active=active("new"),
-        sold_active=active("sold"),
-        pass_active=active("pass"),
-        all_active=active("all")
-    )
+    """
 
     if not rows:
-        if selected_queue == "new":
-            html += "<div class='card'>No customer-selected buyback cards right now.</div>"
-        else:
-            html += "<div class='card'>No cards in this queue.</div>"
+        html += "<div class='card'>No buyback cards in this queue.</div>"
         return page(html)
 
-    html += "<div class='card'><div class='table-wrap'><table>"
-    html += "<tr><th>Status</th><th>Card Image</th><th>Customer</th><th>Submission #</th><th>Cert #</th><th>Type</th><th>Description</th><th>Grade</th><th>Offer</th><th>Actions</th></tr>"
+    def status_badge(status):
+        label = "Interest" if status == "New" else ("Purchased" if status == "Sold" else (status or "Interest"))
+        color = "#198754"; bg = "#d1e7dd"
+        if status == "Offer Sent":
+            color = "#92400e"; bg = "#fef3c7"
+        elif status == "Accepted":
+            color = "#065f46"; bg = "#d1fae5"
+        elif status == "Declined":
+            color = "#991b1b"; bg = "#fee2e2"
+        elif status == "Sold":
+            color = "#1e3a8a"; bg = "#dbeafe"
+        elif status == "Pass":
+            color = "#374151"; bg = "#e5e7eb"
+        return f"<span style='display:inline-block;padding:5px 9px;border-radius:999px;background:{bg};color:{color};font-weight:900;font-size:12px;'>{html_escape(label)}</span>"
+
+    html += """
+    <div class='card'><div class='table-wrap'><table>
+        <tr>
+            <th>Status</th>
+            <th>Card</th>
+            <th>Customer</th>
+            <th>Submission</th>
+            <th>Cert</th>
+            <th>Description</th>
+            <th>Grade</th>
+            <th>Offer</th>
+            <th>Workflow</th>
+        </tr>
+    """
 
     for row in rows:
         submission_number, cert_number, item_details, grade, image_data, interested, buyback_status, raw_data = row[:8]
         card_type = row[8] if len(row) > 8 else ""
-        after_service = row[9] if len(row) > 9 else ""
-        images_url = row[10] if len(row) > 10 else ""
         psa_estimate = display_blank_loading(row[11] if len(row) > 11 else "")
         card_ladder_value = display_blank_loading(row[12] if len(row) > 12 else "")
         pop = display_blank_loading(row[13] if len(row) > 13 else "")
@@ -2761,48 +2929,83 @@ def admin_buyback_requests():
 
         customer_name = get_field(raw_data or {}, ["Customer Name", "Name"])
         phone = get_field(raw_data or {}, ["Contact Info", "Phone", "Phone Number"])
-        img_html = f"<img src='{image_data}' style='max-height:120px;max-width:90px;'>" if image_data else ""
-        image_link = ""
 
-        offer_html = f"""
-        <form method="post" action="/admin/buyback_offer" style="min-width:180px;">
-            <input type="hidden" name="submission_number" value="{submission_number}">
-            <input type="hidden" name="cert_number" value="{cert_number}">
-            <input type="text" name="offer_amount" value="{html_escape(offer_amount)}" placeholder="Offer amount" style="width:120px;">
+        img_html = f"<img src='{image_data}' style='max-height:130px;max-width:95px;object-fit:contain;background:#f9fafb;border-radius:8px;'>" if image_data else "<span style='color:#6b7280;'>No image</span>"
+
+        offer_form = f"""
+        <form method="post" action="/admin/buyback_offer" style="min-width:190px;">
+            <input type="hidden" name="submission_number" value="{html_escape(submission_number)}">
+            <input type="hidden" name="cert_number" value="{html_escape(cert_number)}">
+            <label style="font-size:11px;font-weight:bold;color:#374151;">Offer Amount</label><br>
+            <input type="text" name="offer_amount" value="{html_escape(offer_amount)}" placeholder="$0.00" style="width:130px;margin:3px 0 6px 0;">
             <br>
-            <input type="text" name="offer_notes" value="{html_escape(offer_notes)}" placeholder="Notes" style="width:160px;">
+            <label style="font-size:11px;font-weight:bold;color:#374151;">Notes</label><br>
+            <input type="text" name="offer_notes" value="{html_escape(offer_notes)}" placeholder="Optional note" style="width:170px;margin:3px 0 6px 0;">
             <br>
-            <button type="submit">Save Offer</button>
+            <button type="submit" style="background:#198754;color:white;border:0;border-radius:6px;padding:7px 10px;font-weight:bold;">Send / Update Offer</button>
         </form>
         """
 
-        action_html = f"""
-        <form method="post" action="/admin/buyback_status" style="display:inline;">
-            <input type="hidden" name="submission_number" value="{submission_number}">
-            <input type="hidden" name="cert_number" value="{cert_number}">
-            <button name="status" value="Offer Sent">Offer Sent</button>
-            <button name="status" value="Sold">Purchased</button>
-            <button name="status" value="Pass">Pass</button>
-            <button name="status" value="New">Back to Interest</button>
-        </form>
-        """
+        if buyback_status in ["Sold", "Pass", "Declined"]:
+            actions = f"""
+            <form method="post" action="/admin/buyback_status" style="display:flex;flex-direction:column;gap:6px;min-width:140px;">
+                <input type="hidden" name="submission_number" value="{html_escape(submission_number)}">
+                <input type="hidden" name="cert_number" value="{html_escape(cert_number)}">
+                <button name="status" value="New">Reset to Interest</button>
+            </form>
+            """
+        elif buyback_status == "Accepted":
+            actions = f"""
+            <form method="post" action="/admin/buyback_status" style="display:flex;flex-direction:column;gap:6px;min-width:140px;">
+                <input type="hidden" name="submission_number" value="{html_escape(submission_number)}">
+                <input type="hidden" name="cert_number" value="{html_escape(cert_number)}">
+                <button name="status" value="Sold">Mark Purchased</button>
+                <button name="status" value="New">Reset to Interest</button>
+                <button name="status" value="Pass">Pass</button>
+            </form>
+            """
+        else:
+            actions = f"""
+            <form method="post" action="/admin/buyback_status" style="display:flex;flex-direction:column;gap:6px;min-width:140px;">
+                <input type="hidden" name="submission_number" value="{html_escape(submission_number)}">
+                <input type="hidden" name="cert_number" value="{html_escape(cert_number)}">
+                <button name="status" value="New">Reset to Interest</button>
+                <button name="status" value="Sold">Mark Purchased</button>
+                <button name="status" value="Pass">Pass</button>
+            </form>
+            """
+
+        extra = []
+        if card_type:
+            extra.append(f"<b>Type:</b> {html_escape(card_type)}")
+        if psa_estimate:
+            extra.append(f"<b>PSA:</b> {html_escape(psa_estimate)}")
+        if card_ladder_value:
+            extra.append(f"<b>CL:</b> {html_escape(card_ladder_value)}")
+        if pop:
+            extra.append(f"<b>Pop:</b> {html_escape(pop)}")
+        if pop_higher:
+            extra.append(f"<b>Pop Higher:</b> {html_escape(pop_higher)}")
+        extra_details = "<br>".join(extra)
 
         html += f"""
         <tr>
-            <td><b>{'Interest' if buyback_status == 'New' else buyback_status}</b></td>
+            <td>{status_badge(buyback_status)}</td>
             <td>{img_html}</td>
-            <td>{customer_name}<br><small>{phone}</small></td>
-            <td>{submission_number}</td>
-            <td>{cert_number}</td>
-            <td>{card_type}</td>
-            <td>{item_details}</td>
-            <td>{grade}</td>
-            <td>{offer_html}</td>
-            <td>{action_html}</td>
+            <td><b>{html_escape(customer_name)}</b><br><small>{html_escape(phone)}</small></td>
+            <td>{html_escape(submission_number)}</td>
+            <td>{html_escape(cert_number)}</td>
+            <td style="white-space:normal;min-width:230px;max-width:340px;">
+                {html_escape(item_details)}
+                <br><small>{extra_details}</small>
+            </td>
+            <td>{html_escape(grade)}</td>
+            <td>{offer_form}</td>
+            <td>{actions}</td>
         </tr>
         """
 
-    html += "</table></div>"
+    html += "</table></div></div>"
     return page(html)
 
 
@@ -2817,24 +3020,27 @@ def admin_buyback_offer():
     if submission_number and cert_number:
         conn = get_conn()
         cur = conn.cursor()
+        next_status = "Offer Sent" if offer_amount else "New"
+
         cur.execute("""
         UPDATE card_buyback_items
         SET offer_amount=%s,
             offer_notes=%s,
-            buyback_status=CASE
-                WHEN COALESCE(%s, '') <> '' THEN 'Offer Sent'
-                ELSE COALESCE(buyback_status, 'New')
-            END,
+            buyback_status=%s,
             offer_updated_at=NOW(),
             updated_at=NOW()
         WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
           AND REGEXP_REPLACE(cert_number, '\\D', '', 'g')=%s
-        """, (offer_amount, offer_notes, offer_amount, submission_number, cert_number))
+        """, (offer_amount, offer_notes, next_status, submission_number, cert_number))
+
+        if offer_amount:
+            queue_buyback_offer_sms(cur, submission_number, cert_number, offer_amount, offer_notes)
+
         conn.commit()
         cur.close()
         conn.close()
 
-    return redirect("/admin/buyback_requests")
+    return redirect("/admin/buyback_requests?queue=offer")
 
 
 @app.route("/admin/buyback_status", methods=["POST"])
@@ -2861,7 +3067,19 @@ def admin_buyback_status():
         cur.close()
         conn.close()
 
-    return redirect("/admin/buyback_requests")
+    redirect_queue = "interest"
+    if status == "Offer Sent":
+        redirect_queue = "offer"
+    elif status == "Accepted":
+        redirect_queue = "accepted"
+    elif status == "Declined":
+        redirect_queue = "declined"
+    elif status == "Sold":
+        redirect_queue = "purchased"
+    elif status == "Pass":
+        redirect_queue = "pass"
+
+    return redirect(f"/admin/buyback_requests?queue={redirect_queue}")
 
 
 @app.route("/portal/sms_preferences", methods=["POST"])
@@ -3461,7 +3679,7 @@ def portal_orders():
                         """
                     offer_display = f"""
                     <div style="margin-top:10px;padding:10px;border:1px solid #d1e7dd;border-radius:8px;background:#f3f7f5;">
-                        <b>Giant Buyback Offer:</b> {html_escape(offer_amount)}<br>
+                        <b>Giant Sports Cards Buyback Offer:</b> {html_escape(offer_amount)}<br>
                         <small>{html_escape(offer_notes)}</small><br>
                         <b>Status:</b> {html_escape('Interest' if buyback_status == 'New' else buyback_status)}
                         {response_buttons}
