@@ -1176,6 +1176,75 @@ def page(content, mode="admin"):
             font-weight:600 !important;
         }}
 
+
+        /* Buyback admin compact professional layout */
+        .buyback-admin-table {{
+            min-width:760px;
+            table-layout:fixed;
+            font-size:12px;
+        }}
+        .buyback-admin-table th:nth-child(1), .buyback-admin-table td:nth-child(1) {{ width:92px; }}
+        .buyback-admin-table th:nth-child(2), .buyback-admin-table td:nth-child(2) {{ width:82px; }}
+        .buyback-admin-table th:nth-child(3), .buyback-admin-table td:nth-child(3) {{ width:145px; }}
+        .buyback-admin-table th:nth-child(4), .buyback-admin-table td:nth-child(4) {{ width:105px; }}
+        .buyback-admin-table th:nth-child(5), .buyback-admin-table td:nth-child(5) {{ width:220px; }}
+        .buyback-admin-table th:nth-child(6), .buyback-admin-table td:nth-child(6) {{ width:75px; }}
+        .buyback-admin-table th:nth-child(7), .buyback-admin-table td:nth-child(7) {{ width:185px; }}
+        .buyback-admin-table th:nth-child(8), .buyback-admin-table td:nth-child(8) {{ width:140px; }}
+        .buyback-main-desc {{
+            white-space:normal;
+            overflow-wrap:break-word;
+            word-break:break-word;
+            line-height:1.35;
+        }}
+        .buyback-details {{
+            margin-top:8px;
+        }}
+        .buyback-details summary {{
+            cursor:pointer;
+            color:#0f5132;
+            font-weight:900;
+            display:inline-block;
+            padding:4px 8px;
+            border-radius:7px;
+            background:#eef6f2;
+        }}
+        .buyback-details-box {{
+            margin-top:8px;
+            background:#f9fafb;
+            border:1px solid #e5e7eb;
+            border-radius:8px;
+            padding:9px;
+            white-space:normal;
+            line-height:1.4;
+            color:#374151;
+        }}
+        .buyback-offer-form input {{
+            width:150px !important;
+            max-width:100%;
+            box-sizing:border-box;
+        }}
+        .buyback-actions {{
+            display:flex;
+            flex-direction:column;
+            gap:6px;
+            min-width:125px;
+        }}
+        .buyback-actions button {{
+            margin:0;
+            padding:7px 9px;
+            border-radius:6px;
+            border:1px solid #cbd5e1;
+            background:#f3f4f6;
+            font-weight:bold;
+            cursor:pointer;
+        }}
+        .buyback-actions button.primary {{
+            background:#198754;
+            color:white;
+            border:0;
+        }}
+
         @media (max-width: 700px) {{
             .topbar {{
                 align-items:flex-start;
@@ -2867,11 +2936,6 @@ def admin_buyback_requests():
 
     html = f"""
     <h2>Buyback Offers</h2>
-    <div class="card">
-        <p><b>Workflow:</b> Customer Interest â Send Offer â Customer Accepts/Declines â Mark Purchased or Reset to Interest.</p>
-        <p style="color:#374151;margin-bottom:0;">Every queue has a clear path back to <b>Interest</b>.</p>
-    </div>
-
     <div class="filterbar">
         <a class="reset-link {active("interest")}" href="/admin/buyback_requests?queue=interest">Interest ({counts["interest"]})</a>
         <a class="reset-link {active("offer")}" href="/admin/buyback_requests?queue=offer">Offers Sent ({counts["offer"]})</a>
@@ -2903,17 +2967,16 @@ def admin_buyback_requests():
         return f"<span style='display:inline-block;padding:5px 9px;border-radius:999px;background:{bg};color:{color};font-weight:900;font-size:12px;'>{html_escape(label)}</span>"
 
     html += """
-    <div class='card'><div class='table-wrap'><table>
+    <div class='card'><div class='table-wrap'><table class="buyback-admin-table">
         <tr>
             <th>Status</th>
             <th>Card</th>
             <th>Customer</th>
             <th>Submission</th>
-            <th>Cert</th>
             <th>Description</th>
             <th>Grade</th>
             <th>Offer</th>
-            <th>Workflow</th>
+            <th>Actions</th>
         </tr>
     """
 
@@ -2933,14 +2996,14 @@ def admin_buyback_requests():
         img_html = f"<img src='{image_data}' style='max-height:130px;max-width:95px;object-fit:contain;background:#f9fafb;border-radius:8px;'>" if image_data else "<span style='color:#6b7280;'>No image</span>"
 
         offer_form = f"""
-        <form method="post" action="/admin/buyback_offer" style="min-width:190px;">
+        <form method="post" action="/admin/buyback_offer" class="buyback-offer-form">
             <input type="hidden" name="submission_number" value="{html_escape(submission_number)}">
             <input type="hidden" name="cert_number" value="{html_escape(cert_number)}">
             <label style="font-size:11px;font-weight:bold;color:#374151;">Offer Amount</label><br>
-            <input type="text" name="offer_amount" value="{html_escape(offer_amount)}" placeholder="$0.00" style="width:130px;margin:3px 0 6px 0;">
+            <input type="text" name="offer_amount" value="{html_escape(offer_amount)}" placeholder="$0.00" style="margin:3px 0 6px 0;">
             <br>
             <label style="font-size:11px;font-weight:bold;color:#374151;">Notes</label><br>
-            <input type="text" name="offer_notes" value="{html_escape(offer_notes)}" placeholder="Optional note" style="width:170px;margin:3px 0 6px 0;">
+            <input type="text" name="offer_notes" value="{html_escape(offer_notes)}" placeholder="Optional note" style="margin:3px 0 6px 0;">
             <br>
             <button type="submit" style="background:#198754;color:white;border:0;border-radius:6px;padding:7px 10px;font-weight:bold;">Send / Update Offer</button>
         </form>
@@ -2948,7 +3011,7 @@ def admin_buyback_requests():
 
         if buyback_status in ["Sold", "Pass", "Declined"]:
             actions = f"""
-            <form method="post" action="/admin/buyback_status" style="display:flex;flex-direction:column;gap:6px;min-width:140px;">
+            <form method="post" action="/admin/buyback_status" class="buyback-actions">
                 <input type="hidden" name="submission_number" value="{html_escape(submission_number)}">
                 <input type="hidden" name="cert_number" value="{html_escape(cert_number)}">
                 <button name="status" value="New">Reset to Interest</button>
@@ -2956,21 +3019,21 @@ def admin_buyback_requests():
             """
         elif buyback_status == "Accepted":
             actions = f"""
-            <form method="post" action="/admin/buyback_status" style="display:flex;flex-direction:column;gap:6px;min-width:140px;">
+            <form method="post" action="/admin/buyback_status" class="buyback-actions">
                 <input type="hidden" name="submission_number" value="{html_escape(submission_number)}">
                 <input type="hidden" name="cert_number" value="{html_escape(cert_number)}">
-                <button name="status" value="Sold">Mark Purchased</button>
+                <button class="primary" name="status" value="Sold">Mark Purchased</button>
                 <button name="status" value="New">Reset to Interest</button>
                 <button name="status" value="Pass">Pass</button>
             </form>
             """
         else:
             actions = f"""
-            <form method="post" action="/admin/buyback_status" style="display:flex;flex-direction:column;gap:6px;min-width:140px;">
+            <form method="post" action="/admin/buyback_status" class="buyback-actions">
                 <input type="hidden" name="submission_number" value="{html_escape(submission_number)}">
                 <input type="hidden" name="cert_number" value="{html_escape(cert_number)}">
                 <button name="status" value="New">Reset to Interest</button>
-                <button name="status" value="Sold">Mark Purchased</button>
+                <button class="primary" name="status" value="Sold">Mark Purchased</button>
                 <button name="status" value="Pass">Pass</button>
             </form>
             """
@@ -2988,16 +3051,25 @@ def admin_buyback_requests():
             extra.append(f"<b>Pop Higher:</b> {html_escape(pop_higher)}")
         extra_details = "<br>".join(extra)
 
+        details_html = f"""
+        <details class="buyback-details">
+            <summary>Details</summary>
+            <div class="buyback-details-box">
+                <b>Cert #:</b> {html_escape(cert_number)}<br>
+                {extra_details}
+            </div>
+        </details>
+        """
+
         html += f"""
         <tr>
             <td>{status_badge(buyback_status)}</td>
             <td>{img_html}</td>
             <td><b>{html_escape(customer_name)}</b><br><small>{html_escape(phone)}</small></td>
             <td>{html_escape(submission_number)}</td>
-            <td>{html_escape(cert_number)}</td>
-            <td style="white-space:normal;min-width:230px;max-width:340px;">
+            <td class="buyback-main-desc">
                 {html_escape(item_details)}
-                <br><small>{extra_details}</small>
+                {details_html}
             </td>
             <td>{html_escape(grade)}</td>
             <td>{offer_form}</td>
