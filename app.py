@@ -3319,397 +3319,420 @@ def portal():
             display:none;
         }
 
-        .gsc-hero-page {
+        body.portal-body {
+            background:#f4f3ed;
+        }
+
+        body.portal-body .container {
+            padding:0;
+            margin:0;
+            overflow-x:hidden;
+            background:#f4f3ed;
+        }
+
+        .gsc-mobile-page {
             min-height:100vh;
             background:
-                radial-gradient(circle at 82% 18%, rgba(25,135,84,.18), transparent 24%),
-                radial-gradient(circle at 12% 88%, rgba(15,81,50,.10), transparent 26%),
-                linear-gradient(180deg, #f7f8f4 0%, #eef3ef 100%);
-            padding:24px 18px 42px;
+                radial-gradient(circle at 82% 18%, rgba(15,81,50,.12), transparent 28%),
+                linear-gradient(180deg, #fbfaf3 0%, #eef4ee 100%);
+            padding:22px 18px 42px;
             box-sizing:border-box;
         }
 
-        .gsc-hero-shell {
+        .gsc-mobile-shell {
             width:100%;
-            max-width:760px;
+            max-width:520px;
             margin:0 auto;
         }
 
-        .gsc-hero-header {
+        .gsc-hero {
             position:relative;
-            padding:10px 2px 18px;
+            padding:4px 0 20px;
         }
 
         .gsc-hero-logo {
-            width:170px;
-            max-width:56%;
+            width:128px;
             height:auto;
             display:block;
-            margin-bottom:18px;
+            margin:0 0 18px;
         }
 
-        .gsc-menu-dot {
+        .gsc-menu {
             position:absolute;
-            right:4px;
-            top:8px;
+            top:0;
+            right:0;
             width:42px;
             height:42px;
-            border-radius:999px;
-            border:1px solid #ccd6cf;
-            background:rgba(255,255,255,.72);
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            color:#0f5132;
-            font-size:22px;
-            font-weight:900;
-            box-shadow:0 6px 18px rgba(15,81,50,.10);
+            border-radius:50%;
+            background:#f7f8f3;
+            border:1px solid #cbd5ce;
+            box-shadow:0 5px 14px rgba(15,81,50,.14);
         }
+
+        .gsc-menu span,
+        .gsc-menu span:before,
+        .gsc-menu span:after {
+            display:block;
+            position:absolute;
+            left:11px;
+            width:18px;
+            height:2px;
+            background:#0f5132;
+            border-radius:4px;
+            content:"";
+        }
+
+        .gsc-menu span { top:20px; }
+        .gsc-menu span:before { top:-6px; left:0; }
+        .gsc-menu span:after { top:6px; left:0; }
 
         .gsc-hero-title {
-            color:#073d27;
-            font-size:46px;
-            line-height:.96;
-            font-weight:950;
-            text-transform:uppercase;
-            letter-spacing:-1px;
-            margin:0 0 8px;
-            max-width:520px;
-        }
-
-        .gsc-hero-tag {
-            display:inline-flex;
-            align-items:center;
-            gap:8px;
-            background:rgba(255,255,255,.76);
-            border:1px solid #d6dfd8;
-            padding:4px 10px;
-            color:#0f5132;
+            margin:0;
+            color:#06442d;
+            font-family:Arial, Helvetica, sans-serif;
             font-weight:900;
             text-transform:uppercase;
-            letter-spacing:.8px;
-            font-size:13px;
-            box-shadow:0 3px 12px rgba(15,81,50,.08);
+            letter-spacing:-.8px;
+            line-height:.96;
+            font-size:34px;
+            max-width:330px;
         }
 
-        .gsc-star {
-            color:#7a7f24;
-            font-size:17px;
+        .gsc-tagline {
+            display:inline-flex;
+            align-items:center;
+            gap:9px;
+            margin:10px 0 13px;
+            padding:5px 10px;
+            background:rgba(255,255,255,.72);
+            border:1px solid #d7d8cd;
+            color:#06442d;
+            box-shadow:0 3px 12px rgba(15,81,50,.08);
+            font-size:12px;
+            font-weight:900;
+            text-transform:uppercase;
+            letter-spacing:1px;
+        }
+
+        .gsc-tagline:before,
+        .gsc-tagline:after {
+            content:"";
+            width:16px;
+            height:16px;
+            background:#8a8f36;
+            clip-path:polygon(50% 0%, 61% 35%, 98% 35%, 68% 56%, 79% 91%, 50% 70%, 21% 91%, 32% 56%, 2% 35%, 39% 35%);
+            flex:0 0 auto;
         }
 
         .gsc-hero-copy {
-            margin:14px 0 18px;
-            color:#17231d;
-            font-size:18px;
-            line-height:1.35;
-            max-width:420px;
+            color:#111827;
+            font-size:16px;
+            line-height:1.38;
+            max-width:300px;
+            margin:0 0 20px;
         }
 
         .gsc-hero-actions {
             display:flex;
             gap:12px;
-            flex-wrap:wrap;
-            margin:14px 0 22px;
+            align-items:center;
+            margin-bottom:20px;
         }
 
         .gsc-hero-btn {
             display:inline-flex;
             align-items:center;
-            gap:8px;
-            padding:10px 18px;
+            justify-content:center;
+            height:40px;
+            padding:0 19px;
             border-radius:10px;
-            border:1px solid #0f5132;
             text-decoration:none;
             font-weight:900;
-            color:#0f5132;
-            background:rgba(255,255,255,.82);
+            font-size:15px;
+            color:#06442d;
+            background:#ffffff;
+            border:1px solid #06442d;
+            box-sizing:border-box;
         }
 
         .gsc-hero-btn.primary {
-            background:linear-gradient(180deg, #198754 0%, #0f6d3f 100%);
-            color:white;
+            background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%);
+            color:#ffffff;
             border:0;
-            box-shadow:0 8px 18px rgba(15,81,50,.20);
+            box-shadow:0 8px 15px rgba(15,81,50,.22);
         }
 
         .gsc-track-card {
             position:relative;
             overflow:hidden;
-            border-radius:20px;
+            border-radius:16px;
             background:
-                radial-gradient(circle at 50% 0%, rgba(25,135,84,.30), transparent 31%),
-                linear-gradient(145deg, #0d1820 0%, #111c26 52%, #071016 100%);
-            box-shadow:0 20px 50px rgba(7,16,22,.24);
-            padding:42px 42px 36px;
-            color:white;
-            border:1px solid rgba(255,255,255,.08);
+                radial-gradient(circle at 48% 0%, rgba(25,135,84,.28), transparent 31%),
+                linear-gradient(145deg, #0f1b22 0%, #111c24 52%, #071016 100%);
+            color:#ffffff;
+            padding:34px 20px 23px;
+            border:1px solid rgba(255,255,255,.09);
+            box-shadow:0 18px 38px rgba(7,16,22,.25);
         }
 
         .gsc-track-card:before {
             content:"";
             position:absolute;
-            inset:-80px -70px auto auto;
-            width:260px;
-            height:260px;
-            border-radius:999px;
-            border:1px solid rgba(25,135,84,.24);
-            box-shadow:0 0 0 28px rgba(25,135,84,.04), 0 0 0 58px rgba(25,135,84,.025);
+            width:230px;
+            height:230px;
+            border-radius:50%;
+            left:50%;
+            top:-105px;
+            transform:translateX(-50%);
+            border:1px solid rgba(25,135,84,.28);
+            box-shadow:0 0 0 28px rgba(25,135,84,.05), 0 0 0 58px rgba(25,135,84,.025);
         }
 
         .gsc-track-icon {
-            width:96px;
-            height:96px;
-            margin:0 auto 18px;
-            border-radius:999px;
-            background:#f4f7f4;
-            color:#0f5132;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            font-size:46px;
-            font-weight:900;
-            box-shadow:0 0 0 10px rgba(255,255,255,.10);
             position:relative;
-            z-index:1;
+            width:82px;
+            height:82px;
+            border-radius:50%;
+            background:#f5f7f4;
+            margin:0 auto 17px;
+            box-shadow:0 0 0 10px rgba(255,255,255,.10);
+        }
+
+        .gsc-track-icon:before {
+            content:"";
+            position:absolute;
+            width:30px;
+            height:40px;
+            border:4px solid #0f5132;
+            border-radius:5px;
+            left:24px;
+            top:18px;
+            box-sizing:border-box;
         }
 
         .gsc-track-icon:after {
-            content:"â";
+            content:"";
             position:absolute;
-            right:-2px;
-            bottom:7px;
-            width:31px;
-            height:31px;
-            border-radius:999px;
+            right:4px;
+            bottom:8px;
+            width:28px;
+            height:28px;
+            border-radius:50%;
             background:#198754;
-            color:white;
-            font-size:19px;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            border:3px solid #f4f7f4;
+            border:3px solid #f5f7f4;
+            box-sizing:border-box;
         }
 
-        .gsc-track-card h2 {
+        .gsc-check {
+            position:absolute;
+            right:12px;
+            bottom:18px;
+            width:12px;
+            height:7px;
+            border-left:3px solid #ffffff;
+            border-bottom:3px solid #ffffff;
+            transform:rotate(-45deg);
+            z-index:2;
+        }
+
+        .gsc-track-title {
             position:relative;
             z-index:1;
             text-align:center;
-            font-size:32px;
-            line-height:1.05;
+            margin:0;
+            color:#ffffff;
+            font-family:Arial, Helvetica, sans-serif;
             text-transform:uppercase;
-            margin:0 0 10px;
-            letter-spacing:.2px;
-            font-weight:950;
+            font-size:25px;
+            line-height:1.05;
+            font-weight:900;
+            letter-spacing:.1px;
         }
 
         .gsc-green-line {
-            width:90px;
-            height:4px;
-            border-radius:999px;
-            background:#20a464;
-            margin:0 auto 18px;
             position:relative;
             z-index:1;
+            width:86px;
+            height:4px;
+            background:#20a464;
+            border-radius:20px;
+            margin:13px auto 18px;
         }
 
         .gsc-subtitle {
             position:relative;
             z-index:1;
             text-align:center;
-            color:#e5e7eb;
-            font-size:17px;
-            line-height:1.45;
-            max-width:480px;
-            margin:0 auto 24px;
+            margin:0 auto 20px;
+            color:#f0f2f2;
+            font-size:15px;
+            line-height:1.42;
+            max-width:360px;
         }
 
         .gsc-portal-form {
             position:relative;
             z-index:1;
-            max-width:540px;
+            max-width:360px;
             margin:0 auto;
         }
 
         .gsc-input-row {
-            height:62px;
+            height:52px;
+            border-radius:10px;
             border:1px solid rgba(255,255,255,.24);
             background:rgba(255,255,255,.075);
-            border-radius:12px;
             display:flex;
             align-items:center;
-            gap:13px;
-            padding:0 17px;
-            margin-bottom:12px;
-            backdrop-filter:blur(4px);
+            gap:12px;
+            padding:0 14px;
+            margin:0 0 10px;
+            box-sizing:border-box;
         }
 
         .gsc-input-icon {
-            width:28px;
-            text-align:center;
-            color:#cfd6d2;
-            font-size:21px;
-            line-height:1;
-            opacity:.9;
+            width:20px;
+            height:20px;
+            position:relative;
+            flex:0 0 auto;
+            opacity:.85;
+        }
+
+        .gsc-input-icon.phone:before {
+            content:"";
+            position:absolute;
+            left:5px;
+            top:1px;
+            width:10px;
+            height:17px;
+            border:2px solid #d1d5db;
+            border-radius:3px;
+            box-sizing:border-box;
+        }
+
+        .gsc-input-icon.phone:after {
+            content:"";
+            position:absolute;
+            left:9px;
+            bottom:3px;
+            width:3px;
+            height:3px;
+            border-radius:50%;
+            background:#d1d5db;
+        }
+
+        .gsc-input-icon.user:before {
+            content:"";
+            position:absolute;
+            left:6px;
+            top:2px;
+            width:8px;
+            height:8px;
+            border:2px solid #d1d5db;
+            border-radius:50%;
+            box-sizing:border-box;
+        }
+
+        .gsc-input-icon.user:after {
+            content:"";
+            position:absolute;
+            left:3px;
+            bottom:1px;
+            width:14px;
+            height:8px;
+            border:2px solid #d1d5db;
+            border-radius:10px 10px 3px 3px;
+            box-sizing:border-box;
         }
 
         .gsc-input-row input {
             flex:1;
+            min-width:0;
             border:0;
             outline:0;
             background:transparent;
-            color:#fff;
-            font-size:17px;
+            color:#ffffff;
+            font-size:15px;
             margin:0;
             padding:0;
         }
 
         .gsc-input-row input::placeholder {
             color:#d1d5db;
-            opacity:.92;
+            opacity:.94;
         }
 
         .gsc-submit {
             width:100%;
-            height:64px;
+            height:54px;
             border:0;
-            border-radius:12px;
-            color:white;
+            border-radius:10px;
             background:linear-gradient(180deg, #209d57 0%, #087a3f 100%);
-            box-shadow:0 10px 24px rgba(0,0,0,.28);
-            font-size:18px;
-            font-weight:950;
-            letter-spacing:.2px;
+            color:#ffffff;
+            font-size:16px;
+            font-weight:900;
             cursor:pointer;
-            margin:4px 0 0;
+            margin:2px 0 0;
+            box-shadow:0 9px 20px rgba(0,0,0,.28);
         }
 
         .gsc-benefits {
-            max-width:760px;
-            margin:18px auto 0;
             display:grid;
-            grid-template-columns:repeat(2, minmax(0, 1fr));
-            gap:14px;
+            grid-template-columns:1fr 1fr;
+            gap:12px;
+            margin:16px 0 0;
         }
 
         .gsc-benefit {
             display:flex;
-            gap:13px;
+            gap:10px;
             align-items:center;
             background:rgba(255,255,255,.78);
-            border:1px solid #d6dfd8;
-            border-radius:16px;
-            padding:15px;
-            box-shadow:0 8px 24px rgba(15,81,50,.08);
+            border:1px solid #d7dfd9;
+            border-radius:14px;
+            padding:13px;
         }
 
-        .gsc-benefit-icon {
-            width:46px;
-            height:46px;
-            border-radius:13px;
-            background:#e8f3ec;
-            color:#0f5132;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            font-size:23px;
+        .gsc-benefit-dot {
+            width:34px;
+            height:34px;
+            border-radius:10px;
+            background:#e7f2eb;
+            border:1px solid #c8ded0;
             flex:0 0 auto;
         }
 
         .gsc-benefit-title {
-            color:#0f5132;
-            font-weight:950;
-            font-size:14px;
+            color:#06442d;
+            font-weight:900;
             text-transform:uppercase;
-            letter-spacing:.3px;
-            margin-bottom:3px;
+            font-size:12px;
+            letter-spacing:.2px;
+            margin-bottom:2px;
         }
 
         .gsc-benefit-text {
             color:#374151;
-            font-size:13px;
-            line-height:1.35;
+            font-size:12px;
+            line-height:1.3;
             font-weight:600;
         }
 
-        @media (max-width: 700px) {
-            .gsc-hero-page {
+        @media (max-width: 420px) {
+            .gsc-mobile-page {
                 padding:20px 18px 34px;
             }
 
             .gsc-hero-logo {
-                width:142px;
-                max-width:52%;
-                margin-bottom:16px;
+                width:128px;
             }
 
             .gsc-hero-title {
-                font-size:31px;
-                max-width:310px;
-                letter-spacing:-.4px;
-            }
-
-            .gsc-hero-tag {
-                font-size:11px;
-                gap:6px;
-                padding:4px 8px;
-            }
-
-            .gsc-hero-copy {
-                font-size:15px;
-                max-width:270px;
-                margin:12px 0 16px;
-            }
-
-            .gsc-hero-btn {
-                padding:9px 14px;
-                font-size:14px;
+                font-size:32px;
             }
 
             .gsc-track-card {
-                border-radius:16px;
-                padding:32px 18px 26px;
-            }
-
-            .gsc-track-icon {
-                width:78px;
-                height:78px;
-                font-size:36px;
-                margin-bottom:17px;
-            }
-
-            .gsc-track-icon:after {
-                width:27px;
-                height:27px;
-                font-size:16px;
-            }
-
-            .gsc-track-card h2 {
-                font-size:24px;
-            }
-
-            .gsc-subtitle {
-                font-size:15px;
-                margin-bottom:20px;
-            }
-
-            .gsc-input-row {
-                height:56px;
-                border-radius:11px;
-            }
-
-            .gsc-input-row input {
-                font-size:15px;
-            }
-
-            .gsc-input-icon {
-                color:#cfd6d2 !important;
-                background:transparent !important;
-                opacity:.9 !important;
-            }
-
-            .gsc-submit {
-                height:58px;
-                font-size:16px;
+                padding:32px 18px 23px;
             }
 
             .gsc-benefits {
@@ -3718,52 +3741,50 @@ def portal():
         }
     </style>
 
-    <div class="gsc-hero-page">
-        <div class="gsc-hero-shell">
-            <div class="gsc-hero-header">
+    <div class="gsc-mobile-page">
+        <div class="gsc-mobile-shell">
+            <div class="gsc-hero">
                 <img class="gsc-hero-logo" src="data:image/png;base64,__PORTAL_LOGO__" alt="Giant Sports Cards">
-                <div class="gsc-menu-dot">â°</div>
+                <div class="gsc-menu"><span></span></div>
 
                 <h1 class="gsc-hero-title">PSA Submission Tracker</h1>
 
-                <div class="gsc-hero-tag">
-                    <span class="gsc-star">â</span>
-                    <span>Track â¢ Verify â¢ Relax</span>
-                    <span class="gsc-star">â</span>
+                <div class="gsc-tagline">
+                    <span>Track &bull; Verify &bull; Relax</span>
                 </div>
 
                 <p class="gsc-hero-copy">Track your submission every step of the way.</p>
 
                 <div class="gsc-hero-actions">
-                    <a class="gsc-hero-btn primary" href="/portal">â Home</a>
-                    <a class="gsc-hero-btn" href="/portal/logout">â± Logout</a>
+                    <a class="gsc-hero-btn primary" href="/portal">Home</a>
+                    <a class="gsc-hero-btn" href="/portal/logout">Logout</a>
                 </div>
             </div>
 
             <div class="gsc-track-card">
-                <div class="gsc-track-icon">â£</div>
-                <h2>Track Your Submission</h2>
+                <div class="gsc-track-icon"><span class="gsc-check"></span></div>
+                <h2 class="gsc-track-title">Track Your Submission</h2>
                 <div class="gsc-green-line"></div>
                 <p class="gsc-subtitle">Enter your information below to view the real-time status of your PSA submission.</p>
 
                 <form class="gsc-portal-form" method="post">
                     <div class="gsc-input-row">
-                        <div class="gsc-input-icon">â</div>
+                        <div class="gsc-input-icon phone"></div>
                         <input name="phone" placeholder="Phone number">
                     </div>
 
                     <div class="gsc-input-row">
-                        <div class="gsc-input-icon">â</div>
+                        <div class="gsc-input-icon user"></div>
                         <input name="last" placeholder="Last name">
                     </div>
 
-                    <button class="gsc-submit" type="submit">â Track Submission</button>
+                    <button class="gsc-submit" type="submit">Track Submission</button>
                 </form>
             </div>
 
             <div class="gsc-benefits">
                 <div class="gsc-benefit">
-                    <div class="gsc-benefit-icon">â·</div>
+                    <div class="gsc-benefit-dot"></div>
                     <div>
                         <div class="gsc-benefit-title">Real-Time Updates</div>
                         <div class="gsc-benefit-text">View current PSA progress and pickup status.</div>
@@ -3771,10 +3792,10 @@ def portal():
                 </div>
 
                 <div class="gsc-benefit">
-                    <div class="gsc-benefit-icon">â</div>
+                    <div class="gsc-benefit-dot"></div>
                     <div>
                         <div class="gsc-benefit-title">Expert Care</div>
-                        <div class="gsc-benefit-text">Your cards are handled carefully from drop-off to pickup.</div>
+                        <div class="gsc-benefit-text">Handled carefully from drop-off to pickup.</div>
                     </div>
                 </div>
             </div>
