@@ -1245,6 +1245,21 @@ def page(content, mode="admin"):
             border:0;
         }}
 
+
+        /* Mobile portal form icon color consistency */
+        @media (max-width: 700px) {{
+            .gsc-field-icon,
+            .safe-field-icon,
+            .portal-field-icon,
+            .input-icon,
+            .form-icon {{
+                color:#6b7280 !important;
+                background:#f3f4f6 !important;
+                border-color:#d1d5db !important;
+                opacity:.85 !important;
+            }}
+        }}
+
         @media (max-width: 700px) {{
             .topbar {{
                 align-items:flex-start;
@@ -1478,18 +1493,15 @@ def build_table(rows):
 
 
 def get_sort_date(row):
-    data = row[0] or {}
+    try:
+        data = row[0] if len(row) > 0 else {}
+    except Exception:
+        data = {}
 
-    # Use the same drop-off date detector used for portal/display.
-    date_value = ""
+    value = get_dropoff_date(data)
 
-    for k, v in (data or {}).items():
-        if is_dropoff_date_key(k):
-            date_value = v
-            break
-
-    if not date_value:
-        date_value = get_field(data, [
+    if not value:
+        value = get_field(data, [
             "Customer Drop-Off Date",
             "Customer Drop Off Date",
             "Submission Date",
@@ -1506,16 +1518,13 @@ def get_sort_date(row):
         ])
 
     try:
-        if date_value:
-            parsed = pd.to_datetime(date_value, errors="coerce")
-            if not pd.isna(parsed):
-                return parsed
+        parsed = pd.to_datetime(value, errors="coerce")
+        if not pd.isna(parsed):
+            return parsed
     except Exception:
         pass
 
     return pd.Timestamp.min
-
-
 
 def is_psa_grade_line(line):
     text = re.sub(r"\s+", " ", str(line or "")).strip().upper()
@@ -2051,6 +2060,7 @@ def clear_submissions():
 @app.route("/admin")
 @admin_required
 def admin_dashboard():
+    sort_order = request.args.get("sort", "newest")
     sort = request.args.get("sort", "new")
     view = request.args.get("view", "all")
     status_filter = request.args.get("status", "all").replace("+", " ")
@@ -2208,6 +2218,13 @@ def admin_dashboard():
             """
 
         html += "</table></div></details></div>"
+
+        html += f"""
+    <div class="filterbar">
+        <a class="reset-link {'active' if sort_order != 'oldest' else ''}" href="/admin?sort=newest">Newest First</a>
+        <a class="reset-link {'active' if sort_order == 'oldest' else ''}" href="/admin?sort=oldest">Oldest First</a>
+    </div>
+    """
 
     html += build_table(rows)
     return page(html)
