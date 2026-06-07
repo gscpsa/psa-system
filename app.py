@@ -233,30 +233,36 @@ def normalize_key_text(value):
     return text
 
 def is_dropoff_date_key(key):
-    normalized = normalize_key_text(key)
+    raw = str(key or "").strip()
+    normalized = normalize_key_text(raw)
 
-    if normalized in [
+    direct_names = [
         "fand",
-        "and",
+        "f and",
+        "Æand",
+        "Æ and",
+        "Ã¦Âand",
+        "Ã¦Â and",
         "submission date",
         "customer drop-off date",
         "customer drop off date",
         "drop-off date",
         "drop off date",
-        "date",
-        "s"
-    ]:
+        "date"
+    ]
+
+    if normalized in direct_names:
         return True
 
-    # Some Excel exports produce broken short text around the original date field.
-    if "fand" in normalized:
+    letters_only = re.sub(r"[^a-z]", "", normalized)
+
+    if letters_only in ["fand", "and"]:
         return True
 
-    if normalized.startswith("f") and "and" in normalized and len(normalized) <= 12:
+    if letters_only.startswith("f") and "and" in letters_only and len(letters_only) <= 12:
         return True
 
     return False
-
 
 def get_field(data, names):
     for wanted in names:
@@ -298,8 +304,17 @@ def clean_service_display(service):
 def date_only_display(value):
     text = str(value or "").strip()
 
-    if not text:
+    if not text or text.lower() in ["nan", "none", "null"]:
         return ""
+
+    try:
+        numeric = float(text)
+        if 25000 <= numeric <= 70000:
+            parsed = pd.to_datetime(numeric, unit="D", origin="1899-12-30", errors="coerce")
+            if not pd.isna(parsed):
+                return parsed.strftime("%Y-%m-%d")
+    except Exception:
+        pass
 
     try:
         parsed = pd.to_datetime(text, errors="coerce")
@@ -308,7 +323,6 @@ def date_only_display(value):
     except Exception:
         pass
 
-    # Fallback for values like "2026-03-31 00:00:00"
     if " " in text:
         possible_date = text.split(" ", 1)[0].strip()
         if re.match(r"^\d{4}-\d{1,2}-\d{1,2}$", possible_date):
@@ -317,7 +331,14 @@ def date_only_display(value):
     return text
 
 def get_dropoff_date(data):
-    # First use known normal names.
+    data = data or {}
+
+    for k, v in data.items():
+        if is_dropoff_date_key(k):
+            cleaned = date_only_display(v)
+            if cleaned:
+                return cleaned
+
     value = get_field(data, [
         "Customer Drop-Off Date",
         "Customer Drop Off Date",
@@ -328,8 +349,7 @@ def get_dropoff_date(data):
         "ÃÂand.",
         "fand",
         "Fand",
-        "S",
-        "s",
+        "F and",
         "Date",
         "date"
     ])
@@ -337,14 +357,7 @@ def get_dropoff_date(data):
     if value:
         return date_only_display(value)
 
-    # Then scan every raw key because the Excel column may be mojibake.
-    for k, v in (data or {}).items():
-        if is_dropoff_date_key(k):
-            return date_only_display(v)
-
     return ""
-
-
 
 def strip_arrived_at_psa_prefix(value):
     text = str(value or "").strip()
@@ -1419,7 +1432,7 @@ def build_table(rows):
             <th>Cards</th>
             <th>Service</th>
             <th>Status</th>
-            <th>Drop-Off</th>
+            <th>Customer Drop-Off</th>
             <th>Est. Complete</th>
             <th>Details</th>
         </tr>
@@ -1499,23 +1512,6 @@ def get_sort_date(row):
         data = {}
 
     value = get_dropoff_date(data)
-
-    if not value:
-        value = get_field(data, [
-            "Customer Drop-Off Date",
-            "Customer Drop Off Date",
-            "Submission Date",
-            "Æand",
-            "Æand.",
-            "ÃÂand",
-            "ÃÂand.",
-            "fand",
-            "Fand",
-            "S",
-            "s",
-            "Date",
-            "date"
-        ])
 
     try:
         parsed = pd.to_datetime(value, errors="coerce")
@@ -2060,8 +2056,10 @@ def clear_submissions():
 @app.route("/admin")
 @admin_required
 def admin_dashboard():
-    sort_order = request.args.get("sort", "newest")
     sort = request.args.get("sort", "new")
+    if sort not in ["new", "old"]:
+        sort = "new"
+
     view = request.args.get("view", "all")
     status_filter = request.args.get("status", "all").replace("+", " ")
 
@@ -2218,13 +2216,6 @@ def admin_dashboard():
             """
 
         html += "</table></div></details></div>"
-
-        html += f"""
-    <div class="filterbar">
-        <a class="reset-link {'active' if sort_order != 'oldest' else ''}" href="/admin?sort=newest">Newest First</a>
-        <a class="reset-link {'active' if sort_order == 'oldest' else ''}" href="/admin?sort=oldest">Oldest First</a>
-    </div>
-    """
 
     html += build_table(rows)
     return page(html)
@@ -3324,279 +3315,473 @@ def portal():
 
     return page("""
     <style>
-        .gsc-portal-wrap {
-            min-height: calc(100vh - 135px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 46px 16px;
-            background:#f4f6f8;
+        body.portal-body > .topbar {
+            display:none;
         }
-        .gsc-portal-card {
-            width: 100%;
-            max-width: 760px;
-            background: #ffffff;
-            border-radius: 18px;
-            padding: 44px 58px 34px;
-            box-shadow:0 16px 38px rgba(15,81,50,.18);
-            text-align: center;
-            border:3px solid #198754;
+
+        .gsc-hero-page {
+            min-height:100vh;
+            background:
+                radial-gradient(circle at 82% 18%, rgba(25,135,84,.18), transparent 24%),
+                radial-gradient(circle at 12% 88%, rgba(15,81,50,.10), transparent 26%),
+                linear-gradient(180deg, #f7f8f4 0%, #eef3ef 100%);
+            padding:24px 18px 42px;
+            box-sizing:border-box;
         }
-        .gsc-portal-icon {
-            width: 112px;
-            height: 112px;
-            border-radius: 999px;
-            border: 5px solid #e5e7eb;
-            margin: 0 auto 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #0f5132;
-            font-size: 54px;
-            font-weight: 900;
+
+        .gsc-hero-shell {
+            width:100%;
+            max-width:760px;
+            margin:0 auto;
         }
-        .gsc-portal-card h2 {
-            font-size: 42px;
-            letter-spacing: .5px;
-            text-transform: uppercase;
-            margin: 8px 0 14px;
-            color: #07110d;
-            font-weight: 900;
+
+        .gsc-hero-header {
+            position:relative;
+            padding:10px 2px 18px;
         }
+
+        .gsc-hero-logo {
+            width:170px;
+            max-width:56%;
+            height:auto;
+            display:block;
+            margin-bottom:18px;
+        }
+
+        .gsc-menu-dot {
+            position:absolute;
+            right:4px;
+            top:8px;
+            width:42px;
+            height:42px;
+            border-radius:999px;
+            border:1px solid #ccd6cf;
+            background:rgba(255,255,255,.72);
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            color:#0f5132;
+            font-size:22px;
+            font-weight:900;
+            box-shadow:0 6px 18px rgba(15,81,50,.10);
+        }
+
+        .gsc-hero-title {
+            color:#073d27;
+            font-size:46px;
+            line-height:.96;
+            font-weight:950;
+            text-transform:uppercase;
+            letter-spacing:-1px;
+            margin:0 0 8px;
+            max-width:520px;
+        }
+
+        .gsc-hero-tag {
+            display:inline-flex;
+            align-items:center;
+            gap:8px;
+            background:rgba(255,255,255,.76);
+            border:1px solid #d6dfd8;
+            padding:4px 10px;
+            color:#0f5132;
+            font-weight:900;
+            text-transform:uppercase;
+            letter-spacing:.8px;
+            font-size:13px;
+            box-shadow:0 3px 12px rgba(15,81,50,.08);
+        }
+
+        .gsc-star {
+            color:#7a7f24;
+            font-size:17px;
+        }
+
+        .gsc-hero-copy {
+            margin:14px 0 18px;
+            color:#17231d;
+            font-size:18px;
+            line-height:1.35;
+            max-width:420px;
+        }
+
+        .gsc-hero-actions {
+            display:flex;
+            gap:12px;
+            flex-wrap:wrap;
+            margin:14px 0 22px;
+        }
+
+        .gsc-hero-btn {
+            display:inline-flex;
+            align-items:center;
+            gap:8px;
+            padding:10px 18px;
+            border-radius:10px;
+            border:1px solid #0f5132;
+            text-decoration:none;
+            font-weight:900;
+            color:#0f5132;
+            background:rgba(255,255,255,.82);
+        }
+
+        .gsc-hero-btn.primary {
+            background:linear-gradient(180deg, #198754 0%, #0f6d3f 100%);
+            color:white;
+            border:0;
+            box-shadow:0 8px 18px rgba(15,81,50,.20);
+        }
+
+        .gsc-track-card {
+            position:relative;
+            overflow:hidden;
+            border-radius:20px;
+            background:
+                radial-gradient(circle at 50% 0%, rgba(25,135,84,.30), transparent 31%),
+                linear-gradient(145deg, #0d1820 0%, #111c26 52%, #071016 100%);
+            box-shadow:0 20px 50px rgba(7,16,22,.24);
+            padding:42px 42px 36px;
+            color:white;
+            border:1px solid rgba(255,255,255,.08);
+        }
+
+        .gsc-track-card:before {
+            content:"";
+            position:absolute;
+            inset:-80px -70px auto auto;
+            width:260px;
+            height:260px;
+            border-radius:999px;
+            border:1px solid rgba(25,135,84,.24);
+            box-shadow:0 0 0 28px rgba(25,135,84,.04), 0 0 0 58px rgba(25,135,84,.025);
+        }
+
+        .gsc-track-icon {
+            width:96px;
+            height:96px;
+            margin:0 auto 18px;
+            border-radius:999px;
+            background:#f4f7f4;
+            color:#0f5132;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size:46px;
+            font-weight:900;
+            box-shadow:0 0 0 10px rgba(255,255,255,.10);
+            position:relative;
+            z-index:1;
+        }
+
+        .gsc-track-icon:after {
+            content:"â";
+            position:absolute;
+            right:-2px;
+            bottom:7px;
+            width:31px;
+            height:31px;
+            border-radius:999px;
+            background:#198754;
+            color:white;
+            font-size:19px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            border:3px solid #f4f7f4;
+        }
+
+        .gsc-track-card h2 {
+            position:relative;
+            z-index:1;
+            text-align:center;
+            font-size:32px;
+            line-height:1.05;
+            text-transform:uppercase;
+            margin:0 0 10px;
+            letter-spacing:.2px;
+            font-weight:950;
+        }
+
         .gsc-green-line {
-            width: 106px;
-            height: 5px;
-            background: #198754;
-            margin: 0 auto 24px;
-            border-radius: 999px;
+            width:90px;
+            height:4px;
+            border-radius:999px;
+            background:#20a464;
+            margin:0 auto 18px;
+            position:relative;
+            z-index:1;
         }
+
         .gsc-subtitle {
-            font-size: 22px;
-            line-height: 1.45;
-            color: #374151;
-            max-width: 560px;
-            margin: 0 auto 32px;
+            position:relative;
+            z-index:1;
+            text-align:center;
+            color:#e5e7eb;
+            font-size:17px;
+            line-height:1.45;
+            max-width:480px;
+            margin:0 auto 24px;
         }
+
         .gsc-portal-form {
-            max-width: 560px;
-            margin: 0 auto;
+            position:relative;
+            z-index:1;
+            max-width:540px;
+            margin:0 auto;
         }
+
         .gsc-input-row {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            border: 1px solid #cfd4dc;
-            border-radius: 10px;
-            padding: 0 18px;
-            margin-bottom: 16px;
-            height: 70px;
-            background: #fff;
+            height:62px;
+            border:1px solid rgba(255,255,255,.24);
+            background:rgba(255,255,255,.075);
+            border-radius:12px;
+            display:flex;
+            align-items:center;
+            gap:13px;
+            padding:0 17px;
+            margin-bottom:12px;
+            backdrop-filter:blur(4px);
         }
+
         .gsc-input-icon {
-            font-size: 23px;
-            color: #4b5563;
-            width: 32px;
-            text-align: center;
-            font-weight: 900;
-        }
-        .gsc-input-row input {
-            border: 0;
-            outline: 0;
-            flex: 1;
-            font-size: 21px;
-            padding: 0;
-            margin: 0;
-            color: #111827;
-            background: transparent;
-        }
-        .gsc-input-row input::placeholder {
-            color: #6b7280;
-        }
-        .gsc-submit {
-            width: 100%;
-            height: 72px;
-            border: 0;
-            border-radius: 10px;
-            margin: 8px 0 26px;
-            background: linear-gradient(180deg, #08783f 0%, #006b39 100%);
-            color: #fff;
-            font-size: 22px;
-            font-weight: 900;
-            letter-spacing: .3px;
-            cursor: pointer;
-            box-shadow: 0 8px 16px rgba(0,0,0,.22);
-        }
-        .gsc-submit span {
-            font-size: 34px;
-            margin-left: 28px;
-            vertical-align: -3px;
-        }
-        .gsc-logo-divider {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 18px;
-            margin: 8px auto 18px;
-        }
-        .gsc-logo-divider:before,
-        .gsc-logo-divider:after {
-            content: "";
-            height: 1px;
-            background: #d1d5db;
-            width: 170px;
-        }
-        .gsc-form-logo {
-            width: 150px;
-            max-width: 40%;
-            height: auto;
-            display: block;
-        }
-        .gsc-trust {
-            color: #374151;
-            font-size: 18px;
-            line-height: 1.35;
-            margin: 0;
-        }
-        .gsc-benefits {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 16px;
-            color: #fff;
-            padding: 28px 20px 22px;
-            background:#f4f6f8;
-            border-top: 1px solid #198754;
-            max-width: 100%;
-            margin: 0;
-        }
-        .gsc-benefit {
-            display: flex;
-            gap: 14px;
-            align-items: center;
-            background:#ffffff;
-            border: 1px solid rgba(25,135,84,.75);
-            border-radius: 14px;
-            padding: 16px;
-            box-shadow: none;
-        }
-        .gsc-benefit-icon {
-            width: 52px;
-            height: 52px;
-            border-radius: 14px;
-            background: #0f5132;
-            border: 2px solid #198754;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 25px;
-            color: #fff;
-            flex: 0 0 auto;
-            font-weight: 900;
+            width:28px;
+            text-align:center;
+            color:#cfd6d2;
+            font-size:21px;
             line-height:1;
+            opacity:.9;
         }
+
+        .gsc-input-row input {
+            flex:1;
+            border:0;
+            outline:0;
+            background:transparent;
+            color:#fff;
+            font-size:17px;
+            margin:0;
+            padding:0;
+        }
+
+        .gsc-input-row input::placeholder {
+            color:#d1d5db;
+            opacity:.92;
+        }
+
+        .gsc-submit {
+            width:100%;
+            height:64px;
+            border:0;
+            border-radius:12px;
+            color:white;
+            background:linear-gradient(180deg, #209d57 0%, #087a3f 100%);
+            box-shadow:0 10px 24px rgba(0,0,0,.28);
+            font-size:18px;
+            font-weight:950;
+            letter-spacing:.2px;
+            cursor:pointer;
+            margin:4px 0 0;
+        }
+
+        .gsc-benefits {
+            max-width:760px;
+            margin:18px auto 0;
+            display:grid;
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+            gap:14px;
+        }
+
+        .gsc-benefit {
+            display:flex;
+            gap:13px;
+            align-items:center;
+            background:rgba(255,255,255,.78);
+            border:1px solid #d6dfd8;
+            border-radius:16px;
+            padding:15px;
+            box-shadow:0 8px 24px rgba(15,81,50,.08);
+        }
+
+        .gsc-benefit-icon {
+            width:46px;
+            height:46px;
+            border-radius:13px;
+            background:#e8f3ec;
+            color:#0f5132;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size:23px;
+            flex:0 0 auto;
+        }
+
         .gsc-benefit-title {
-            font-weight: 900;
-            font-size: 17px;
-            text-transform: uppercase;
-            margin-bottom: 4px;
+            color:#0f5132;
+            font-weight:950;
+            font-size:14px;
+            text-transform:uppercase;
             letter-spacing:.3px;
+            margin-bottom:3px;
         }
+
         .gsc-benefit-text {
-            color: #d1d5db;
-            font-size: 14px;
-            line-height: 1.35;
+            color:#374151;
+            font-size:13px;
+            line-height:1.35;
+            font-weight:600;
         }
+
         @media (max-width: 700px) {
-            .gsc-portal-wrap {
-                min-height: auto;
-                padding: 34px 20px 44px;
-                background:#f4f6f8;
-                width:100%;
-                box-sizing:border-box;
+            .gsc-hero-page {
+                padding:20px 18px 34px;
             }
-            .gsc-portal-card {
-                padding: 32px 22px 28px;
-                border-radius: 16px;
+
+            .gsc-hero-logo {
+                width:142px;
+                max-width:52%;
+                margin-bottom:16px;
             }
-            .gsc-portal-card h2 {
-                font-size: 30px;
+
+            .gsc-hero-title {
+                font-size:31px;
+                max-width:310px;
+                letter-spacing:-.4px;
             }
+
+            .gsc-hero-tag {
+                font-size:11px;
+                gap:6px;
+                padding:4px 8px;
+            }
+
+            .gsc-hero-copy {
+                font-size:15px;
+                max-width:270px;
+                margin:12px 0 16px;
+            }
+
+            .gsc-hero-btn {
+                padding:9px 14px;
+                font-size:14px;
+            }
+
+            .gsc-track-card {
+                border-radius:16px;
+                padding:32px 18px 26px;
+            }
+
+            .gsc-track-icon {
+                width:78px;
+                height:78px;
+                font-size:36px;
+                margin-bottom:17px;
+            }
+
+            .gsc-track-icon:after {
+                width:27px;
+                height:27px;
+                font-size:16px;
+            }
+
+            .gsc-track-card h2 {
+                font-size:24px;
+            }
+
             .gsc-subtitle {
-                font-size: 17px;
+                font-size:15px;
+                margin-bottom:20px;
             }
+
             .gsc-input-row {
-                height: 58px;
+                height:56px;
+                border-radius:11px;
             }
+
             .gsc-input-row input {
-                font-size: 17px;
+                font-size:15px;
             }
+
+            .gsc-input-icon {
+                color:#cfd6d2 !important;
+                background:transparent !important;
+                opacity:.9 !important;
+            }
+
             .gsc-submit {
-                height: 60px;
-                font-size: 18px;
+                height:58px;
+                font-size:16px;
             }
+
             .gsc-benefits {
-                display: block;
-                padding: 22px 18px;
-            }
-            .gsc-benefit {
-                margin: 0 auto 18px;
-            }
-            .gsc-logo-divider:before,
-            .gsc-logo-divider:after {
-                width: 85px;
-            }
-            .gsc-form-logo {
-                width: 115px;
-                max-width: 42%;
+                grid-template-columns:1fr;
             }
         }
     </style>
 
-    <div class="gsc-portal-wrap">
-        <div class="gsc-portal-card">
-            <div class="gsc-portal-icon">&#10003;</div>
-            <h2>Track Your Submission</h2>
-            <div class="gsc-green-line"></div>
-            <p class="gsc-subtitle">Enter your information below to view the real-time status of your PSA submission.</p>
+    <div class="gsc-hero-page">
+        <div class="gsc-hero-shell">
+            <div class="gsc-hero-header">
+                <img class="gsc-hero-logo" src="data:image/png;base64,__PORTAL_LOGO__" alt="Giant Sports Cards">
+                <div class="gsc-menu-dot">â°</div>
 
-            <form class="gsc-portal-form" method="post">
-                <div class="gsc-input-row">
-                    <div class="gsc-input-icon">&#9742;</div>
-                    <input name="phone" placeholder="Phone number">
+                <h1 class="gsc-hero-title">PSA Submission Tracker</h1>
+
+                <div class="gsc-hero-tag">
+                    <span class="gsc-star">â</span>
+                    <span>Track â¢ Verify â¢ Relax</span>
+                    <span class="gsc-star">â</span>
                 </div>
 
-                <div class="gsc-input-row">
-                    <div class="gsc-input-icon">&#128100;</div>
-                    <input name="last" placeholder="Last name">
+                <p class="gsc-hero-copy">Track your submission every step of the way.</p>
+
+                <div class="gsc-hero-actions">
+                    <a class="gsc-hero-btn primary" href="/portal">â Home</a>
+                    <a class="gsc-hero-btn" href="/portal/logout">â± Logout</a>
+                </div>
+            </div>
+
+            <div class="gsc-track-card">
+                <div class="gsc-track-icon">â£</div>
+                <h2>Track Your Submission</h2>
+                <div class="gsc-green-line"></div>
+                <p class="gsc-subtitle">Enter your information below to view the real-time status of your PSA submission.</p>
+
+                <form class="gsc-portal-form" method="post">
+                    <div class="gsc-input-row">
+                        <div class="gsc-input-icon">â</div>
+                        <input name="phone" placeholder="Phone number">
+                    </div>
+
+                    <div class="gsc-input-row">
+                        <div class="gsc-input-icon">â</div>
+                        <input name="last" placeholder="Last name">
+                    </div>
+
+                    <button class="gsc-submit" type="submit">â Track Submission</button>
+                </form>
+            </div>
+
+            <div class="gsc-benefits">
+                <div class="gsc-benefit">
+                    <div class="gsc-benefit-icon">â·</div>
+                    <div>
+                        <div class="gsc-benefit-title">Real-Time Updates</div>
+                        <div class="gsc-benefit-text">View current PSA progress and pickup status.</div>
+                    </div>
                 </div>
 
-                <button class="gsc-submit" type="submit">VIEW STATUS <span>&rarr;</span></button>
-            </form>
-
-            <div class="gsc-logo-divider">
-                <img class="gsc-form-logo" src="data:image/png;base64,__PORTAL_LOGO__" alt="Giant Sports Cards">
-            </div>
-
-            <p class="gsc-trust">Thank you for trusting Giant Sports Cards<br>with your valuable collection.</p>
-        </div>
-    </div>
-
-    <div class="gsc-benefits">
-        <div class="gsc-benefit">
-            <div class="gsc-benefit-icon">&#128337;</div>
-            <div>
-                <div class="gsc-benefit-title">Real-Time Updates</div>
-                <div class="gsc-benefit-text">Get the latest status on your submission in real time.</div>
-            </div>
-        </div>
-        <div class="gsc-benefit">
-            <div class="gsc-benefit-icon">&#9733;</div>
-            <div>
-                <div class="gsc-benefit-title">Expert Care</div>
-                <div class="gsc-benefit-text">Your cards are handled with expert care.</div>
+                <div class="gsc-benefit">
+                    <div class="gsc-benefit-icon">â</div>
+                    <div>
+                        <div class="gsc-benefit-title">Expert Care</div>
+                        <div class="gsc-benefit-text">Your cards are handled carefully from drop-off to pickup.</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
     """.replace("__PORTAL_LOGO__", portal_logo_b64), mode="portal")
+
 
 @app.route("/portal/orders")
 def portal_orders():
