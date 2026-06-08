@@ -4017,7 +4017,8 @@ def portal_orders():
     if not grouped:
         html += "<div class='card'>No matching orders found. Check phone number and last name.</div>"
         html += "</div></div>"
-        return page(html, mode="portal")
+        html += "</div></div></div>"
+    return page(html, mode="portal")
 
     statuses_available = customer_status_options()
 
@@ -4078,6 +4079,8 @@ def portal_orders():
         html += "<div class='card'>No submissions match the selected filters.</div>"
         html += "</div></div>"
         return page(html, mode="portal")
+
+    html += "<div class='portal-results-grid'>"
 
     for sub, grouped_values in filtered_grouped.items():
         data, status = grouped_values[0], grouped_values[1]
