@@ -225,9 +225,9 @@ def normalize_phone(v):
 
 def normalize_key_text(value):
     text = str(value or "").strip().lower()
-    text = text.replace("Æ", "f")
-    text = text.replace("Ã¦Â", "f")
-    text = text.replace("Ã¢\x80\x99", "'")
+    text = text.replace("ƒ", "f")
+    text = text.replace("æ", "f")
+    text = text.replace("â\x80\x99", "'")
     text = text.replace(".", "")
     text = re.sub(r"\s+", " ", text)
     return text
@@ -239,10 +239,10 @@ def is_dropoff_date_key(key):
     direct_names = [
         "fand",
         "f and",
-        "Æand",
-        "Æ and",
-        "Ã¦Âand",
-        "Ã¦Â and",
+        "ƒand",
+        "ƒ and",
+        "æand",
+        "æ and",
         "submission date",
         "customer drop-off date",
         "customer drop off date",
@@ -297,8 +297,8 @@ def clean_service_display(service):
     value = str(service or "").strip()
     if " - " in value:
         return value.split(" - ", 1)[0].strip()
-    if " â " in value:
-        return value.split(" â ", 1)[0].strip()
+    if " – " in value:
+        return value.split(" – ", 1)[0].strip()
     return value
 
 def date_only_display(value):
@@ -343,10 +343,10 @@ def get_dropoff_date(data):
         "Customer Drop-Off Date",
         "Customer Drop Off Date",
         "Submission Date",
+        "ƒand",
+        "ƒand.",
         "Æand",
         "Æand.",
-        "ÃÂand",
-        "ÃÂand.",
         "fand",
         "Fand",
         "F and",
@@ -378,8 +378,8 @@ def parse_arrived_completed_value(value):
 
     month = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
     date_single = month + r"\s+\d{1,2},\s+\d{4}"
-    date_range_same_year = month + r"\s+\d{1,2}\s*[-â]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
-    date_range_full = date_single + r"\s*[-â]\s*" + date_single
+    date_range_same_year = month + r"\s+\d{1,2}\s*[-–]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
+    date_range_full = date_single + r"\s*[-–]\s*" + date_single
 
     completed_match = re.search(r"Completed\s+(" + date_single + r")", text, re.IGNORECASE)
     if completed_match:
@@ -1048,7 +1048,7 @@ def page(content, mode="admin"):
             color:#198754;
         }}
         .buyback-collapsible[open] summary:after {{
-            content:"â";
+            content:"–";
         }}
         .buyback-collapsible .buyback-inner {{
             padding:14px;
@@ -1483,7 +1483,7 @@ def build_table(rows):
                 details_parts.append(f"<b>{html_escape(key_text)}:</b> {html_escape(val)}")
 
         if not details_parts:
-            details_html = "<span style='color:#6b7280;'>â</span>"
+            details_html = "<span style='color:#6b7280;'>—</span>"
         else:
             details_html = "<details class='row-details'><summary>Details</summary><div>" + "<br>".join(details_parts[:12]) + "</div></details>"
 
@@ -2358,8 +2358,8 @@ def admin_upload_psa():
 
                 month_pattern = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
                 date_pattern = month_pattern + r"\s+\d{1,2},\s+\d{4}"
-                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-â]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
-                date_range_full = date_pattern + r"\s*[-â]\s*" + date_pattern
+                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-–]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
+                date_range_full = date_pattern + r"\s*[-–]\s*" + date_pattern
 
                 value_pattern = re.compile(
                     rf"(Completed\s+{date_pattern}|Est\.\s*Complete\s*by\s+{date_range_full}|Est\.\s*Complete\s*by\s+{date_range_same_year}|Est\.\s*Complete\s*by\s+{date_pattern}|Estimated\s*Complete\s*by\s+{date_range_full}|Estimated\s*Complete\s*by\s+{date_range_same_year}|Estimated\s*Complete\s*by\s+{date_pattern}|Est\.\s*by\s+{date_range_full}|Est\.\s*by\s+{date_range_same_year}|Est\.\s*by\s+{date_pattern}|{date_pattern})",
@@ -2432,7 +2432,7 @@ def admin_upload_psa():
                             j += 1
 
                     # Split case:
-                    # â¢ Sub
+                    # • Sub
                     # #14550482
                     # Research & ID
                     elif re.search(r"\bSub\b\s*$", line, re.IGNORECASE) and i + 1 < len(lines):
@@ -2471,7 +2471,7 @@ def admin_upload_psa():
                             block_text = re.sub(r",\s+(\d{4})", r", \1", block_text)
 
                             matches = re.findall(
-                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
+                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
                                 block_text,
                                 re.IGNORECASE
                             )
@@ -3326,28 +3326,30 @@ def portal():
         body.portal-body .container {
             padding:0;
             margin:0;
-            overflow-x:hidden;
+            width:100%;
+            max-width:none;
             background:#f4f3ed;
+            overflow-x:hidden;
         }
 
-        .gsc-mobile-page {
+        .gsc-redesign-page {
             min-height:100vh;
             background:
-                radial-gradient(circle at 82% 18%, rgba(15,81,50,.12), transparent 28%),
-                linear-gradient(180deg, #fbfaf3 0%, #eef4ee 100%);
+                radial-gradient(circle at 84% 16%, rgba(15,81,50,.13), transparent 27%),
+                linear-gradient(180deg, #fbfaf4 0%, #eef4ee 100%);
             padding:22px 18px 42px;
             box-sizing:border-box;
         }
 
-        .gsc-mobile-shell {
+        .gsc-redesign-shell {
             width:100%;
             max-width:520px;
             margin:0 auto;
         }
 
-        .gsc-hero {
+        .gsc-redesign-hero {
             position:relative;
-            padding:4px 0 20px;
+            padding:4px 0 18px;
         }
 
         .gsc-logo-badge {
@@ -3361,16 +3363,16 @@ def portal():
             margin:0 0 18px;
         }
 
-        .gsc-hero-logo {
-            width:170px;
+        .gsc-redesign-logo {
+            width:168px;
             max-width:100%;
             height:auto;
             display:block;
         }
 
-        .gsc-menu {
+        .gsc-menu-circle {
             position:absolute;
-            top:0;
+            top:2px;
             right:0;
             width:42px;
             height:42px;
@@ -3380,24 +3382,34 @@ def portal():
             box-shadow:0 5px 14px rgba(15,81,50,.14);
         }
 
-        .gsc-menu span,
-        .gsc-menu span:before,
-        .gsc-menu span:after {
-            display:block;
+        .gsc-menu-circle span,
+        .gsc-menu-circle span:before,
+        .gsc-menu-circle span:after {
             position:absolute;
-            left:11px;
+            display:block;
+            content:"";
             width:18px;
             height:2px;
+            left:11px;
             background:#0f5132;
             border-radius:4px;
-            content:"";
         }
 
-        .gsc-menu span { top:20px; }
-        .gsc-menu span:before { top:-6px; left:0; }
-        .gsc-menu span:after { top:6px; left:0; }
+        .gsc-menu-circle span {
+            top:20px;
+        }
 
-        .gsc-hero-title {
+        .gsc-menu-circle span:before {
+            top:-6px;
+            left:0;
+        }
+
+        .gsc-menu-circle span:after {
+            top:6px;
+            left:0;
+        }
+
+        .gsc-redesign-title {
             margin:0;
             color:#06442d;
             font-family:Arial, Helvetica, sans-serif;
@@ -3406,36 +3418,34 @@ def portal():
             letter-spacing:-.8px;
             line-height:.96;
             font-size:34px;
-            max-width:330px;
+            max-width:340px;
         }
 
-        .gsc-tagline {
+        .gsc-redesign-tag {
             display:inline-flex;
             align-items:center;
-            gap:9px;
+            gap:8px;
             margin:10px 0 13px;
             padding:5px 10px;
-            background:rgba(255,255,255,.72);
+            background:rgba(255,255,255,.75);
             border:1px solid #d7d8cd;
             color:#06442d;
             box-shadow:0 3px 12px rgba(15,81,50,.08);
             font-size:12px;
             font-weight:900;
             text-transform:uppercase;
-            letter-spacing:1px;
+            letter-spacing:.9px;
         }
 
-        .gsc-tagline:before,
-        .gsc-tagline:after {
-            content:"";
-            width:16px;
-            height:16px;
+        .gsc-redesign-star {
+            width:15px;
+            height:15px;
             background:#8a8f36;
-            clip-path:polygon(50% 0%, 61% 35%, 98% 35%, 68% 56%, 79% 91%, 50% 70%, 21% 91%, 32% 56%, 2% 35%, 39% 35%);
-            flex:0 0 auto;
+            clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 56%,79% 91%,50% 70%,21% 91%,32% 56%,2% 35%,39% 35%);
+            display:inline-block;
         }
 
-        .gsc-hero-copy {
+        .gsc-redesign-copy {
             color:#111827;
             font-size:16px;
             line-height:1.38;
@@ -3443,14 +3453,14 @@ def portal():
             margin:0 0 20px;
         }
 
-        .gsc-hero-actions {
+        .gsc-redesign-actions {
             display:flex;
             gap:12px;
             align-items:center;
             margin-bottom:20px;
         }
 
-        .gsc-hero-btn {
+        .gsc-redesign-btn {
             display:inline-flex;
             align-items:center;
             justify-content:center;
@@ -3466,7 +3476,7 @@ def portal():
             box-sizing:border-box;
         }
 
-        .gsc-hero-btn.primary {
+        .gsc-redesign-btn.primary {
             background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%);
             color:#ffffff;
             border:0;
@@ -3478,7 +3488,7 @@ def portal():
             overflow:hidden;
             border-radius:16px;
             background:
-                radial-gradient(circle at 48% 0%, rgba(25,135,84,.28), transparent 31%),
+                radial-gradient(circle at 50% 0%, rgba(25,135,84,.28), transparent 31%),
                 linear-gradient(145deg, #0f1b22 0%, #111c24 52%, #071016 100%);
             color:#ffffff;
             padding:34px 20px 23px;
@@ -3534,7 +3544,7 @@ def portal():
             box-sizing:border-box;
         }
 
-        .gsc-check {
+        .gsc-track-check {
             position:absolute;
             right:12px;
             bottom:18px;
@@ -3730,7 +3740,7 @@ def portal():
         }
 
         @media (max-width: 420px) {
-            .gsc-mobile-page {
+            .gsc-redesign-page {
                 padding:20px 18px 34px;
             }
 
@@ -3738,11 +3748,11 @@ def portal():
                 padding:10px 12px;
             }
 
-            .gsc-hero-logo {
+            .gsc-redesign-logo {
                 width:150px;
             }
 
-            .gsc-hero-title {
+            .gsc-redesign-title {
                 font-size:32px;
             }
 
@@ -3756,28 +3766,33 @@ def portal():
         }
     </style>
 
-    <div class="gsc-mobile-page">
-        <div class="gsc-mobile-shell">
-            <div class="gsc-hero">
-                <div class="gsc-logo-badge"><img class="gsc-hero-logo" src="data:image/png;base64,__PORTAL_LOGO__" alt="Giant Sports Cards"></div>
-                <div class="gsc-menu"><span></span></div>
-
-                <h1 class="gsc-hero-title">PSA Submission Tracker</h1>
-
-                <div class="gsc-tagline">
-                    <span>Track &bull; Verify &bull; Relax</span>
+    <div class="gsc-redesign-page">
+        <div class="gsc-redesign-shell">
+            <div class="gsc-redesign-hero">
+                <div class="gsc-logo-badge">
+                    <img class="gsc-redesign-logo" src="data:image/png;base64,__PORTAL_LOGO__" alt="Giant Sports Cards">
                 </div>
 
-                <p class="gsc-hero-copy">Track your submission every step of the way.</p>
+                <div class="gsc-menu-circle"><span></span></div>
 
-                <div class="gsc-hero-actions">
-                    <a class="gsc-hero-btn primary" href="/portal">Home</a>
-                    <a class="gsc-hero-btn" href="/portal/logout">Logout</a>
+                <h1 class="gsc-redesign-title">PSA Submission Tracker</h1>
+
+                <div class="gsc-redesign-tag">
+                    <span class="gsc-redesign-star"></span>
+                    <span>Track &bull; Verify &bull; Relax</span>
+                    <span class="gsc-redesign-star"></span>
+                </div>
+
+                <p class="gsc-redesign-copy">Track your submission every step of the way.</p>
+
+                <div class="gsc-redesign-actions">
+                    <a class="gsc-redesign-btn primary" href="/portal">Home</a>
+                    <a class="gsc-redesign-btn" href="/portal/logout">Logout</a>
                 </div>
             </div>
 
             <div class="gsc-track-card">
-                <div class="gsc-track-icon"><span class="gsc-check"></span></div>
+                <div class="gsc-track-icon"><span class="gsc-track-check"></span></div>
                 <h2 class="gsc-track-title">Track Your Submission</h2>
                 <div class="gsc-green-line"></div>
                 <p class="gsc-subtitle">Enter your information below to view the real-time status of your PSA submission.</p>
@@ -4030,4 +4045,110 @@ def portal_orders():
 
             <label class="sell-check">
                 <input type="radio" name="sms_mode" value="none" {none_checked}>
-                No text messa
+                No text messages
+            </label>
+
+            <label class="sell-check">
+                <input type="radio" name="sms_mode" value="pickup" {pickup_checked}>
+                Text me when this submission is ready for pickup
+            </label>
+
+            <label class="sell-check">
+                <input type="radio" name="sms_mode" value="all" {all_checked}>
+                Text me for every PSA status change on this submission
+            </label>
+
+            <button type="submit">Save Text Settings</button>
+            <p><small>Texts go to the phone number on this order. Each text identifies the exact submission number. Message/data rates may apply.</small></p>
+        </form>
+        """
+
+        html += f"""
+        <div class="card">
+            <h3>{customer_name}</h3>
+            <p><b>Submission #:</b> {sub}</p>
+            <p><b>Status:</b> <span class="status">{display_status_label}</span></p>
+            <p><b>Arrived at PSA:</b> {arrived_completed}</p>
+            <p><b>Estimated Completion Date:</b> {estimated_completion}</p>
+            <p><b>Cards:</b> {cards}</p>
+            <p><b>Service:</b> {service}</p>
+            <p><b>Customer Drop-Off Date:</b> {date}</p>
+            {status_bar(display_status)}
+            {sms_html}
+            {buyback_html}
+        </div>
+        """
+
+    html += "<a href='/portal/logout'>Log out</a>"
+    return page(html, mode="portal")
+
+
+@app.route("/portal/buyback_offer_response", methods=["POST"])
+def portal_buyback_offer_response():
+    phone = normalize_phone(session.get("phone"))
+    last = clean(session.get("last")).lower()
+
+    if not phone or not last:
+        return redirect("/portal")
+
+    submission_number = normalize_submission(request.form.get("submission_number"))
+    cert_number = normalize_submission(request.form.get("cert_number"))
+    response = clean(request.form.get("response"))
+
+    if response not in ["Accepted", "Declined"]:
+        return redirect("/portal/orders")
+
+    if not submission_number or not cert_number:
+        return redirect("/portal/orders")
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT raw_data
+    FROM submissions
+    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+    """, (submission_number,))
+    row = cur.fetchone()
+
+    if not row:
+        cur.close()
+        conn.close()
+        return redirect("/portal/orders")
+
+    data = row[0] or {}
+    name = str(get_field(data, ["Customer Name", "Name"])).lower()
+    contact = normalize_phone(get_field(data, ["Contact Info", "Phone", "Phone Number"]))
+
+    phone_match = bool(contact) and (phone in contact or contact in phone)
+    name_match = bool(last) and last in name
+
+    if not (phone_match and name_match):
+        cur.close()
+        conn.close()
+        return redirect("/portal/orders")
+
+    cur.execute("""
+    UPDATE card_buyback_items
+    SET buyback_status=%s,
+        updated_at=NOW()
+    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+      AND REGEXP_REPLACE(cert_number, '\\D', '', 'g')=%s
+      AND COALESCE(offer_amount, '') <> ''
+    """, (response, submission_number, cert_number))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return redirect("/portal/orders")
+
+
+@app.route("/portal/logout")
+def portal_logout():
+    session.pop("phone", None)
+    session.pop("last", None)
+    return redirect("/portal")
+
+if __name__ == "__main__":
+    app.run()
