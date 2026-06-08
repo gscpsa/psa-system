@@ -225,9 +225,9 @@ def normalize_phone(v):
 
 def normalize_key_text(value):
     text = str(value or "").strip().lower()
-    text = text.replace("Æ", "f")
-    text = text.replace("Ã¦Â", "f")
-    text = text.replace("Ã¢\x80\x99", "'")
+    text = text.replace("ƒ", "f")
+    text = text.replace("æ", "f")
+    text = text.replace("â\x80\x99", "'")
     text = text.replace(".", "")
     text = re.sub(r"\s+", " ", text)
     return text
@@ -239,10 +239,10 @@ def is_dropoff_date_key(key):
     direct_names = [
         "fand",
         "f and",
-        "Æand",
-        "Æ and",
-        "Ã¦Âand",
-        "Ã¦Â and",
+        "ƒand",
+        "ƒ and",
+        "æand",
+        "æ and",
         "submission date",
         "customer drop-off date",
         "customer drop off date",
@@ -297,8 +297,8 @@ def clean_service_display(service):
     value = str(service or "").strip()
     if " - " in value:
         return value.split(" - ", 1)[0].strip()
-    if " â " in value:
-        return value.split(" â ", 1)[0].strip()
+    if " – " in value:
+        return value.split(" – ", 1)[0].strip()
     return value
 
 def date_only_display(value):
@@ -343,10 +343,10 @@ def get_dropoff_date(data):
         "Customer Drop-Off Date",
         "Customer Drop Off Date",
         "Submission Date",
+        "ƒand",
+        "ƒand.",
         "Æand",
         "Æand.",
-        "ÃÂand",
-        "ÃÂand.",
         "fand",
         "Fand",
         "F and",
@@ -378,8 +378,8 @@ def parse_arrived_completed_value(value):
 
     month = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
     date_single = month + r"\s+\d{1,2},\s+\d{4}"
-    date_range_same_year = month + r"\s+\d{1,2}\s*[-â]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
-    date_range_full = date_single + r"\s*[-â]\s*" + date_single
+    date_range_same_year = month + r"\s+\d{1,2}\s*[-–]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
+    date_range_full = date_single + r"\s*[-–]\s*" + date_single
 
     completed_match = re.search(r"Completed\s+(" + date_single + r")", text, re.IGNORECASE)
     if completed_match:
@@ -1048,7 +1048,7 @@ def page(content, mode="admin"):
             color:#198754;
         }}
         .buyback-collapsible[open] summary:after {{
-            content:"â";
+            content:"–";
         }}
         .buyback-collapsible .buyback-inner {{
             padding:14px;
@@ -1483,7 +1483,7 @@ def build_table(rows):
                 details_parts.append(f"<b>{html_escape(key_text)}:</b> {html_escape(val)}")
 
         if not details_parts:
-            details_html = "<span style='color:#6b7280;'>â</span>"
+            details_html = "<span style='color:#6b7280;'>—</span>"
         else:
             details_html = "<details class='row-details'><summary>Details</summary><div>" + "<br>".join(details_parts[:12]) + "</div></details>"
 
@@ -2358,8 +2358,8 @@ def admin_upload_psa():
 
                 month_pattern = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
                 date_pattern = month_pattern + r"\s+\d{1,2},\s+\d{4}"
-                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-â]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
-                date_range_full = date_pattern + r"\s*[-â]\s*" + date_pattern
+                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-–]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
+                date_range_full = date_pattern + r"\s*[-–]\s*" + date_pattern
 
                 value_pattern = re.compile(
                     rf"(Completed\s+{date_pattern}|Est\.\s*Complete\s*by\s+{date_range_full}|Est\.\s*Complete\s*by\s+{date_range_same_year}|Est\.\s*Complete\s*by\s+{date_pattern}|Estimated\s*Complete\s*by\s+{date_range_full}|Estimated\s*Complete\s*by\s+{date_range_same_year}|Estimated\s*Complete\s*by\s+{date_pattern}|Est\.\s*by\s+{date_range_full}|Est\.\s*by\s+{date_range_same_year}|Est\.\s*by\s+{date_pattern}|{date_pattern})",
@@ -2432,7 +2432,7 @@ def admin_upload_psa():
                             j += 1
 
                     # Split case:
-                    # â¢ Sub
+                    # • Sub
                     # #14550482
                     # Research & ID
                     elif re.search(r"\bSub\b\s*$", line, re.IGNORECASE) and i + 1 < len(lines):
@@ -2471,7 +2471,7 @@ def admin_upload_psa():
                             block_text = re.sub(r",\s+(\d{4})", r", \1", block_text)
 
                             matches = re.findall(
-                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
+                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
                                 block_text,
                                 re.IGNORECASE
                             )
@@ -4357,8 +4357,8 @@ def portal_orders():
     if not grouped:
         html += "<div class='card'>No matching orders found. Check phone number and last name.</div>"
         html += "</div></div>"
-        html += "</div></div></div>"
-    return page(html, mode="portal")
+        return page(html, mode="portal")
+
 
     statuses_available = customer_status_options()
 
@@ -4420,6 +4420,7 @@ def portal_orders():
         html += "</div></div>"
         return page(html, mode="portal")
 
+
     html += "<div class='portal-results-grid'>"
 
     for sub, grouped_values in filtered_grouped.items():
@@ -4437,4 +4438,199 @@ def portal_orders():
         arrived_completed = strip_arrived_at_psa_prefix(arrived_completed)
         estimated_completion = get_field(data, ["Estimated Completion Date"]) or arrived_completed_data["estimated"]
         display_status = status or "Submitted"
-        display_status_l
+        display_status_label = customer_status_label(display_status)
+
+        buyback_rows = get_buyback_items_for_submission(sub)
+        buyback_html = ""
+
+        if buyback_rows:
+            buyback_count = len(buyback_rows)
+            buyback_html += f"""
+            <hr>
+            <details class="buyback-collapsible">
+                <summary>View cards / select cards to sell ({buyback_count})</summary>
+                <div class="buyback-inner">
+                    <p>Select any cards you may be interested in selling to Giant Sports Cards.</p>
+                    <form method="post" action="/portal/sell_interest">
+                        <input type="hidden" name="submission_number" value="{sub}">
+                        <div class="card-grid">
+            """
+
+            for row in buyback_rows:
+                cert_number, item_details, grade, image_data, interested = row[0], row[1], row[2], row[3], row[4]
+                card_type = row[5] if len(row) > 5 else ""
+                after_service = row[6] if len(row) > 6 else ""
+                images_url = row[7] if len(row) > 7 else ""
+                psa_estimate = display_blank_loading(row[8] if len(row) > 8 else "")
+                card_ladder_value = display_blank_loading(row[9] if len(row) > 9 else "")
+                pop = display_blank_loading(row[10] if len(row) > 10 else "")
+                pop_higher = display_blank_loading(row[11] if len(row) > 11 else "")
+                offer_amount = row[12] if len(row) > 12 else ""
+                offer_notes = row[13] if len(row) > 13 else ""
+                buyback_status = row[14] if len(row) > 14 else ""
+
+                checked = "checked" if interested else ""
+                img_html = f"<img src='{image_data}' alt='Card image'>" if image_data else ""
+
+                offer_display = ""
+                if offer_amount:
+                    response_buttons = ""
+                    if buyback_status == "Offer Sent":
+                        response_buttons = f"""
+                        <form method="post" action="/portal/buyback_offer_response" style="margin-top:8px;">
+                            <input type="hidden" name="submission_number" value="{sub}">
+                            <input type="hidden" name="cert_number" value="{cert_number}">
+                            <button name="response" value="Accepted">Accept Offer</button>
+                            <button name="response" value="Declined">Decline</button>
+                        </form>
+                        """
+                    offer_display = f"""
+                    <div style="margin-top:10px;padding:10px;border:1px solid #d1e7dd;border-radius:8px;background:#f3f7f5;">
+                        <b>Giant Sports Cards Buyback Offer:</b> {html_escape(offer_amount)}<br>
+                        <small>{html_escape(offer_notes)}</small><br>
+                        <b>Status:</b> {html_escape('Interest' if buyback_status == 'New' else buyback_status)}
+                        {response_buttons}
+                    </div>
+                    """
+
+                buyback_html += f"""
+                <div class="buy-card">
+                    {img_html}
+                    <div class="cert">Certification #: {cert_number}</div>
+                    <div><b>Type:</b> {card_type}</div>
+                    <div>{item_details}</div>
+                    <div><b>Grade:</b> {grade}</div>
+                    {offer_display}
+                    <label class="sell-check"><input type="checkbox" name="cert" value="{cert_number}" {checked}> Interested in selling</label>
+                </div>
+                """
+
+            buyback_html += """
+                        </div>
+                        <br>
+                        <button type="submit">Save</button>
+                    </form>
+                </div>
+            </details>
+            """
+
+        sms_mode = sms_mode or "none"
+        none_checked = "checked" if sms_mode == "none" else ""
+        pickup_checked = "checked" if sms_mode == "pickup" else ""
+        all_checked = "checked" if sms_mode == "all" else ""
+
+        sms_html = f"""
+        <hr>
+        <form method="post" action="/portal/sms_preferences">
+            <input type="hidden" name="submission_number" value="{sub}">
+            <h4>Text Notifications</h4>
+
+            <label class="sell-check">
+                <input type="radio" name="sms_mode" value="none" {none_checked}>
+                No text messages
+            </label>
+
+            <label class="sell-check">
+                <input type="radio" name="sms_mode" value="pickup" {pickup_checked}>
+                Text me when this submission is ready for pickup
+            </label>
+
+            <label class="sell-check">
+                <input type="radio" name="sms_mode" value="all" {all_checked}>
+                Text me for every PSA status change on this submission
+            </label>
+
+            <button type="submit">Save Text Settings</button>
+            <p><small>Texts go to the phone number on this order. Each text identifies the exact submission number. Message/data rates may apply.</small></p>
+        </form>
+        """
+
+        html += f"""
+        <div class="card">
+            <h3>{customer_name}</h3>
+            <p><b>Submission #:</b> {sub}</p>
+            <p><b>Status:</b> <span class="status">{display_status_label}</span></p>
+            <p><b>Arrived at PSA:</b> {arrived_completed}</p>
+            <p><b>Estimated Completion Date:</b> {estimated_completion}</p>
+            <p><b>Cards:</b> {cards}</p>
+            <p><b>Service:</b> {service}</p>
+            <p><b>Customer Drop-Off Date:</b> {date}</p>
+            {status_bar(display_status)}
+            {sms_html}
+            {buyback_html}
+        </div>
+        """
+
+    html += "</div></div></div>"
+    return page(html, mode="portal")
+
+
+@app.route("/portal/buyback_offer_response", methods=["POST"])
+def portal_buyback_offer_response():
+    phone = normalize_phone(session.get("phone"))
+    last = clean(session.get("last")).lower()
+
+    if not phone or not last:
+        return redirect("/portal")
+
+    submission_number = normalize_submission(request.form.get("submission_number"))
+    cert_number = normalize_submission(request.form.get("cert_number"))
+    response = clean(request.form.get("response"))
+
+    if response not in ["Accepted", "Declined"]:
+        return redirect("/portal/orders")
+
+    if not submission_number or not cert_number:
+        return redirect("/portal/orders")
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT raw_data
+    FROM submissions
+    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+    """, (submission_number,))
+    row = cur.fetchone()
+
+    if not row:
+        cur.close()
+        conn.close()
+        return redirect("/portal/orders")
+
+    data = row[0] or {}
+    name = str(get_field(data, ["Customer Name", "Name"])).lower()
+    contact = normalize_phone(get_field(data, ["Contact Info", "Phone", "Phone Number"]))
+
+    phone_match = bool(contact) and (phone in contact or contact in phone)
+    name_match = bool(last) and last in name
+
+    if not (phone_match and name_match):
+        cur.close()
+        conn.close()
+        return redirect("/portal/orders")
+
+    cur.execute("""
+    UPDATE card_buyback_items
+    SET buyback_status=%s,
+        updated_at=NOW()
+    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+      AND REGEXP_REPLACE(cert_number, '\\D', '', 'g')=%s
+      AND COALESCE(offer_amount, '') <> ''
+    """, (response, submission_number, cert_number))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return redirect("/portal/orders")
+
+
+@app.route("/portal/logout")
+def portal_logout():
+    session.pop("phone", None)
+    session.pop("last", None)
+    return redirect("/portal")
+
+if __name__ == "__main__":
+    app.run()
