@@ -3355,58 +3355,28 @@ def portal():
         .gsc-logo-badge {
             display:inline-flex;
             align-items:center;
-            justify-content:center;
-            background:#07110d;
-            border-radius:12px;
-            padding:12px 14px;
-            box-shadow:0 8px 22px rgba(7,17,13,.18);
+            justify-content:flex-start;
+            background:transparent;
+            border-radius:0;
+            padding:0;
+            box-shadow:none;
             margin:0 0 18px;
         }
 
         .gsc-redesign-logo {
-            width:168px;
+            width:172px;
             max-width:100%;
             height:auto;
             display:block;
+            filter:brightness(0) saturate(100%) invert(20%) sepia(44%) saturate(1023%) hue-rotate(105deg) brightness(89%) contrast(93%)
+                   drop-shadow(0 1px 0 #ffffff)
+                   drop-shadow(1px 0 0 #ffffff)
+                   drop-shadow(-1px 0 0 #ffffff)
+                   drop-shadow(0 -1px 0 #ffffff);
         }
 
         .gsc-menu-circle {
-            position:absolute;
-            top:2px;
-            right:0;
-            width:42px;
-            height:42px;
-            border-radius:50%;
-            background:#f7f8f3;
-            border:1px solid #cbd5ce;
-            box-shadow:0 5px 14px rgba(15,81,50,.14);
-        }
-
-        .gsc-menu-circle span,
-        .gsc-menu-circle span:before,
-        .gsc-menu-circle span:after {
-            position:absolute;
-            display:block;
-            content:"";
-            width:18px;
-            height:2px;
-            left:11px;
-            background:#0f5132;
-            border-radius:4px;
-        }
-
-        .gsc-menu-circle span {
-            top:20px;
-        }
-
-        .gsc-menu-circle span:before {
-            top:-6px;
-            left:0;
-        }
-
-        .gsc-menu-circle span:after {
-            top:6px;
-            left:0;
+            display:none;
         }
 
         .gsc-redesign-title {
@@ -3714,13 +3684,64 @@ def portal():
             padding:13px;
         }
 
-        .gsc-benefit-dot {
-            width:34px;
-            height:34px;
-            border-radius:10px;
-            background:#e7f2eb;
-            border:1px solid #c8ded0;
+        .gsc-benefit-graphic {
+            width:42px;
+            height:42px;
+            border-radius:13px;
+            background:linear-gradient(180deg, #eaf5ee 0%, #d9ecdf 100%);
+            border:1px solid #bfd8c8;
             flex:0 0 auto;
+            position:relative;
+            box-shadow:inset 0 1px 0 rgba(255,255,255,.75), 0 3px 8px rgba(15,81,50,.08);
+        }
+
+        .gsc-benefit-graphic.updates:before {
+            content:"";
+            position:absolute;
+            width:20px;
+            height:20px;
+            border:3px solid #0f5132;
+            border-radius:50%;
+            left:8px;
+            top:8px;
+            box-sizing:border-box;
+        }
+
+        .gsc-benefit-graphic.updates:after {
+            content:"";
+            position:absolute;
+            width:10px;
+            height:8px;
+            left:19px;
+            top:13px;
+            border-left:3px solid #198754;
+            border-bottom:3px solid #198754;
+            transform:rotate(-45deg);
+            transform-origin:left bottom;
+            box-sizing:border-box;
+        }
+
+        .gsc-benefit-graphic.care:before {
+            content:"";
+            position:absolute;
+            left:10px;
+            top:7px;
+            width:22px;
+            height:26px;
+            background:#0f5132;
+            clip-path:polygon(50% 0%, 88% 15%, 82% 63%, 50% 100%, 18% 63%, 12% 15%);
+        }
+
+        .gsc-benefit-graphic.care:after {
+            content:"";
+            position:absolute;
+            left:17px;
+            top:17px;
+            width:10px;
+            height:6px;
+            border-left:3px solid #ffffff;
+            border-bottom:3px solid #ffffff;
+            transform:rotate(-45deg);
         }
 
         .gsc-benefit-title {
@@ -3739,13 +3760,70 @@ def portal():
             font-weight:600;
         }
 
+
+        @media (min-width: 900px) {
+            .gsc-redesign-page {
+                padding:46px 42px 54px;
+            }
+
+            .gsc-redesign-shell {
+                max-width:1120px;
+                display:grid;
+                grid-template-columns:minmax(0, 1fr) minmax(380px, 470px);
+                gap:34px 48px;
+                align-items:center;
+            }
+
+            .gsc-redesign-hero {
+                padding:0;
+            }
+
+            .gsc-redesign-title {
+                font-size:52px;
+                max-width:520px;
+                letter-spacing:-1.2px;
+            }
+
+            .gsc-redesign-copy {
+                font-size:19px;
+                max-width:440px;
+            }
+
+            .gsc-redesign-logo {
+                width:215px;
+            }
+
+            .gsc-track-card {
+                padding:42px 34px 32px;
+            }
+
+            .gsc-benefits {
+                grid-column:1 / -1;
+                max-width:820px;
+                margin:22px auto 0;
+                grid-template-columns:1fr 1fr;
+            }
+
+            .gsc-benefit {
+                padding:18px;
+            }
+
+            .gsc-benefit-title {
+                font-size:14px;
+            }
+
+            .gsc-benefit-text {
+                font-size:13px;
+            }
+        }
+
         @media (max-width: 420px) {
             .gsc-redesign-page {
                 padding:20px 18px 34px;
             }
 
             .gsc-logo-badge {
-                padding:10px 12px;
+                padding:0;
             }
 
             .gsc-redesign-logo {
@@ -3814,7 +3892,7 @@ def portal():
 
             <div class="gsc-benefits">
                 <div class="gsc-benefit">
-                    <div class="gsc-benefit-dot"></div>
+                    <div class="gsc-benefit-graphic updates"></div>
                     <div>
                         <div class="gsc-benefit-title">Real-Time Updates</div>
                         <div class="gsc-benefit-text">View current PSA progress and pickup status.</div>
@@ -3822,7 +3900,7 @@ def portal():
                 </div>
 
                 <div class="gsc-benefit">
-                    <div class="gsc-benefit-dot"></div>
+                    <div class="gsc-benefit-graphic care"></div>
                     <div>
                         <div class="gsc-benefit-title">Expert Care</div>
                         <div class="gsc-benefit-text">Handled carefully from drop-off to pickup.</div>
