@@ -1260,6 +1260,270 @@ def page(content, mode="admin"):
 
 
         /* Mobile portal form icon color consistency */
+
+        /* Admin dashboard visual theme */
+        body.admin-body {{
+            background:
+                radial-gradient(circle at 92% 4%, rgba(15,81,50,.10), transparent 22%),
+                linear-gradient(180deg, #fbfaf4 0%, #eef4ee 100%);
+        }}
+
+        body.admin-body .topbar {{
+            background:#06442d;
+            box-shadow:0 8px 24px rgba(15,81,50,.16);
+            border-bottom:1px solid rgba(255,255,255,.10);
+        }}
+
+        body.admin-body .container {{
+            max-width:1280px;
+            margin:0 auto;
+            padding:22px 18px 44px;
+            box-sizing:border-box;
+        }}
+
+        .admin-hero {{
+            background:rgba(255,255,255,.82);
+            border:1px solid #d7dfd9;
+            border-radius:20px;
+            padding:20px;
+            margin-bottom:18px;
+            box-shadow:0 10px 30px rgba(15,81,50,.09);
+            display:flex;
+            justify-content:space-between;
+            gap:18px;
+            align-items:flex-end;
+            flex-wrap:wrap;
+        }}
+
+        .admin-hero-kicker {{
+            color:#198754;
+            font-size:12px;
+            font-weight:900;
+            text-transform:uppercase;
+            letter-spacing:1px;
+            margin-bottom:6px;
+        }}
+
+        .admin-hero h1 {{
+            color:#06442d;
+            font-size:34px;
+            line-height:1;
+            margin:0;
+            text-transform:uppercase;
+            letter-spacing:-.7px;
+        }}
+
+        .admin-hero p {{
+            color:#374151;
+            margin:8px 0 0;
+            font-weight:700;
+            font-size:14px;
+        }}
+
+        .admin-pill {{
+            background:#eef6f2;
+            color:#06442d;
+            border:1px solid #cfe3d7;
+            border-radius:999px;
+            padding:8px 13px;
+            font-weight:900;
+            font-size:13px;
+        }}
+
+        .admin-stats-grid {{
+            display:grid;
+            grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
+            gap:12px;
+            margin:0 0 18px;
+        }}
+
+        .admin-stat {{
+            display:block;
+            text-decoration:none;
+            color:inherit;
+        }}
+
+        .admin-stat-card {{
+            background:#ffffff;
+            border:1px solid #d7dfd9;
+            border-radius:18px;
+            padding:16px;
+            box-shadow:0 8px 24px rgba(15,81,50,.08);
+            position:relative;
+            overflow:hidden;
+            min-height:82px;
+        }}
+
+        .admin-stat-card:before {{
+            content:"";
+            position:absolute;
+            right:-24px;
+            top:-28px;
+            width:82px;
+            height:82px;
+            border-radius:50%;
+            background:rgba(25,135,84,.10);
+        }}
+
+        .admin-stat-card.red:before {{
+            background:rgba(220,53,69,.10);
+        }}
+
+        .admin-stat-label {{
+            color:#5f6b63;
+            font-size:12px;
+            font-weight:900;
+            text-transform:uppercase;
+            letter-spacing:.5px;
+        }}
+
+        .admin-stat-value {{
+            color:#06442d;
+            font-size:30px;
+            font-weight:950;
+            margin-top:4px;
+            line-height:1;
+        }}
+
+        .admin-stat-card.red .admin-stat-value {{
+            color:#b4232f;
+        }}
+
+        .admin-filter-card {{
+            background:rgba(255,255,255,.88);
+            border:1px solid #d7dfd9;
+            border-radius:18px;
+            padding:14px;
+            margin-bottom:18px;
+            box-shadow:0 8px 24px rgba(15,81,50,.08);
+        }}
+
+        .admin-filter-card form {{
+            display:flex;
+            flex-wrap:wrap;
+            gap:12px;
+            align-items:flex-end;
+            margin:0;
+        }}
+
+        .admin-filter-card label {{
+            display:block;
+            color:#06442d;
+            font-size:12px;
+            font-weight:900;
+            text-transform:uppercase;
+            margin-bottom:5px;
+        }}
+
+        .admin-filter-card select {{
+            min-height:40px;
+            border-radius:10px;
+            border:1px solid #cbd5ce;
+            padding:0 12px;
+            font-weight:800;
+            background:#ffffff;
+            color:#111827;
+            min-width:175px;
+        }}
+
+        .admin-filter-card button {{
+            min-height:40px;
+            background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%);
+            color:white;
+            border:0;
+            border-radius:10px;
+            padding:0 15px;
+            font-weight:900;
+            cursor:pointer;
+            margin:0;
+        }}
+
+        .admin-filter-card .reset-link {{
+            min-height:40px;
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            padding:0 15px;
+            border-radius:10px;
+            background:#eef2ef;
+            color:#06442d;
+            text-decoration:none;
+            font-weight:900;
+        }}
+
+        .alert-summary {{
+            background:#fff7f7;
+            border:1px solid #f0b9c0;
+            border-radius:18px;
+            padding:18px;
+            margin:0 0 18px;
+            box-shadow:0 8px 24px rgba(220,53,69,.08);
+        }}
+
+        .alert-summary h2 {{
+            color:#b4232f;
+            margin:0 0 8px;
+            font-size:24px;
+            text-transform:uppercase;
+        }}
+
+        .alert-summary p {{
+            color:#374151;
+            margin:0 0 12px;
+            font-weight:700;
+        }}
+
+        .alert-summary summary {{
+            cursor:pointer;
+            color:#b4232f;
+            font-weight:900;
+            background:#ffe8ea;
+            border-radius:10px;
+            padding:10px 12px;
+            display:inline-block;
+        }}
+
+        body.admin-body table {{
+            border-radius:14px;
+            overflow:hidden;
+            border:1px solid #d7dfd9;
+            box-shadow:0 8px 24px rgba(15,81,50,.07);
+        }}
+
+        body.admin-body th {{
+            background:#06442d;
+        }}
+
+        body.admin-body tr:hover {{
+            background:#eef6f2;
+        }}
+
+        @media (max-width: 700px) {{
+            body.admin-body .container {{
+                padding:16px 12px 34px;
+            }}
+
+            .admin-hero {{
+                padding:16px;
+            }}
+
+            .admin-hero h1 {{
+                font-size:28px;
+            }}
+
+            .admin-filter-card form {{
+                display:block;
+            }}
+
+            .admin-filter-card select,
+            .admin-filter-card button,
+            .admin-filter-card .reset-link {{
+                width:100%;
+                box-sizing:border-box;
+                margin:0 0 10px;
+            }}
+        }}
+
         @media (max-width: 700px) {{
             .gsc-field-icon,
             .safe-field-icon,
@@ -2104,43 +2368,55 @@ def admin_dashboard():
     pdf_needed_count = sum(1 for r in all_rows if card_pdf_needs_attention(r))
 
     html = f"""
-    <h2 style="font-size:28px;margin:6px 0 14px;">Admin Dashboard</h2>
+    <div class="admin-hero">
+        <div>
+            <div class="admin-hero-kicker">Giant Sports Cards</div>
+            <h1>Admin Dashboard</h1>
+            <p>Manage PSA submissions, customer status, card PDFs, SMS alerts and buyback activity.</p>
+        </div>
+        <div class="admin-pill">{len(rows)} shown</div>
+    </div>
 
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:10px;margin:10px 0 18px;">
-        <a href="/admin?view=all&sort={sort}" style="text-decoration:none;color:inherit;">
-            <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
-                <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Total</div>
-                <div style="font-size:24px;font-weight:900;color:#111827;margin-top:3px;">{total_count}</div>
+    <div class="admin-stats-grid">
+        <a class="admin-stat" href="/admin?view=all&sort={sort}">
+            <div class="admin-stat-card">
+                <div class="admin-stat-label">Total</div>
+                <div class="admin-stat-value">{total_count}</div>
             </div>
         </a>
-        <a href="/admin?view=active&sort={sort}" style="text-decoration:none;color:inherit;">
-            <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
-                <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Active</div>
-                <div style="font-size:24px;font-weight:900;color:#111827;margin-top:3px;">{active_count}</div>
+
+        <a class="admin-stat" href="/admin?view=active&sort={sort}">
+            <div class="admin-stat-card">
+                <div class="admin-stat-label">Active</div>
+                <div class="admin-stat-value">{active_count}</div>
             </div>
         </a>
-        <a href="/admin?view=complete&sort={sort}" style="text-decoration:none;color:inherit;">
-            <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
-                <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Complete</div>
-                <div style="font-size:24px;font-weight:900;color:#111827;margin-top:3px;">{complete_count}</div>
+
+        <a class="admin-stat" href="/admin?view=complete&sort={sort}">
+            <div class="admin-stat-card">
+                <div class="admin-stat-label">Complete</div>
+                <div class="admin-stat-value">{complete_count}</div>
             </div>
         </a>
-        <a href="/admin?view=shipping&sort={sort}" style="text-decoration:none;color:inherit;">
-            <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
-                <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Shipping Soon</div>
-                <div style="font-size:24px;font-weight:900;color:#111827;margin-top:3px;">{shipping_count}</div>
+
+        <a class="admin-stat" href="/admin?view=shipping&sort={sort}">
+            <div class="admin-stat-card">
+                <div class="admin-stat-label">Shipping Soon</div>
+                <div class="admin-stat-value">{shipping_count}</div>
             </div>
         </a>
-        <a href="/admin?view=pickup&sort={sort}" style="text-decoration:none;color:inherit;">
-            <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
-                <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Ready Pickup</div>
-                <div style="font-size:24px;font-weight:900;color:#111827;margin-top:3px;">{pickup_count}</div>
+
+        <a class="admin-stat" href="/admin?view=pickup&sort={sort}">
+            <div class="admin-stat-card">
+                <div class="admin-stat-label">Ready Pickup</div>
+                <div class="admin-stat-value">{pickup_count}</div>
             </div>
         </a>
-        <a href="/admin?view=pdf_needed&sort={sort}" style="text-decoration:none;color:inherit;">
-            <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #dc3545;">
-                <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">PDF Needed</div>
-                <div style="font-size:24px;font-weight:900;color:#111827;margin-top:3px;">{pdf_needed_count}</div>
+
+        <a class="admin-stat" href="/admin?view=pdf_needed&sort={sort}">
+            <div class="admin-stat-card red">
+                <div class="admin-stat-label">PDF Needed</div>
+                <div class="admin-stat-value">{pdf_needed_count}</div>
             </div>
         </a>
     </div>
@@ -2153,7 +2429,7 @@ def admin_dashboard():
         status_select_html += f"<option value='{option}' {selected_attr}>{option}</option>"
 
     html += f"""
-    <div class="filterbar">
+    <div class="admin-filter-card">
         <form method="get" action="/admin">
             <div>
                 <label>Sort</label>
@@ -4357,8 +4633,8 @@ def portal_orders():
     if not grouped:
         html += "<div class='card'>No matching orders found. Check phone number and last name.</div>"
         html += "</div></div>"
-        return page(html, mode="portal")
-
+        html += "</div></div></div>"
+    return page(html, mode="portal")
 
     statuses_available = customer_status_options()
 
@@ -4419,7 +4695,6 @@ def portal_orders():
         html += "<div class='card'>No submissions match the selected filters.</div>"
         html += "</div></div>"
         return page(html, mode="portal")
-
 
     html += "<div class='portal-results-grid'>"
 
