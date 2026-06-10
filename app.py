@@ -225,9 +225,9 @@ def normalize_phone(v):
 
 def normalize_key_text(value):
     text = str(value or "").strip().lower()
-    text = text.replace("Æ", "f")
-    text = text.replace("Ã¦Â", "f")
-    text = text.replace("Ã¢\x80\x99", "'")
+    text = text.replace("ƒ", "f")
+    text = text.replace("æ", "f")
+    text = text.replace("â\x80\x99", "'")
     text = text.replace(".", "")
     text = re.sub(r"\s+", " ", text)
     return text
@@ -239,10 +239,10 @@ def is_dropoff_date_key(key):
     direct_names = [
         "fand",
         "f and",
-        "Æand",
-        "Æ and",
-        "Ã¦Âand",
-        "Ã¦Â and",
+        "ƒand",
+        "ƒ and",
+        "æand",
+        "æ and",
         "submission date",
         "customer drop-off date",
         "customer drop off date",
@@ -297,8 +297,8 @@ def clean_service_display(service):
     value = str(service or "").strip()
     if " - " in value:
         return value.split(" - ", 1)[0].strip()
-    if " â " in value:
-        return value.split(" â ", 1)[0].strip()
+    if " – " in value:
+        return value.split(" – ", 1)[0].strip()
     return value
 
 def date_only_display(value):
@@ -343,10 +343,10 @@ def get_dropoff_date(data):
         "Customer Drop-Off Date",
         "Customer Drop Off Date",
         "Submission Date",
+        "ƒand",
+        "ƒand.",
         "Æand",
         "Æand.",
-        "ÃÂand",
-        "ÃÂand.",
         "fand",
         "Fand",
         "F and",
@@ -378,8 +378,8 @@ def parse_arrived_completed_value(value):
 
     month = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
     date_single = month + r"\s+\d{1,2},\s+\d{4}"
-    date_range_same_year = month + r"\s+\d{1,2}\s*[-â]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
-    date_range_full = date_single + r"\s*[-â]\s*" + date_single
+    date_range_same_year = month + r"\s+\d{1,2}\s*[-–]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
+    date_range_full = date_single + r"\s*[-–]\s*" + date_single
 
     completed_match = re.search(r"Completed\s+(" + date_single + r")", text, re.IGNORECASE)
     if completed_match:
@@ -771,7 +771,7 @@ def page(content, mode="admin"):
         <a href="/admin/search">Search</a>
         <a href="/admin/upload">Excel</a>
         <a href="/admin/upload_psa">PSA PDF</a>
-        <a href="/admin/upload_cards">Card PDF</a>
+        <a href="/admin/upload_cards">Cards PDF</a>
         <a href="/admin/buyback_requests">Buyback</a>
         <a href="/admin/sms_notifications">SMS Queue</a>
         <a href="/portal">Portal</a>
@@ -1048,7 +1048,7 @@ def page(content, mode="admin"):
             color:#198754;
         }}
         .buyback-collapsible[open] summary:after {{
-            content:"â";
+            content:"–";
         }}
         .buyback-collapsible .buyback-inner {{
             padding:14px;
@@ -1261,75 +1261,17 @@ def page(content, mode="admin"):
 
         /* Mobile portal form icon color consistency */
 
-        /* Final header/dashboard visual repair */
-        body.admin-body,
-        body.portal-body {{
+        /* Admin dashboard visual theme */
+        body.admin-body {{
             background:
-                radial-gradient(circle at 94% 4%, rgba(25,135,84,.10), transparent 24%),
+                radial-gradient(circle at 92% 4%, rgba(15,81,50,.10), transparent 22%),
                 linear-gradient(180deg, #fbfaf4 0%, #eef4ee 100%);
         }}
 
-        body.admin-body .topbar,
-        body.portal-body .topbar {{
-            background:
-                radial-gradient(circle at 96% 0%, rgba(25,135,84,.16), transparent 30%),
-                rgba(255,255,255,.90);
-            color:#06442d;
-            border-bottom:1px solid #d7dfd9;
-            box-shadow:0 8px 24px rgba(15,81,50,.08);
-            backdrop-filter:blur(10px);
-        }}
-
-        body.admin-body .brand,
-        body.portal-body .brand {{
-            color:#06442d;
-            min-width:auto;
-        }}
-
-        body.admin-body .brand img,
-        body.portal-body .brand img {{
-            max-height:62px;
-            max-width:190px;
-            filter:brightness(0) saturate(100%) invert(20%) sepia(44%) saturate(1023%) hue-rotate(105deg) brightness(89%) contrast(93%)
-                   drop-shadow(0 1px 0 #ffffff)
-                   drop-shadow(1px 0 0 #ffffff)
-                   drop-shadow(-1px 0 0 #ffffff)
-                   drop-shadow(0 -1px 0 #ffffff);
-        }}
-
-        body.admin-body .brand span,
-        body.portal-body .brand span {{
-            color:#06442d;
-            font-size:24px;
-            font-weight:950;
-            text-transform:uppercase;
-            letter-spacing:-.3px;
-            line-height:1;
-        }}
-
-        body.admin-body .links a,
-        body.portal-body .links a {{
-            color:#06442d;
-            background:#ffffff;
-            border:1px solid #cbd5ce;
-            padding:10px 13px;
-            border-radius:10px;
-            box-shadow:0 4px 12px rgba(15,81,50,.06);
-            font-size:13px;
-            font-weight:900;
-        }}
-
-        body.admin-body .links a:hover,
-        body.portal-body .links a:hover {{
-            background:#eef6f2;
-            color:#06442d;
-        }}
-
-        body.admin-body .links a[href="/admin"],
-        body.portal-body .links a[href="/portal"] {{
-            background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%);
-            color:#ffffff;
-            border:0;
+        body.admin-body .topbar {{
+            background:#06442d;
+            box-shadow:0 8px 24px rgba(15,81,50,.16);
+            border-bottom:1px solid rgba(255,255,255,.10);
         }}
 
         body.admin-body .container {{
@@ -1339,40 +1281,46 @@ def page(content, mode="admin"):
             box-sizing:border-box;
         }}
 
-        .admin-clean-hero {{
-            background:rgba(255,255,255,.84);
+        .admin-hero {{
+            background:rgba(255,255,255,.82);
             border:1px solid #d7dfd9;
             border-radius:20px;
-            padding:18px 20px;
-            margin-bottom:16px;
+            padding:20px;
+            margin-bottom:18px;
             box-shadow:0 10px 30px rgba(15,81,50,.09);
             display:flex;
             justify-content:space-between;
-            gap:14px;
+            gap:18px;
             align-items:flex-end;
             flex-wrap:wrap;
         }}
 
-        .admin-clean-kicker {{
+        .admin-hero-kicker {{
             color:#198754;
             font-size:12px;
-            font-weight:950;
+            font-weight:900;
             text-transform:uppercase;
             letter-spacing:1px;
-            margin-bottom:5px;
+            margin-bottom:6px;
         }}
 
-        .admin-clean-hero h1 {{
+        .admin-hero h1 {{
             color:#06442d;
-            font-size:32px;
+            font-size:34px;
             line-height:1;
             margin:0;
             text-transform:uppercase;
-            letter-spacing:-.6px;
-            font-weight:950;
+            letter-spacing:-.7px;
         }}
 
-        .admin-clean-pill {{
+        .admin-hero p {{
+            color:#374151;
+            margin:8px 0 0;
+            font-weight:700;
+            font-size:14px;
+        }}
+
+        .admin-pill {{
             background:#eef6f2;
             color:#06442d;
             border:1px solid #cfe3d7;
@@ -1386,7 +1334,7 @@ def page(content, mode="admin"):
             display:grid;
             grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
             gap:12px;
-            margin:0 0 16px;
+            margin:0 0 18px;
         }}
 
         .admin-stat {{
@@ -1403,16 +1351,16 @@ def page(content, mode="admin"):
             box-shadow:0 8px 24px rgba(15,81,50,.08);
             position:relative;
             overflow:hidden;
-            min-height:76px;
+            min-height:82px;
         }}
 
         .admin-stat-card:before {{
             content:"";
             position:absolute;
-            right:-25px;
-            top:-30px;
-            width:88px;
-            height:88px;
+            right:-24px;
+            top:-28px;
+            width:82px;
+            height:82px;
             border-radius:50%;
             background:rgba(25,135,84,.10);
         }}
@@ -1424,14 +1372,14 @@ def page(content, mode="admin"):
         .admin-stat-label {{
             color:#5f6b63;
             font-size:12px;
-            font-weight:950;
+            font-weight:900;
             text-transform:uppercase;
             letter-spacing:.5px;
         }}
 
         .admin-stat-value {{
             color:#06442d;
-            font-size:31px;
+            font-size:30px;
             font-weight:950;
             margin-top:4px;
             line-height:1;
@@ -1446,7 +1394,7 @@ def page(content, mode="admin"):
             border:1px solid #d7dfd9;
             border-radius:18px;
             padding:14px;
-            margin-bottom:16px;
+            margin-bottom:18px;
             box-shadow:0 8px 24px rgba(15,81,50,.08);
         }}
 
@@ -1462,7 +1410,7 @@ def page(content, mode="admin"):
             display:block;
             color:#06442d;
             font-size:12px;
-            font-weight:950;
+            font-weight:900;
             text-transform:uppercase;
             margin-bottom:5px;
         }}
@@ -1503,10 +1451,42 @@ def page(content, mode="admin"):
             font-weight:900;
         }}
 
-        body.admin-body .card,
+        .alert-summary {{
+            background:#fff7f7;
+            border:1px solid #f0b9c0;
+            border-radius:18px;
+            padding:18px;
+            margin:0 0 18px;
+            box-shadow:0 8px 24px rgba(220,53,69,.08);
+        }}
+
+        .alert-summary h2 {{
+            color:#b4232f;
+            margin:0 0 8px;
+            font-size:24px;
+            text-transform:uppercase;
+        }}
+
+        .alert-summary p {{
+            color:#374151;
+            margin:0 0 12px;
+            font-weight:700;
+        }}
+
+        .alert-summary summary {{
+            cursor:pointer;
+            color:#b4232f;
+            font-weight:900;
+            background:#ffe8ea;
+            border-radius:10px;
+            padding:10px 12px;
+            display:inline-block;
+        }}
+
         body.admin-body table {{
+            border-radius:14px;
+            overflow:hidden;
             border:1px solid #d7dfd9;
-            border-radius:16px;
             box-shadow:0 8px 24px rgba(15,81,50,.07);
         }}
 
@@ -1514,34 +1494,20 @@ def page(content, mode="admin"):
             background:#06442d;
         }}
 
+        body.admin-body tr:hover {{
+            background:#eef6f2;
+        }}
+
         @media (max-width: 700px) {{
-            body.admin-body .brand,
-            body.portal-body .brand {{
-                min-width:100%;
-                flex-direction:row;
-                align-items:center;
-            }}
-
-            body.admin-body .brand img,
-            body.portal-body .brand img {{
-                max-height:54px;
-                max-width:150px;
-            }}
-
-            body.admin-body .brand span,
-            body.portal-body .brand span {{
-                font-size:20px;
-            }}
-
             body.admin-body .container {{
                 padding:16px 12px 34px;
             }}
 
-            .admin-clean-hero {{
+            .admin-hero {{
                 padding:16px;
             }}
 
-            .admin-clean-hero h1 {{
+            .admin-hero h1 {{
                 font-size:28px;
             }}
 
@@ -1781,7 +1747,7 @@ def build_table(rows):
                 details_parts.append(f"<b>{html_escape(key_text)}:</b> {html_escape(val)}")
 
         if not details_parts:
-            details_html = "<span style='color:#6b7280;'>â</span>"
+            details_html = "<span style='color:#6b7280;'>—</span>"
         else:
             details_html = "<details class='row-details'><summary>Details</summary><div>" + "<br>".join(details_parts[:12]) + "</div></details>"
 
@@ -2402,12 +2368,13 @@ def admin_dashboard():
     pdf_needed_count = sum(1 for r in all_rows if card_pdf_needs_attention(r))
 
     html = f"""
-    <div class="admin-clean-hero">
+    <div class="admin-hero">
         <div>
-            <div class="admin-clean-kicker">Giant Sports Cards</div>
+            <div class="admin-hero-kicker">Giant Sports Cards</div>
             <h1>Admin Dashboard</h1>
+            <p>Manage PSA submissions, customer status, card PDFs, SMS alerts and buyback activity.</p>
         </div>
-        <div class="admin-clean-pill">{len(rows)} shown</div>
+        <div class="admin-pill">{len(rows)} shown</div>
     </div>
 
     <div class="admin-stats-grid">
@@ -2667,8 +2634,8 @@ def admin_upload_psa():
 
                 month_pattern = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
                 date_pattern = month_pattern + r"\s+\d{1,2},\s+\d{4}"
-                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-â]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
-                date_range_full = date_pattern + r"\s*[-â]\s*" + date_pattern
+                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-–]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
+                date_range_full = date_pattern + r"\s*[-–]\s*" + date_pattern
 
                 value_pattern = re.compile(
                     rf"(Completed\s+{date_pattern}|Est\.\s*Complete\s*by\s+{date_range_full}|Est\.\s*Complete\s*by\s+{date_range_same_year}|Est\.\s*Complete\s*by\s+{date_pattern}|Estimated\s*Complete\s*by\s+{date_range_full}|Estimated\s*Complete\s*by\s+{date_range_same_year}|Estimated\s*Complete\s*by\s+{date_pattern}|Est\.\s*by\s+{date_range_full}|Est\.\s*by\s+{date_range_same_year}|Est\.\s*by\s+{date_pattern}|{date_pattern})",
@@ -2741,7 +2708,7 @@ def admin_upload_psa():
                             j += 1
 
                     # Split case:
-                    # â¢ Sub
+                    # • Sub
                     # #14550482
                     # Research & ID
                     elif re.search(r"\bSub\b\s*$", line, re.IGNORECASE) and i + 1 < len(lines):
@@ -2780,7 +2747,7 @@ def admin_upload_psa():
                             block_text = re.sub(r",\s+(\d{4})", r", \1", block_text)
 
                             matches = re.findall(
-                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
+                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
                                 block_text,
                                 re.IGNORECASE
                             )
@@ -4859,4 +4826,86 @@ def portal_orders():
             <p><b>Submission #:</b> {sub}</p>
             <p><b>Status:</b> <span class="status">{display_status_label}</span></p>
             <p><b>Arrived at PSA:</b> {arrived_completed}</p>
-            <p><b>Estimated Completion Date:</b> {estimated_comple
+            <p><b>Estimated Completion Date:</b> {estimated_completion}</p>
+            <p><b>Cards:</b> {cards}</p>
+            <p><b>Service:</b> {service}</p>
+            <p><b>Customer Drop-Off Date:</b> {date}</p>
+            {status_bar(display_status)}
+            {sms_html}
+            {buyback_html}
+        </div>
+        """
+
+    html += "</div></div></div>"
+    return page(html, mode="portal")
+
+
+@app.route("/portal/buyback_offer_response", methods=["POST"])
+def portal_buyback_offer_response():
+    phone = normalize_phone(session.get("phone"))
+    last = clean(session.get("last")).lower()
+
+    if not phone or not last:
+        return redirect("/portal")
+
+    submission_number = normalize_submission(request.form.get("submission_number"))
+    cert_number = normalize_submission(request.form.get("cert_number"))
+    response = clean(request.form.get("response"))
+
+    if response not in ["Accepted", "Declined"]:
+        return redirect("/portal/orders")
+
+    if not submission_number or not cert_number:
+        return redirect("/portal/orders")
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT raw_data
+    FROM submissions
+    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+    """, (submission_number,))
+    row = cur.fetchone()
+
+    if not row:
+        cur.close()
+        conn.close()
+        return redirect("/portal/orders")
+
+    data = row[0] or {}
+    name = str(get_field(data, ["Customer Name", "Name"])).lower()
+    contact = normalize_phone(get_field(data, ["Contact Info", "Phone", "Phone Number"]))
+
+    phone_match = bool(contact) and (phone in contact or contact in phone)
+    name_match = bool(last) and last in name
+
+    if not (phone_match and name_match):
+        cur.close()
+        conn.close()
+        return redirect("/portal/orders")
+
+    cur.execute("""
+    UPDATE card_buyback_items
+    SET buyback_status=%s,
+        updated_at=NOW()
+    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+      AND REGEXP_REPLACE(cert_number, '\\D', '', 'g')=%s
+      AND COALESCE(offer_amount, '') <> ''
+    """, (response, submission_number, cert_number))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return redirect("/portal/orders")
+
+
+@app.route("/portal/logout")
+def portal_logout():
+    session.pop("phone", None)
+    session.pop("last", None)
+    return redirect("/portal")
+
+if __name__ == "__main__":
+    app.run()
