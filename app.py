@@ -771,7 +771,7 @@ def page(content, mode="admin"):
         <a href="/admin/search">Search</a>
         <a href="/admin/upload">Excel</a>
         <a href="/admin/upload_psa">PSA PDF</a>
-        <a href="/admin/upload_cards">Card PDF</a>
+        <a href="/admin/upload_cards">Cards PDF</a>
         <a href="/admin/buyback_requests">Buyback</a>
         <a href="/admin/sms_notifications">SMS Queue</a>
         <a href="/portal">Portal</a>
@@ -1261,19 +1261,10 @@ def page(content, mode="admin"):
 
         /* Mobile portal form icon color consistency */
 
-        /* SAFE VISUAL PATCH ONLY - no route or logic changes */
-        body.admin-body,
-        body.portal-body {{
-            background:
-                radial-gradient(circle at 94% 4%, rgba(25,135,84,.10), transparent 24%),
-                linear-gradient(180deg, #fbfaf4 0%, #eef4ee 100%) !important;
-        }}
-
+        /* HEADER ONLY SAFE PATCH */
         body.admin-body .topbar,
         body.portal-body .topbar {{
-            background:
-                radial-gradient(circle at 96% 0%, rgba(25,135,84,.16), transparent 30%),
-                rgba(255,255,255,.92) !important;
+            background:#f7faf6 !important;
             color:#06442d !important;
             border-bottom:1px solid #d7dfd9 !important;
             box-shadow:0 8px 24px rgba(15,81,50,.08) !important;
@@ -1288,14 +1279,12 @@ def page(content, mode="admin"):
         body.portal-body .brand span {{
             color:#06442d !important;
             font-weight:950 !important;
-            text-transform:uppercase !important;
-            letter-spacing:-.3px !important;
         }}
 
         body.admin-body .brand img,
         body.portal-body .brand img {{
-            max-height:64px !important;
-            max-width:190px !important;
+            max-height:70px !important;
+            max-width:210px !important;
             filter:brightness(0) saturate(100%) invert(20%) sepia(44%) saturate(1023%) hue-rotate(105deg) brightness(89%) contrast(93%)
                    drop-shadow(0 1px 0 #ffffff)
                    drop-shadow(1px 0 0 #ffffff)
@@ -1319,69 +1308,46 @@ def page(content, mode="admin"):
             color:#06442d !important;
         }}
 
-        body.admin-body .container {{
-            max-width:1280px !important;
-            margin:0 auto !important;
-            padding:22px 18px 44px !important;
-            box-sizing:border-box !important;
+
+        /* PORTAL LANDING FIX ONLY */
+        body.portal-body .gsc-logo-badge {{
+            background:transparent !important;
+            box-shadow:none !important;
+            border-radius:0 !important;
+            padding:0 !important;
+            margin:0 0 14px !important;
         }}
 
-        body.admin-body h2 {{
-            color:#06442d !important;
-            font-weight:950 !important;
-            text-transform:uppercase !important;
-            letter-spacing:-.4px !important;
+        body.portal-body .gsc-redesign-logo {{
+            width:155px !important;
+            height:auto !important;
+            filter:brightness(0) saturate(100%) invert(20%) sepia(44%) saturate(1023%) hue-rotate(105deg) brightness(89%) contrast(93%)
+                   drop-shadow(0 1px 0 #ffffff)
+                   drop-shadow(1px 0 0 #ffffff)
+                   drop-shadow(-1px 0 0 #ffffff)
+                   drop-shadow(0 -1px 0 #ffffff) !important;
         }}
 
-        body.admin-body .card,
-        body.admin-body .filterbar,
-        body.admin-body table,
-        body.portal-body .card,
-        body.portal-body .filterbar {{
-            border:1px solid #d7dfd9 !important;
-            border-radius:16px !important;
-            box-shadow:0 8px 24px rgba(15,81,50,.08) !important;
+        body.portal-body .gsc-menu-circle {{
+            display:none !important;
         }}
 
-        body.admin-body .filterbar,
-        body.portal-body .filterbar {{
-            background:rgba(255,255,255,.90) !important;
+        body.portal-body .gsc-redesign-page {{
+            background:
+                radial-gradient(circle at 84% 16%, rgba(15,81,50,.12), transparent 27%),
+                linear-gradient(180deg, #fbfaf4 0%, #eef4ee 100%) !important;
         }}
 
-        body.admin-body th {{
-            background:#06442d !important;
-            color:#ffffff !important;
-        }}
-
-        body.admin-body .btn,
-        body.admin-body button,
-        body.portal-body button {{
-            background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%) !important;
-            color:#ffffff !important;
-            border:0 !important;
-            border-radius:10px !important;
-            font-weight:900 !important;
-        }}
-
-        body.admin-body .filterbar .reset-link,
-        body.portal-body .filterbar .reset-link {{
-            background:#eef2ef !important;
-            color:#06442d !important;
-            border-radius:10px !important;
-            font-weight:900 !important;
-        }}
-
-        .gsc-benefit-dot {{
+        body.portal-body .gsc-benefit-dot {{
             width:42px !important;
             height:42px !important;
             border-radius:13px !important;
             background:linear-gradient(180deg, #eaf5ee 0%, #d9ecdf 100%) !important;
             border:1px solid #bfd8c8 !important;
             position:relative !important;
-            box-shadow:inset 0 1px 0 rgba(255,255,255,.75), 0 3px 8px rgba(15,81,50,.08) !important;
         }}
 
-        .gsc-benefit:nth-child(1) .gsc-benefit-dot:before {{
+        body.portal-body .gsc-benefit:nth-child(1) .gsc-benefit-dot:before {{
             content:"" !important;
             position:absolute !important;
             width:20px !important;
@@ -1393,7 +1359,7 @@ def page(content, mode="admin"):
             box-sizing:border-box !important;
         }}
 
-        .gsc-benefit:nth-child(1) .gsc-benefit-dot:after {{
+        body.portal-body .gsc-benefit:nth-child(1) .gsc-benefit-dot:after {{
             content:"" !important;
             position:absolute !important;
             width:10px !important;
@@ -1406,7 +1372,7 @@ def page(content, mode="admin"):
             box-sizing:border-box !important;
         }}
 
-        .gsc-benefit:nth-child(2) .gsc-benefit-dot:before {{
+        body.portal-body .gsc-benefit:nth-child(2) .gsc-benefit-dot:before {{
             content:"" !important;
             position:absolute !important;
             left:10px !important;
@@ -1417,7 +1383,7 @@ def page(content, mode="admin"):
             clip-path:polygon(50% 0%, 88% 15%, 82% 63%, 50% 100%, 18% 63%, 12% 15%) !important;
         }}
 
-        .gsc-benefit:nth-child(2) .gsc-benefit-dot:after {{
+        body.portal-body .gsc-benefit:nth-child(2) .gsc-benefit-dot:after {{
             content:"" !important;
             position:absolute !important;
             left:17px !important;
@@ -1430,11 +1396,7 @@ def page(content, mode="admin"):
         }}
 
         @media (min-width: 900px) {{
-            .gsc-redesign-page {{
-                padding:46px 42px 54px !important;
-            }}
-
-            .gsc-redesign-shell {{
+            body.portal-body .gsc-redesign-shell {{
                 max-width:1120px !important;
                 display:grid !important;
                 grid-template-columns:minmax(0, 1fr) minmax(380px, 470px) !important;
@@ -1442,34 +1404,16 @@ def page(content, mode="admin"):
                 align-items:center !important;
             }}
 
-            .gsc-redesign-hero {{
-                padding:0 !important;
-            }}
-
-            .gsc-redesign-title {{
-                font-size:52px !important;
-                max-width:520px !important;
-                letter-spacing:-1.2px !important;
-            }}
-
-            .gsc-redesign-copy {{
-                font-size:19px !important;
-                max-width:440px !important;
-            }}
-
-            .gsc-redesign-logo {{
-                width:215px !important;
-            }}
-
-            .gsc-track-card {{
-                padding:42px 34px 32px !important;
-            }}
-
-            .gsc-benefits {{
+            body.portal-body .gsc-benefits {{
                 grid-column:1 / -1 !important;
                 max-width:820px !important;
                 margin:22px auto 0 !important;
                 grid-template-columns:1fr 1fr !important;
+            }}
+
+            body.portal-body .gsc-redesign-title {{
+                font-size:52px !important;
+                max-width:520px !important;
             }}
         }}
 
@@ -3568,58 +3512,28 @@ def portal():
         .gsc-logo-badge {
             display:inline-flex;
             align-items:center;
-            justify-content:center;
-            background:#07110d;
-            border-radius:12px;
-            padding:12px 14px;
-            box-shadow:0 8px 22px rgba(7,17,13,.18);
+            justify-content:flex-start;
+            background:transparent;
+            border-radius:0;
+            padding:0;
+            box-shadow:none;
             margin:0 0 18px;
         }
 
         .gsc-redesign-logo {
-            width:168px;
+            width:172px;
             max-width:100%;
             height:auto;
             display:block;
+            filter:brightness(0) saturate(100%) invert(20%) sepia(44%) saturate(1023%) hue-rotate(105deg) brightness(89%) contrast(93%)
+                   drop-shadow(0 1px 0 #ffffff)
+                   drop-shadow(1px 0 0 #ffffff)
+                   drop-shadow(-1px 0 0 #ffffff)
+                   drop-shadow(0 -1px 0 #ffffff);
         }
 
         .gsc-menu-circle {
-            position:absolute;
-            top:2px;
-            right:0;
-            width:42px;
-            height:42px;
-            border-radius:50%;
-            background:#f7f8f3;
-            border:1px solid #cbd5ce;
-            box-shadow:0 5px 14px rgba(15,81,50,.14);
-        }
-
-        .gsc-menu-circle span,
-        .gsc-menu-circle span:before,
-        .gsc-menu-circle span:after {
-            position:absolute;
-            display:block;
-            content:"";
-            width:18px;
-            height:2px;
-            left:11px;
-            background:#0f5132;
-            border-radius:4px;
-        }
-
-        .gsc-menu-circle span {
-            top:20px;
-        }
-
-        .gsc-menu-circle span:before {
-            top:-6px;
-            left:0;
-        }
-
-        .gsc-menu-circle span:after {
-            top:6px;
-            left:0;
+            display:none;
         }
 
         .gsc-redesign-title {
@@ -3927,13 +3841,64 @@ def portal():
             padding:13px;
         }
 
-        .gsc-benefit-dot {
-            width:34px;
-            height:34px;
-            border-radius:10px;
-            background:#e7f2eb;
-            border:1px solid #c8ded0;
+        .gsc-benefit-graphic {
+            width:42px;
+            height:42px;
+            border-radius:13px;
+            background:linear-gradient(180deg, #eaf5ee 0%, #d9ecdf 100%);
+            border:1px solid #bfd8c8;
             flex:0 0 auto;
+            position:relative;
+            box-shadow:inset 0 1px 0 rgba(255,255,255,.75), 0 3px 8px rgba(15,81,50,.08);
+        }
+
+        .gsc-benefit-graphic.updates:before {
+            content:"";
+            position:absolute;
+            width:20px;
+            height:20px;
+            border:3px solid #0f5132;
+            border-radius:50%;
+            left:8px;
+            top:8px;
+            box-sizing:border-box;
+        }
+
+        .gsc-benefit-graphic.updates:after {
+            content:"";
+            position:absolute;
+            width:10px;
+            height:8px;
+            left:19px;
+            top:13px;
+            border-left:3px solid #198754;
+            border-bottom:3px solid #198754;
+            transform:rotate(-45deg);
+            transform-origin:left bottom;
+            box-sizing:border-box;
+        }
+
+        .gsc-benefit-graphic.care:before {
+            content:"";
+            position:absolute;
+            left:10px;
+            top:7px;
+            width:22px;
+            height:26px;
+            background:#0f5132;
+            clip-path:polygon(50% 0%, 88% 15%, 82% 63%, 50% 100%, 18% 63%, 12% 15%);
+        }
+
+        .gsc-benefit-graphic.care:after {
+            content:"";
+            position:absolute;
+            left:17px;
+            top:17px;
+            width:10px;
+            height:6px;
+            border-left:3px solid #ffffff;
+            border-bottom:3px solid #ffffff;
+            transform:rotate(-45deg);
         }
 
         .gsc-benefit-title {
@@ -3952,13 +3917,70 @@ def portal():
             font-weight:600;
         }
 
+
+        @media (min-width: 900px) {
+            .gsc-redesign-page {
+                padding:46px 42px 54px;
+            }
+
+            .gsc-redesign-shell {
+                max-width:1120px;
+                display:grid;
+                grid-template-columns:minmax(0, 1fr) minmax(380px, 470px);
+                gap:34px 48px;
+                align-items:center;
+            }
+
+            .gsc-redesign-hero {
+                padding:0;
+            }
+
+            .gsc-redesign-title {
+                font-size:52px;
+                max-width:520px;
+                letter-spacing:-1.2px;
+            }
+
+            .gsc-redesign-copy {
+                font-size:19px;
+                max-width:440px;
+            }
+
+            .gsc-redesign-logo {
+                width:215px;
+            }
+
+            .gsc-track-card {
+                padding:42px 34px 32px;
+            }
+
+            .gsc-benefits {
+                grid-column:1 / -1;
+                max-width:820px;
+                margin:22px auto 0;
+                grid-template-columns:1fr 1fr;
+            }
+
+            .gsc-benefit {
+                padding:18px;
+            }
+
+            .gsc-benefit-title {
+                font-size:14px;
+            }
+
+            .gsc-benefit-text {
+                font-size:13px;
+            }
+        }
+
         @media (max-width: 420px) {
             .gsc-redesign-page {
                 padding:20px 18px 34px;
             }
 
             .gsc-logo-badge {
-                padding:10px 12px;
+                padding:0;
             }
 
             .gsc-redesign-logo {
@@ -4027,7 +4049,7 @@ def portal():
 
             <div class="gsc-benefits">
                 <div class="gsc-benefit">
-                    <div class="gsc-benefit-dot"></div>
+                    <div class="gsc-benefit-graphic updates"></div>
                     <div>
                         <div class="gsc-benefit-title">Real-Time Updates</div>
                         <div class="gsc-benefit-text">View current PSA progress and pickup status.</div>
@@ -4035,7 +4057,7 @@ def portal():
                 </div>
 
                 <div class="gsc-benefit">
-                    <div class="gsc-benefit-dot"></div>
+                    <div class="gsc-benefit-graphic care"></div>
                     <div>
                         <div class="gsc-benefit-title">Expert Care</div>
                         <div class="gsc-benefit-text">Handled carefully from drop-off to pickup.</div>
@@ -4076,44 +4098,384 @@ def portal_orders():
 
     html = """
     <style>
-        body.portal-body > .topbar { display:none; }
-        body.portal-body { background:#f4f3ed; }
-        body.portal-body .container { padding:0; margin:0; width:100%; max-width:none; background:#f4f3ed; overflow-x:hidden; }
+        body.portal-body > .topbar {
+            display:none;
+        }
 
-        .portal-results-page { min-height:100vh; background:radial-gradient(circle at 84% 16%, rgba(15,81,50,.13), transparent 27%), linear-gradient(180deg, #fbfaf4 0%, #eef4ee 100%); padding:22px 18px 42px; box-sizing:border-box; }
-        .portal-results-shell { width:100%; max-width:760px; margin:0 auto; }
-        .portal-logo-badge { display:inline-flex; align-items:center; justify-content:center; background:#07110d; border-radius:12px; padding:11px 13px; box-shadow:0 8px 22px rgba(7,17,13,.18); margin:0 0 15px; }
-        .portal-results-logo { width:155px; height:auto; display:block; }
-        .portal-results-title { margin:0; color:#06442d; font-family:Arial, Helvetica, sans-serif; font-weight:900; text-transform:uppercase; letter-spacing:-.7px; line-height:.98; font-size:32px; max-width:360px; }
-        .portal-results-copy { color:#374151; font-size:15px; line-height:1.38; font-weight:600; margin:9px 0 16px; max-width:440px; }
-        .portal-results-actions { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px; }
-        .portal-action-btn { display:inline-flex; align-items:center; justify-content:center; height:40px; padding:0 17px; border-radius:10px; text-decoration:none; font-weight:900; font-size:14px; color:#06442d; background:#ffffff; border:1px solid #06442d; box-sizing:border-box; }
-        .portal-action-btn.primary { background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%); color:#ffffff; border:0; box-shadow:0 8px 15px rgba(15,81,50,.22); }
+        body.portal-body {
+            background:#f4f3ed;
+        }
 
-        .portal-results-page .filterbar { background:rgba(255,255,255,.86); border:1px solid #d7dfd9; border-radius:16px; box-shadow:0 8px 24px rgba(15,81,50,.08); padding:14px; margin:0 0 16px; }
-        .portal-results-page .filterbar form { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; }
-        .portal-results-page .filterbar label { display:block; color:#06442d; font-size:12px; font-weight:900; text-transform:uppercase; margin-bottom:5px; }
-        .portal-results-page .filterbar select, .portal-results-page .filterbar button { min-height:40px; border-radius:10px; border:1px solid #cbd5ce; padding:0 12px; font-weight:800; background:#ffffff; color:#111827; }
-        .portal-results-page .filterbar button, .portal-results-page button { background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%); color:white; border:0; cursor:pointer; border-radius:10px; padding:10px 14px; font-weight:900; }
-        .portal-results-page .reset-link { min-height:40px; display:inline-flex; align-items:center; justify-content:center; padding:0 14px; border-radius:10px; background:#eef2ef; color:#06442d; text-decoration:none; font-weight:900; }
+        body.portal-body .container {
+            padding:0;
+            margin:0;
+            width:100%;
+            max-width:none;
+            background:#f4f3ed;
+            overflow-x:hidden;
+        }
 
-        .portal-results-page .card { background:radial-gradient(circle at 98% 0%, rgba(25,135,84,.12), transparent 22%), #ffffff; border:1px solid #d7dfd9; border-radius:18px; box-shadow:0 10px 30px rgba(15,81,50,.09); padding:18px; margin-bottom:16px; }
-        .portal-results-page .card h3 { margin:0 0 12px; color:#06442d; font-size:23px; font-weight:900; }
-        .portal-results-page .card p { margin:7px 0; color:#111827; font-size:15px; line-height:1.35; }
-        .portal-results-page .card .status { color:#198754; font-weight:900; }
-        .portal-results-page .buyback-collapsible { margin-top:14px; border:1px solid #d7dfd9; border-radius:14px; padding:12px; background:#f8faf8; }
-        .portal-results-page .buyback-collapsible summary { color:#06442d; font-weight:900; cursor:pointer; }
-        .portal-results-page .card-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; }
-        .portal-results-page .buy-card { background:#ffffff; border:1px solid #e5e7eb; border-radius:14px; padding:12px; box-shadow:0 4px 14px rgba(15,81,50,.06); }
-        .portal-results-page .buy-card img { max-width:100%; height:auto; border-radius:8px; display:block; margin:0 auto 8px; }
-        .portal-results-page .sell-check { display:block; margin:9px 0; color:#111827; font-weight:700; }
+        .portal-results-page {
+            min-height:100vh;
+            background:
+                radial-gradient(circle at 92% 7%, rgba(15,81,50,.10), transparent 22%),
+                linear-gradient(180deg, #fbfaf4 0%, #eef4ee 100%);
+            padding:18px 16px 34px;
+            box-sizing:border-box;
+        }
+
+        .portal-results-shell {
+            width:100%;
+            max-width:1100px;
+            margin:0 auto;
+        }
+
+        .portal-results-header {
+            display:grid;
+            grid-template-columns:auto minmax(0, 1fr) auto;
+            gap:16px;
+            align-items:center;
+            margin:0 0 14px;
+            background:rgba(255,255,255,.72);
+            border:1px solid #d7dfd9;
+            border-radius:18px;
+            padding:14px;
+            box-shadow:0 8px 24px rgba(15,81,50,.08);
+        }
+
+        .portal-logo-badge {
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            background:transparent;
+            border-radius:0;
+            padding:0;
+            box-shadow:none;
+            margin:0;
+        }
+
+        .portal-results-logo {
+            width:118px;
+            height:auto;
+            display:block;
+            filter:brightness(0) saturate(100%) invert(20%) sepia(44%) saturate(1023%) hue-rotate(105deg) brightness(89%) contrast(93%)
+                   drop-shadow(0 1px 0 #ffffff)
+                   drop-shadow(1px 0 0 #ffffff)
+                   drop-shadow(-1px 0 0 #ffffff)
+                   drop-shadow(0 -1px 0 #ffffff);
+        }
+
+        .portal-results-title {
+            margin:0;
+            color:#06442d;
+            font-family:Arial, Helvetica, sans-serif;
+            font-weight:900;
+            text-transform:uppercase;
+            letter-spacing:-.5px;
+            line-height:1;
+            font-size:26px;
+        }
+
+        .portal-results-copy {
+            color:#374151;
+            font-size:13px;
+            line-height:1.25;
+            font-weight:700;
+            margin:5px 0 0;
+            max-width:620px;
+        }
+
+        .portal-results-actions {
+            display:flex;
+            gap:8px;
+            flex-wrap:wrap;
+            justify-content:flex-end;
+        }
+
+        .portal-action-btn {
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            height:36px;
+            padding:0 14px;
+            border-radius:10px;
+            text-decoration:none;
+            font-weight:900;
+            font-size:13px;
+            color:#06442d;
+            background:#ffffff;
+            border:1px solid #06442d;
+            box-sizing:border-box;
+        }
+
+        .portal-action-btn.primary {
+            background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%);
+            color:#ffffff;
+            border:0;
+            box-shadow:0 7px 14px rgba(15,81,50,.18);
+        }
+
+        .portal-results-page .filterbar {
+            background:rgba(255,255,255,.88);
+            border:1px solid #d7dfd9;
+            border-radius:16px;
+            box-shadow:0 8px 24px rgba(15,81,50,.08);
+            padding:12px;
+            margin:0 0 14px;
+        }
+
+        .portal-results-page .filterbar form {
+            display:flex;
+            flex-wrap:wrap;
+            gap:10px;
+            align-items:flex-end;
+            margin:0;
+        }
+
+        .portal-results-page .filterbar label {
+            display:block;
+            color:#06442d;
+            font-size:11px;
+            font-weight:900;
+            text-transform:uppercase;
+            margin-bottom:4px;
+        }
+
+        .portal-results-page .filterbar select,
+        .portal-results-page .filterbar button {
+            min-height:38px;
+            border-radius:10px;
+            border:1px solid #cbd5ce;
+            padding:0 11px;
+            font-weight:800;
+            background:#ffffff;
+            color:#111827;
+        }
+
+        .portal-results-page .filterbar button,
+        .portal-results-page button {
+            background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%);
+            color:white;
+            border:0;
+            cursor:pointer;
+            border-radius:10px;
+            padding:9px 13px;
+            font-weight:900;
+        }
+
+        .portal-results-page .reset-link {
+            min-height:38px;
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            padding:0 13px;
+            border-radius:10px;
+            background:#eef2ef;
+            color:#06442d;
+            text-decoration:none;
+            font-weight:900;
+        }
+
+        .portal-results-grid {
+            display:grid;
+            grid-template-columns:1fr;
+            gap:14px;
+            align-items:start;
+        }
+
+        .portal-results-page .card {
+            background:
+                radial-gradient(circle at 98% 0%, rgba(25,135,84,.08), transparent 22%),
+                #ffffff;
+            border:1px solid #d7dfd9;
+            border-radius:18px;
+            box-shadow:0 10px 30px rgba(15,81,50,.09);
+            padding:16px;
+            margin:0;
+            box-sizing:border-box;
+        }
+
+        .portal-results-page .card h3 {
+            margin:0 0 10px;
+            color:#06442d;
+            font-size:22px;
+            font-weight:900;
+        }
+
+        .portal-results-page .card p {
+            margin:6px 0;
+            color:#111827;
+            font-size:14px;
+            line-height:1.35;
+        }
+
+        .portal-results-page .card .status {
+            color:#198754;
+            font-weight:900;
+        }
+
+        .portal-results-page .bar {
+            display:flex;
+            gap:6px;
+            flex-wrap:wrap;
+            margin:12px 0;
+        }
+
+        .portal-results-page .step {
+            padding:6px 9px;
+            border-radius:999px;
+            background:#eef2ef;
+            border:1px solid #d7dfd9;
+            color:#374151;
+            font-size:11px;
+            font-weight:800;
+        }
+
+        .portal-results-page .step.done {
+            background:#d1e7dd;
+            color:#0f5132;
+            border-color:#b8dcc8;
+        }
+
+        .portal-results-page .step.current {
+            background:#198754;
+            color:#ffffff;
+            border-color:#198754;
+        }
+
+        .portal-results-page h4 {
+            color:#06442d;
+            margin:10px 0 8px;
+            font-size:17px;
+            font-weight:900;
+        }
+
+        .portal-results-page hr {
+            border:0;
+            height:1px;
+            background:#d7dfd9;
+            margin:14px 0;
+        }
+
+        .portal-results-page .sell-check {
+            display:flex;
+            align-items:center;
+            gap:8px;
+            margin:8px 0;
+            color:#111827;
+            font-weight:700;
+            line-height:1.3;
+        }
+
+        .portal-results-page .buyback-collapsible {
+            margin-top:12px;
+            border:1px solid #d7dfd9;
+            border-radius:14px;
+            background:#f8faf8;
+            overflow:hidden;
+        }
+
+        .portal-results-page .buyback-collapsible summary {
+            color:#06442d;
+            font-weight:900;
+            cursor:pointer;
+            padding:13px 15px;
+            background:#eef6f2;
+            list-style:none;
+        }
+
+        .portal-results-page .buyback-collapsible summary::-webkit-details-marker {
+            display:none;
+        }
+
+        .portal-results-page .buyback-collapsible .buyback-inner {
+            padding:14px;
+        }
+
+        .portal-results-page .card-grid {
+            display:grid;
+            grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
+            gap:12px;
+        }
+
+        .portal-results-page .buy-card {
+            background:#ffffff;
+            border:1px solid #e5e7eb;
+            border-radius:14px;
+            padding:12px;
+            box-shadow:0 4px 14px rgba(15,81,50,.06);
+        }
+
+        .portal-results-page .buy-card img {
+            max-width:100%;
+            height:auto;
+            border-radius:8px;
+            display:block;
+            margin:0 auto 8px;
+        }
+
+        .portal-results-page .cert {
+            color:#06442d;
+            font-weight:900;
+        }
+
+        @media (min-width: 900px) {
+            .portal-results-page {
+                padding:28px 34px 44px;
+            }
+
+            .portal-results-grid {
+                grid-template-columns:repeat(2, minmax(0, 1fr));
+            }
+
+            .portal-results-logo {
+                width:130px;
+            }
+
+            .portal-results-title {
+                font-size:30px;
+            }
+        }
 
         @media (max-width: 700px) {
-            .portal-results-page { padding:20px 18px 34px; }
-            .portal-results-logo { width:150px; }
-            .portal-results-title { font-size:30px; }
-            .portal-results-page .filterbar form { display:block; }
-            .portal-results-page .filterbar select, .portal-results-page .filterbar button, .portal-results-page .reset-link { width:100%; margin-bottom:10px; box-sizing:border-box; }
+            .portal-results-page {
+                padding:16px 14px 30px;
+            }
+
+            .portal-results-header {
+                grid-template-columns:1fr;
+                gap:8px;
+                padding:12px;
+            }
+
+            .portal-results-logo {
+                width:112px;
+            }
+
+            .portal-results-title {
+                font-size:26px;
+            }
+
+            .portal-results-copy {
+                font-size:13px;
+            }
+
+            .portal-results-actions {
+                justify-content:flex-start;
+                margin-top:6px;
+            }
+
+            .portal-results-page .filterbar form {
+                display:block;
+            }
+
+            .portal-results-page .filterbar select,
+            .portal-results-page .filterbar button,
+            .portal-results-page .reset-link {
+                width:100%;
+                margin-bottom:9px;
+                box-sizing:border-box;
+            }
         }
     </style>
 
@@ -4152,7 +4514,8 @@ def portal_orders():
     if not grouped:
         html += "<div class='card'>No matching orders found. Check phone number and last name.</div>"
         html += "</div></div>"
-        return page(html, mode="portal")
+        html += "</div></div></div>"
+    return page(html, mode="portal")
 
     statuses_available = customer_status_options()
 
@@ -4213,6 +4576,8 @@ def portal_orders():
         html += "<div class='card'>No submissions match the selected filters.</div>"
         html += "</div></div>"
         return page(html, mode="portal")
+
+    html += "<div class='portal-results-grid'>"
 
     for sub, grouped_values in filtered_grouped.items():
         data, status = grouped_values[0], grouped_values[1]
@@ -4352,7 +4717,7 @@ def portal_orders():
         </div>
         """
 
-    html += "</div></div>"
+    html += "</div></div></div>"
     return page(html, mode="portal")
 
 
