@@ -225,9 +225,9 @@ def normalize_phone(v):
 
 def normalize_key_text(value):
     text = str(value or "").strip().lower()
-    text = text.replace("ƒ", "f")
-    text = text.replace("æ", "f")
-    text = text.replace("â\x80\x99", "'")
+    text = text.replace("Æ", "f")
+    text = text.replace("Ã¦Â", "f")
+    text = text.replace("Ã¢\x80\x99", "'")
     text = text.replace(".", "")
     text = re.sub(r"\s+", " ", text)
     return text
@@ -239,10 +239,10 @@ def is_dropoff_date_key(key):
     direct_names = [
         "fand",
         "f and",
-        "ƒand",
-        "ƒ and",
-        "æand",
-        "æ and",
+        "Æand",
+        "Æ and",
+        "Ã¦Âand",
+        "Ã¦Â and",
         "submission date",
         "customer drop-off date",
         "customer drop off date",
@@ -297,8 +297,8 @@ def clean_service_display(service):
     value = str(service or "").strip()
     if " - " in value:
         return value.split(" - ", 1)[0].strip()
-    if " – " in value:
-        return value.split(" – ", 1)[0].strip()
+    if " â " in value:
+        return value.split(" â ", 1)[0].strip()
     return value
 
 def date_only_display(value):
@@ -343,10 +343,10 @@ def get_dropoff_date(data):
         "Customer Drop-Off Date",
         "Customer Drop Off Date",
         "Submission Date",
-        "ƒand",
-        "ƒand.",
         "Æand",
         "Æand.",
+        "ÃÂand",
+        "ÃÂand.",
         "fand",
         "Fand",
         "F and",
@@ -378,8 +378,8 @@ def parse_arrived_completed_value(value):
 
     month = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
     date_single = month + r"\s+\d{1,2},\s+\d{4}"
-    date_range_same_year = month + r"\s+\d{1,2}\s*[-–]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
-    date_range_full = date_single + r"\s*[-–]\s*" + date_single
+    date_range_same_year = month + r"\s+\d{1,2}\s*[-â]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
+    date_range_full = date_single + r"\s*[-â]\s*" + date_single
 
     completed_match = re.search(r"Completed\s+(" + date_single + r")", text, re.IGNORECASE)
     if completed_match:
@@ -769,9 +769,9 @@ def page(content, mode="admin"):
         nav = """
         <a href="/admin">Dashboard</a>
         <a href="/admin/search">Search</a>
-        <a href="/admin/upload">Excel</a>
-        <a href="/admin/upload_psa">PSA PDF</a>
-        <a href="/admin/upload_cards">Cards PDF</a>
+        <a href="/admin/upload">Upload Excel</a>
+        <a href="/admin/upload_psa">Upload PSA PDF</a>
+        <a href="/admin/upload_cards">Upload Card PDF</a>
         <a href="/admin/buyback_requests">Buyback</a>
         <a href="/admin/sms_notifications">SMS Queue</a>
         <a href="/portal">Portal</a>
@@ -1048,7 +1048,7 @@ def page(content, mode="admin"):
             color:#198754;
         }}
         .buyback-collapsible[open] summary:after {{
-            content:"–";
+            content:"â";
         }}
         .buyback-collapsible .buyback-inner {{
             padding:14px;
@@ -1498,6 +1498,326 @@ def page(content, mode="admin"):
             background:#eef6f2;
         }}
 
+
+        /* Unified premium design pass */
+        body.admin-body,
+        body.portal-body {{
+            background:
+                radial-gradient(circle at 94% 4%, rgba(25,135,84,.10), transparent 25%),
+                linear-gradient(180deg, #fbfaf4 0%, #eef4ee 100%);
+        }}
+
+        .topbar {{
+            background:
+                radial-gradient(circle at 96% 0%, rgba(25,135,84,.18), transparent 28%),
+                rgba(255,255,255,.88);
+            color:#06442d;
+            border-bottom:1px solid #d7dfd9;
+            box-shadow:0 8px 24px rgba(15,81,50,.08);
+            backdrop-filter:blur(10px);
+        }}
+
+        .brand {{
+            color:#06442d;
+            min-width:auto;
+        }}
+
+        .brand img {{
+            max-height:62px;
+            max-width:190px;
+            filter:brightness(0) saturate(100%) invert(20%) sepia(44%) saturate(1023%) hue-rotate(105deg) brightness(89%) contrast(93%)
+                   drop-shadow(0 1px 0 #ffffff)
+                   drop-shadow(1px 0 0 #ffffff)
+                   drop-shadow(-1px 0 0 #ffffff)
+                   drop-shadow(0 -1px 0 #ffffff);
+        }}
+
+        .brand span {{
+            color:#06442d;
+            font-size:24px;
+            font-weight:950;
+            text-transform:uppercase;
+            letter-spacing:-.3px;
+        }}
+
+        .links a {{
+            color:#06442d;
+            background:#ffffff;
+            border:1px solid #cbd5ce;
+            padding:10px 13px;
+            border-radius:10px;
+            box-shadow:0 4px 12px rgba(15,81,50,.06);
+            font-size:13px;
+            font-weight:900;
+        }}
+
+        .links a:hover {{
+            background:#eef6f2;
+            color:#06442d;
+        }}
+
+        .links a[href="/admin"],
+        .links a[href="/portal"] {{
+            background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%);
+            color:#ffffff;
+            border:0;
+        }}
+
+        .container {{
+            max-width:1280px;
+            margin:0 auto;
+            padding:22px 18px 44px;
+            box-sizing:border-box;
+        }}
+
+        .page-intro {{
+            background:rgba(255,255,255,.84);
+            border:1px solid #d7dfd9;
+            border-radius:20px;
+            padding:20px;
+            margin-bottom:18px;
+            box-shadow:0 10px 30px rgba(15,81,50,.09);
+        }}
+
+        .page-kicker {{
+            color:#198754;
+            font-size:12px;
+            font-weight:950;
+            text-transform:uppercase;
+            letter-spacing:1px;
+            margin-bottom:6px;
+        }}
+
+        .page-title {{
+            color:#06442d;
+            font-size:34px;
+            line-height:1;
+            margin:0;
+            text-transform:uppercase;
+            letter-spacing:-.7px;
+            font-weight:950;
+        }}
+
+        .page-subtitle {{
+            color:#374151;
+            margin:9px 0 0;
+            font-weight:750;
+            font-size:15px;
+            line-height:1.4;
+            max-width:780px;
+        }}
+
+        .action-guide {{
+            display:grid;
+            grid-template-columns:repeat(auto-fit, minmax(230px, 1fr));
+            gap:12px;
+            margin:0 0 18px;
+        }}
+
+        .guide-card {{
+            background:#ffffff;
+            border:1px solid #d7dfd9;
+            border-radius:18px;
+            padding:16px;
+            box-shadow:0 8px 24px rgba(15,81,50,.08);
+            position:relative;
+            overflow:hidden;
+        }}
+
+        .guide-card:before {{
+            content:"";
+            position:absolute;
+            right:-28px;
+            top:-30px;
+            width:92px;
+            height:92px;
+            border-radius:50%;
+            background:rgba(25,135,84,.10);
+        }}
+
+        .guide-title {{
+            color:#06442d;
+            font-size:15px;
+            font-weight:950;
+            text-transform:uppercase;
+            letter-spacing:.3px;
+            margin-bottom:5px;
+        }}
+
+        .guide-text {{
+            color:#4b5563;
+            font-size:13px;
+            font-weight:700;
+            line-height:1.35;
+        }}
+
+        .admin-stats-grid {{
+            display:grid;
+            grid-template-columns:repeat(auto-fit, minmax(155px, 1fr));
+            gap:12px;
+            margin:0 0 18px;
+        }}
+
+        .admin-stat {{
+            display:block;
+            text-decoration:none;
+            color:inherit;
+        }}
+
+        .admin-stat-card {{
+            background:#ffffff;
+            border:1px solid #d7dfd9;
+            border-radius:18px;
+            padding:16px;
+            box-shadow:0 8px 24px rgba(15,81,50,.08);
+            position:relative;
+            overflow:hidden;
+            min-height:92px;
+        }}
+
+        .admin-stat-card:before {{
+            content:"";
+            position:absolute;
+            right:-25px;
+            top:-30px;
+            width:90px;
+            height:90px;
+            border-radius:50%;
+            background:rgba(25,135,84,.10);
+        }}
+
+        .admin-stat-card.red:before {{ background:rgba(220,53,69,.10); }}
+
+        .admin-stat-label {{
+            color:#5f6b63;
+            font-size:12px;
+            font-weight:950;
+            text-transform:uppercase;
+            letter-spacing:.5px;
+        }}
+
+        .admin-stat-value {{
+            color:#06442d;
+            font-size:31px;
+            font-weight:950;
+            margin-top:4px;
+            line-height:1;
+        }}
+
+        .admin-stat-help {{
+            color:#6b7280;
+            font-size:12px;
+            font-weight:700;
+            margin-top:6px;
+            line-height:1.25;
+        }}
+
+        .admin-stat-card.red .admin-stat-value {{ color:#b4232f; }}
+
+        .admin-filter-card,
+        .filterbar {{
+            background:rgba(255,255,255,.88);
+            border:1px solid #d7dfd9;
+            border-radius:18px;
+            padding:14px;
+            margin-bottom:18px;
+            box-shadow:0 8px 24px rgba(15,81,50,.08);
+        }}
+
+        .admin-filter-card form,
+        .filterbar form {{
+            display:flex;
+            flex-wrap:wrap;
+            gap:12px;
+            align-items:flex-end;
+            margin:0;
+        }}
+
+        .admin-filter-card label,
+        .filterbar label {{
+            display:block;
+            color:#06442d;
+            font-size:12px;
+            font-weight:950;
+            text-transform:uppercase;
+            margin-bottom:5px;
+        }}
+
+        .admin-filter-card select,
+        .filterbar select {{
+            min-height:40px;
+            border-radius:10px;
+            border:1px solid #cbd5ce;
+            padding:0 12px;
+            font-weight:800;
+            background:#ffffff;
+            color:#111827;
+            min-width:175px;
+        }}
+
+        .admin-filter-card button,
+        .filterbar button,
+        button {{
+            min-height:40px;
+            background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%);
+            color:white;
+            border:0;
+            border-radius:10px;
+            padding:0 15px;
+            font-weight:900;
+            cursor:pointer;
+            margin:0;
+        }}
+
+        .admin-filter-card .reset-link,
+        .filterbar .reset-link {{
+            min-height:40px;
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            padding:0 15px;
+            border-radius:10px;
+            background:#eef2ef;
+            color:#06442d;
+            text-decoration:none;
+            font-weight:900;
+        }}
+
+        .card {{
+            border:1px solid #d7dfd9;
+            border-radius:18px;
+            box-shadow:0 8px 24px rgba(15,81,50,.08);
+        }}
+
+        table {{
+            border-radius:14px;
+            overflow:hidden;
+            border:1px solid #d7dfd9;
+            box-shadow:0 8px 24px rgba(15,81,50,.07);
+        }}
+
+        th {{ background:#06442d; }}
+
+        @media (max-width: 700px) {{
+            .brand img {{ max-height:54px; max-width:150px; }}
+            .brand span {{ font-size:20px; }}
+            .container {{ padding:16px 12px 34px; }}
+            .page-intro {{ padding:16px; }}
+            .page-title {{ font-size:28px; }}
+            .admin-filter-card form,
+            .filterbar form {{ display:block; }}
+            .admin-filter-card select,
+            .admin-filter-card button,
+            .admin-filter-card .reset-link,
+            .filterbar select,
+            .filterbar button,
+            .filterbar .reset-link {{
+                width:100%;
+                box-sizing:border-box;
+                margin:0 0 10px;
+            }}
+        }}
+
         @media (max-width: 700px) {{
             body.admin-body .container {{
                 padding:16px 12px 34px;
@@ -1747,7 +2067,7 @@ def build_table(rows):
                 details_parts.append(f"<b>{html_escape(key_text)}:</b> {html_escape(val)}")
 
         if not details_parts:
-            details_html = "<span style='color:#6b7280;'>—</span>"
+            details_html = "<span style='color:#6b7280;'>â</span>"
         else:
             details_html = "<details class='row-details'><summary>Details</summary><div>" + "<br>".join(details_parts[:12]) + "</div></details>"
 
@@ -2368,13 +2688,29 @@ def admin_dashboard():
     pdf_needed_count = sum(1 for r in all_rows if card_pdf_needs_attention(r))
 
     html = f"""
-    <div class="admin-hero">
-        <div>
-            <div class="admin-hero-kicker">Giant Sports Cards</div>
-            <h1>Admin Dashboard</h1>
-            <p>Manage PSA submissions, customer status, card PDFs, SMS alerts and buyback activity.</p>
+    <div class="page-intro">
+        <div class="page-kicker">Giant Sports Cards Operations</div>
+        <h1 class="page-title">Admin Dashboard</h1>
+        <p class="page-subtitle">A live command center for PSA submissions, customer pickup status, card PDF review, text notifications and buyback activity.</p>
+    </div>
+
+    <div class="action-guide">
+        <div class="guide-card">
+            <div class="guide-title">Dashboard</div>
+            <div class="guide-text">View the full submission queue, filter by status, and check which orders need attention.</div>
         </div>
-        <div class="admin-pill">{len(rows)} shown</div>
+        <div class="guide-card">
+            <div class="guide-title">Upload Excel</div>
+            <div class="guide-text">Import the latest PSA spreadsheet to refresh customer submissions and status fields.</div>
+        </div>
+        <div class="guide-card">
+            <div class="guide-title">Upload Card PDF</div>
+            <div class="guide-text">Attach card-detail PDFs when orders reach Shipping Soon or Complete so graded cards can display in the portal.</div>
+        </div>
+        <div class="guide-card">
+            <div class="guide-title">Buyback</div>
+            <div class="guide-text">Review customer sell interest, send offers, track accepted offers, and mark purchases complete.</div>
+        </div>
     </div>
 
     <div class="admin-stats-grid">
@@ -2382,41 +2718,42 @@ def admin_dashboard():
             <div class="admin-stat-card">
                 <div class="admin-stat-label">Total</div>
                 <div class="admin-stat-value">{total_count}</div>
+                <div class="admin-stat-help">Every submission currently stored.</div>
             </div>
         </a>
-
         <a class="admin-stat" href="/admin?view=active&sort={sort}">
             <div class="admin-stat-card">
                 <div class="admin-stat-label">Active</div>
                 <div class="admin-stat-value">{active_count}</div>
+                <div class="admin-stat-help">Orders still moving through PSA.</div>
             </div>
         </a>
-
         <a class="admin-stat" href="/admin?view=complete&sort={sort}">
             <div class="admin-stat-card">
                 <div class="admin-stat-label">Complete</div>
                 <div class="admin-stat-value">{complete_count}</div>
+                <div class="admin-stat-help">Finished at PSA and awaiting next step.</div>
             </div>
         </a>
-
         <a class="admin-stat" href="/admin?view=shipping&sort={sort}">
             <div class="admin-stat-card">
                 <div class="admin-stat-label">Shipping Soon</div>
                 <div class="admin-stat-value">{shipping_count}</div>
+                <div class="admin-stat-help">Likely nearing return shipment.</div>
             </div>
         </a>
-
         <a class="admin-stat" href="/admin?view=pickup&sort={sort}">
             <div class="admin-stat-card">
                 <div class="admin-stat-label">Ready Pickup</div>
                 <div class="admin-stat-value">{pickup_count}</div>
+                <div class="admin-stat-help">Customers can pick these up.</div>
             </div>
         </a>
-
         <a class="admin-stat" href="/admin?view=pdf_needed&sort={sort}">
             <div class="admin-stat-card red">
                 <div class="admin-stat-label">PDF Needed</div>
                 <div class="admin-stat-value">{pdf_needed_count}</div>
+                <div class="admin-stat-help">Card PDFs still need review/upload.</div>
             </div>
         </a>
     </div>
@@ -2634,8 +2971,8 @@ def admin_upload_psa():
 
                 month_pattern = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
                 date_pattern = month_pattern + r"\s+\d{1,2},\s+\d{4}"
-                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-–]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
-                date_range_full = date_pattern + r"\s*[-–]\s*" + date_pattern
+                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-â]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
+                date_range_full = date_pattern + r"\s*[-â]\s*" + date_pattern
 
                 value_pattern = re.compile(
                     rf"(Completed\s+{date_pattern}|Est\.\s*Complete\s*by\s+{date_range_full}|Est\.\s*Complete\s*by\s+{date_range_same_year}|Est\.\s*Complete\s*by\s+{date_pattern}|Estimated\s*Complete\s*by\s+{date_range_full}|Estimated\s*Complete\s*by\s+{date_range_same_year}|Estimated\s*Complete\s*by\s+{date_pattern}|Est\.\s*by\s+{date_range_full}|Est\.\s*by\s+{date_range_same_year}|Est\.\s*by\s+{date_pattern}|{date_pattern})",
@@ -2708,7 +3045,7 @@ def admin_upload_psa():
                             j += 1
 
                     # Split case:
-                    # • Sub
+                    # â¢ Sub
                     # #14550482
                     # Research & ID
                     elif re.search(r"\bSub\b\s*$", line, re.IGNORECASE) and i + 1 < len(lines):
@@ -2747,7 +3084,7 @@ def admin_upload_psa():
                             block_text = re.sub(r",\s+(\d{4})", r", \1", block_text)
 
                             matches = re.findall(
-                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
+                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
                                 block_text,
                                 re.IGNORECASE
                             )
@@ -4605,7 +4942,7 @@ def portal_orders():
                     <img class="portal-results-logo" src="data:image/png;base64,__PORTAL_LOGO__" alt="Giant Sports Cards">
                 </div>
                 <h1 class="portal-results-title">Your PSA Orders</h1>
-                <p class="portal-results-copy">Track status, pickup readiness, text alerts and buyback offers.</p>
+                <p class="portal-results-copy">Review your PSA status, pickup readiness, text preferences and buyback offers in one place.</p>
                 <div class="portal-results-actions">
                     <a class="portal-action-btn primary" href="/portal">Home</a>
                     <a class="portal-action-btn" href="/portal/logout">Logout</a>
@@ -4736,176 +5073,4 @@ def portal_orders():
                 card_type = row[5] if len(row) > 5 else ""
                 after_service = row[6] if len(row) > 6 else ""
                 images_url = row[7] if len(row) > 7 else ""
-                psa_estimate = display_blank_loading(row[8] if len(row) > 8 else "")
-                card_ladder_value = display_blank_loading(row[9] if len(row) > 9 else "")
-                pop = display_blank_loading(row[10] if len(row) > 10 else "")
-                pop_higher = display_blank_loading(row[11] if len(row) > 11 else "")
-                offer_amount = row[12] if len(row) > 12 else ""
-                offer_notes = row[13] if len(row) > 13 else ""
-                buyback_status = row[14] if len(row) > 14 else ""
-
-                checked = "checked" if interested else ""
-                img_html = f"<img src='{image_data}' alt='Card image'>" if image_data else ""
-
-                offer_display = ""
-                if offer_amount:
-                    response_buttons = ""
-                    if buyback_status == "Offer Sent":
-                        response_buttons = f"""
-                        <form method="post" action="/portal/buyback_offer_response" style="margin-top:8px;">
-                            <input type="hidden" name="submission_number" value="{sub}">
-                            <input type="hidden" name="cert_number" value="{cert_number}">
-                            <button name="response" value="Accepted">Accept Offer</button>
-                            <button name="response" value="Declined">Decline</button>
-                        </form>
-                        """
-                    offer_display = f"""
-                    <div style="margin-top:10px;padding:10px;border:1px solid #d1e7dd;border-radius:8px;background:#f3f7f5;">
-                        <b>Giant Sports Cards Buyback Offer:</b> {html_escape(offer_amount)}<br>
-                        <small>{html_escape(offer_notes)}</small><br>
-                        <b>Status:</b> {html_escape('Interest' if buyback_status == 'New' else buyback_status)}
-                        {response_buttons}
-                    </div>
-                    """
-
-                buyback_html += f"""
-                <div class="buy-card">
-                    {img_html}
-                    <div class="cert">Certification #: {cert_number}</div>
-                    <div><b>Type:</b> {card_type}</div>
-                    <div>{item_details}</div>
-                    <div><b>Grade:</b> {grade}</div>
-                    {offer_display}
-                    <label class="sell-check"><input type="checkbox" name="cert" value="{cert_number}" {checked}> Interested in selling</label>
-                </div>
-                """
-
-            buyback_html += """
-                        </div>
-                        <br>
-                        <button type="submit">Save</button>
-                    </form>
-                </div>
-            </details>
-            """
-
-        sms_mode = sms_mode or "none"
-        none_checked = "checked" if sms_mode == "none" else ""
-        pickup_checked = "checked" if sms_mode == "pickup" else ""
-        all_checked = "checked" if sms_mode == "all" else ""
-
-        sms_html = f"""
-        <hr>
-        <form method="post" action="/portal/sms_preferences">
-            <input type="hidden" name="submission_number" value="{sub}">
-            <h4>Text Notifications</h4>
-
-            <label class="sell-check">
-                <input type="radio" name="sms_mode" value="none" {none_checked}>
-                No text messages
-            </label>
-
-            <label class="sell-check">
-                <input type="radio" name="sms_mode" value="pickup" {pickup_checked}>
-                Text me when this submission is ready for pickup
-            </label>
-
-            <label class="sell-check">
-                <input type="radio" name="sms_mode" value="all" {all_checked}>
-                Text me for every PSA status change on this submission
-            </label>
-
-            <button type="submit">Save Text Settings</button>
-            <p><small>Texts go to the phone number on this order. Each text identifies the exact submission number. Message/data rates may apply.</small></p>
-        </form>
-        """
-
-        html += f"""
-        <div class="card">
-            <h3>{customer_name}</h3>
-            <p><b>Submission #:</b> {sub}</p>
-            <p><b>Status:</b> <span class="status">{display_status_label}</span></p>
-            <p><b>Arrived at PSA:</b> {arrived_completed}</p>
-            <p><b>Estimated Completion Date:</b> {estimated_completion}</p>
-            <p><b>Cards:</b> {cards}</p>
-            <p><b>Service:</b> {service}</p>
-            <p><b>Customer Drop-Off Date:</b> {date}</p>
-            {status_bar(display_status)}
-            {sms_html}
-            {buyback_html}
-        </div>
-        """
-
-    html += "</div></div></div>"
-    return page(html, mode="portal")
-
-
-@app.route("/portal/buyback_offer_response", methods=["POST"])
-def portal_buyback_offer_response():
-    phone = normalize_phone(session.get("phone"))
-    last = clean(session.get("last")).lower()
-
-    if not phone or not last:
-        return redirect("/portal")
-
-    submission_number = normalize_submission(request.form.get("submission_number"))
-    cert_number = normalize_submission(request.form.get("cert_number"))
-    response = clean(request.form.get("response"))
-
-    if response not in ["Accepted", "Declined"]:
-        return redirect("/portal/orders")
-
-    if not submission_number or not cert_number:
-        return redirect("/portal/orders")
-
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT raw_data
-    FROM submissions
-    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-    """, (submission_number,))
-    row = cur.fetchone()
-
-    if not row:
-        cur.close()
-        conn.close()
-        return redirect("/portal/orders")
-
-    data = row[0] or {}
-    name = str(get_field(data, ["Customer Name", "Name"])).lower()
-    contact = normalize_phone(get_field(data, ["Contact Info", "Phone", "Phone Number"]))
-
-    phone_match = bool(contact) and (phone in contact or contact in phone)
-    name_match = bool(last) and last in name
-
-    if not (phone_match and name_match):
-        cur.close()
-        conn.close()
-        return redirect("/portal/orders")
-
-    cur.execute("""
-    UPDATE card_buyback_items
-    SET buyback_status=%s,
-        updated_at=NOW()
-    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-      AND REGEXP_REPLACE(cert_number, '\\D', '', 'g')=%s
-      AND COALESCE(offer_amount, '') <> ''
-    """, (response, submission_number, cert_number))
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return redirect("/portal/orders")
-
-
-@app.route("/portal/logout")
-def portal_logout():
-    session.pop("phone", None)
-    session.pop("last", None)
-    return redirect("/portal")
-
-if __name__ == "__main__":
-    app.run()
+                psa_estimat
