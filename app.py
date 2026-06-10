@@ -225,9 +225,9 @@ def normalize_phone(v):
 
 def normalize_key_text(value):
     text = str(value or "").strip().lower()
-    text = text.replace("ƒ", "f")
-    text = text.replace("æ", "f")
-    text = text.replace("â\x80\x99", "'")
+    text = text.replace("Æ", "f")
+    text = text.replace("Ã¦Â", "f")
+    text = text.replace("Ã¢\x80\x99", "'")
     text = text.replace(".", "")
     text = re.sub(r"\s+", " ", text)
     return text
@@ -239,10 +239,10 @@ def is_dropoff_date_key(key):
     direct_names = [
         "fand",
         "f and",
-        "ƒand",
-        "ƒ and",
-        "æand",
-        "æ and",
+        "Æand",
+        "Æ and",
+        "Ã¦Âand",
+        "Ã¦Â and",
         "submission date",
         "customer drop-off date",
         "customer drop off date",
@@ -297,8 +297,8 @@ def clean_service_display(service):
     value = str(service or "").strip()
     if " - " in value:
         return value.split(" - ", 1)[0].strip()
-    if " – " in value:
-        return value.split(" – ", 1)[0].strip()
+    if " â " in value:
+        return value.split(" â ", 1)[0].strip()
     return value
 
 def date_only_display(value):
@@ -343,10 +343,10 @@ def get_dropoff_date(data):
         "Customer Drop-Off Date",
         "Customer Drop Off Date",
         "Submission Date",
-        "ƒand",
-        "ƒand.",
         "Æand",
         "Æand.",
+        "ÃÂand",
+        "ÃÂand.",
         "fand",
         "Fand",
         "F and",
@@ -378,8 +378,8 @@ def parse_arrived_completed_value(value):
 
     month = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
     date_single = month + r"\s+\d{1,2},\s+\d{4}"
-    date_range_same_year = month + r"\s+\d{1,2}\s*[-–]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
-    date_range_full = date_single + r"\s*[-–]\s*" + date_single
+    date_range_same_year = month + r"\s+\d{1,2}\s*[-â]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
+    date_range_full = date_single + r"\s*[-â]\s*" + date_single
 
     completed_match = re.search(r"Completed\s+(" + date_single + r")", text, re.IGNORECASE)
     if completed_match:
@@ -771,7 +771,7 @@ def page(content, mode="admin"):
         <a href="/admin/search">Search</a>
         <a href="/admin/upload">Excel</a>
         <a href="/admin/upload_psa">PSA PDF</a>
-        <a href="/admin/upload_cards">Cards PDF</a>
+        <a href="/admin/upload_cards">Card PDF</a>
         <a href="/admin/buyback_requests">Buyback</a>
         <a href="/admin/sms_notifications">SMS Queue</a>
         <a href="/portal">Portal</a>
@@ -1048,7 +1048,7 @@ def page(content, mode="admin"):
             color:#198754;
         }}
         .buyback-collapsible[open] summary:after {{
-            content:"–";
+            content:"â";
         }}
         .buyback-collapsible .buyback-inner {{
             padding:14px;
@@ -1261,266 +1261,215 @@ def page(content, mode="admin"):
 
         /* Mobile portal form icon color consistency */
 
-        /* Admin dashboard visual theme */
-        body.admin-body {{
+        /* SAFE VISUAL PATCH ONLY - no route or logic changes */
+        body.admin-body,
+        body.portal-body {{
             background:
-                radial-gradient(circle at 92% 4%, rgba(15,81,50,.10), transparent 22%),
-                linear-gradient(180deg, #fbfaf4 0%, #eef4ee 100%);
+                radial-gradient(circle at 94% 4%, rgba(25,135,84,.10), transparent 24%),
+                linear-gradient(180deg, #fbfaf4 0%, #eef4ee 100%) !important;
         }}
 
-        body.admin-body .topbar {{
-            background:#06442d;
-            box-shadow:0 8px 24px rgba(15,81,50,.16);
-            border-bottom:1px solid rgba(255,255,255,.10);
+        body.admin-body .topbar,
+        body.portal-body .topbar {{
+            background:
+                radial-gradient(circle at 96% 0%, rgba(25,135,84,.16), transparent 30%),
+                rgba(255,255,255,.92) !important;
+            color:#06442d !important;
+            border-bottom:1px solid #d7dfd9 !important;
+            box-shadow:0 8px 24px rgba(15,81,50,.08) !important;
+        }}
+
+        body.admin-body .brand,
+        body.portal-body .brand {{
+            color:#06442d !important;
+        }}
+
+        body.admin-body .brand span,
+        body.portal-body .brand span {{
+            color:#06442d !important;
+            font-weight:950 !important;
+            text-transform:uppercase !important;
+            letter-spacing:-.3px !important;
+        }}
+
+        body.admin-body .brand img,
+        body.portal-body .brand img {{
+            max-height:64px !important;
+            max-width:190px !important;
+            filter:brightness(0) saturate(100%) invert(20%) sepia(44%) saturate(1023%) hue-rotate(105deg) brightness(89%) contrast(93%)
+                   drop-shadow(0 1px 0 #ffffff)
+                   drop-shadow(1px 0 0 #ffffff)
+                   drop-shadow(-1px 0 0 #ffffff)
+                   drop-shadow(0 -1px 0 #ffffff) !important;
+        }}
+
+        body.admin-body .links a,
+        body.portal-body .links a {{
+            color:#06442d !important;
+            background:#ffffff !important;
+            border:1px solid #cbd5ce !important;
+            border-radius:10px !important;
+            box-shadow:0 4px 12px rgba(15,81,50,.06) !important;
+            font-weight:900 !important;
+        }}
+
+        body.admin-body .links a:hover,
+        body.portal-body .links a:hover {{
+            background:#eef6f2 !important;
+            color:#06442d !important;
         }}
 
         body.admin-body .container {{
-            max-width:1280px;
-            margin:0 auto;
-            padding:22px 18px 44px;
-            box-sizing:border-box;
+            max-width:1280px !important;
+            margin:0 auto !important;
+            padding:22px 18px 44px !important;
+            box-sizing:border-box !important;
         }}
 
-        .admin-hero {{
-            background:rgba(255,255,255,.82);
-            border:1px solid #d7dfd9;
-            border-radius:20px;
-            padding:20px;
-            margin-bottom:18px;
-            box-shadow:0 10px 30px rgba(15,81,50,.09);
-            display:flex;
-            justify-content:space-between;
-            gap:18px;
-            align-items:flex-end;
-            flex-wrap:wrap;
+        body.admin-body h2 {{
+            color:#06442d !important;
+            font-weight:950 !important;
+            text-transform:uppercase !important;
+            letter-spacing:-.4px !important;
         }}
 
-        .admin-hero-kicker {{
-            color:#198754;
-            font-size:12px;
-            font-weight:900;
-            text-transform:uppercase;
-            letter-spacing:1px;
-            margin-bottom:6px;
+        body.admin-body .card,
+        body.admin-body .filterbar,
+        body.admin-body table,
+        body.portal-body .card,
+        body.portal-body .filterbar {{
+            border:1px solid #d7dfd9 !important;
+            border-radius:16px !important;
+            box-shadow:0 8px 24px rgba(15,81,50,.08) !important;
         }}
 
-        .admin-hero h1 {{
-            color:#06442d;
-            font-size:34px;
-            line-height:1;
-            margin:0;
-            text-transform:uppercase;
-            letter-spacing:-.7px;
-        }}
-
-        .admin-hero p {{
-            color:#374151;
-            margin:8px 0 0;
-            font-weight:700;
-            font-size:14px;
-        }}
-
-        .admin-pill {{
-            background:#eef6f2;
-            color:#06442d;
-            border:1px solid #cfe3d7;
-            border-radius:999px;
-            padding:8px 13px;
-            font-weight:900;
-            font-size:13px;
-        }}
-
-        .admin-stats-grid {{
-            display:grid;
-            grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
-            gap:12px;
-            margin:0 0 18px;
-        }}
-
-        .admin-stat {{
-            display:block;
-            text-decoration:none;
-            color:inherit;
-        }}
-
-        .admin-stat-card {{
-            background:#ffffff;
-            border:1px solid #d7dfd9;
-            border-radius:18px;
-            padding:16px;
-            box-shadow:0 8px 24px rgba(15,81,50,.08);
-            position:relative;
-            overflow:hidden;
-            min-height:82px;
-        }}
-
-        .admin-stat-card:before {{
-            content:"";
-            position:absolute;
-            right:-24px;
-            top:-28px;
-            width:82px;
-            height:82px;
-            border-radius:50%;
-            background:rgba(25,135,84,.10);
-        }}
-
-        .admin-stat-card.red:before {{
-            background:rgba(220,53,69,.10);
-        }}
-
-        .admin-stat-label {{
-            color:#5f6b63;
-            font-size:12px;
-            font-weight:900;
-            text-transform:uppercase;
-            letter-spacing:.5px;
-        }}
-
-        .admin-stat-value {{
-            color:#06442d;
-            font-size:30px;
-            font-weight:950;
-            margin-top:4px;
-            line-height:1;
-        }}
-
-        .admin-stat-card.red .admin-stat-value {{
-            color:#b4232f;
-        }}
-
-        .admin-filter-card {{
-            background:rgba(255,255,255,.88);
-            border:1px solid #d7dfd9;
-            border-radius:18px;
-            padding:14px;
-            margin-bottom:18px;
-            box-shadow:0 8px 24px rgba(15,81,50,.08);
-        }}
-
-        .admin-filter-card form {{
-            display:flex;
-            flex-wrap:wrap;
-            gap:12px;
-            align-items:flex-end;
-            margin:0;
-        }}
-
-        .admin-filter-card label {{
-            display:block;
-            color:#06442d;
-            font-size:12px;
-            font-weight:900;
-            text-transform:uppercase;
-            margin-bottom:5px;
-        }}
-
-        .admin-filter-card select {{
-            min-height:40px;
-            border-radius:10px;
-            border:1px solid #cbd5ce;
-            padding:0 12px;
-            font-weight:800;
-            background:#ffffff;
-            color:#111827;
-            min-width:175px;
-        }}
-
-        .admin-filter-card button {{
-            min-height:40px;
-            background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%);
-            color:white;
-            border:0;
-            border-radius:10px;
-            padding:0 15px;
-            font-weight:900;
-            cursor:pointer;
-            margin:0;
-        }}
-
-        .admin-filter-card .reset-link {{
-            min-height:40px;
-            display:inline-flex;
-            align-items:center;
-            justify-content:center;
-            padding:0 15px;
-            border-radius:10px;
-            background:#eef2ef;
-            color:#06442d;
-            text-decoration:none;
-            font-weight:900;
-        }}
-
-        .alert-summary {{
-            background:#fff7f7;
-            border:1px solid #f0b9c0;
-            border-radius:18px;
-            padding:18px;
-            margin:0 0 18px;
-            box-shadow:0 8px 24px rgba(220,53,69,.08);
-        }}
-
-        .alert-summary h2 {{
-            color:#b4232f;
-            margin:0 0 8px;
-            font-size:24px;
-            text-transform:uppercase;
-        }}
-
-        .alert-summary p {{
-            color:#374151;
-            margin:0 0 12px;
-            font-weight:700;
-        }}
-
-        .alert-summary summary {{
-            cursor:pointer;
-            color:#b4232f;
-            font-weight:900;
-            background:#ffe8ea;
-            border-radius:10px;
-            padding:10px 12px;
-            display:inline-block;
-        }}
-
-        body.admin-body table {{
-            border-radius:14px;
-            overflow:hidden;
-            border:1px solid #d7dfd9;
-            box-shadow:0 8px 24px rgba(15,81,50,.07);
+        body.admin-body .filterbar,
+        body.portal-body .filterbar {{
+            background:rgba(255,255,255,.90) !important;
         }}
 
         body.admin-body th {{
-            background:#06442d;
+            background:#06442d !important;
+            color:#ffffff !important;
         }}
 
-        body.admin-body tr:hover {{
-            background:#eef6f2;
+        body.admin-body .btn,
+        body.admin-body button,
+        body.portal-body button {{
+            background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%) !important;
+            color:#ffffff !important;
+            border:0 !important;
+            border-radius:10px !important;
+            font-weight:900 !important;
         }}
 
-        @media (max-width: 700px) {{
-            body.admin-body .container {{
-                padding:16px 12px 34px;
+        body.admin-body .filterbar .reset-link,
+        body.portal-body .filterbar .reset-link {{
+            background:#eef2ef !important;
+            color:#06442d !important;
+            border-radius:10px !important;
+            font-weight:900 !important;
+        }}
+
+        .gsc-benefit-dot {{
+            width:42px !important;
+            height:42px !important;
+            border-radius:13px !important;
+            background:linear-gradient(180deg, #eaf5ee 0%, #d9ecdf 100%) !important;
+            border:1px solid #bfd8c8 !important;
+            position:relative !important;
+            box-shadow:inset 0 1px 0 rgba(255,255,255,.75), 0 3px 8px rgba(15,81,50,.08) !important;
+        }}
+
+        .gsc-benefit:nth-child(1) .gsc-benefit-dot:before {{
+            content:"" !important;
+            position:absolute !important;
+            width:20px !important;
+            height:20px !important;
+            border:3px solid #0f5132 !important;
+            border-radius:50% !important;
+            left:8px !important;
+            top:8px !important;
+            box-sizing:border-box !important;
+        }}
+
+        .gsc-benefit:nth-child(1) .gsc-benefit-dot:after {{
+            content:"" !important;
+            position:absolute !important;
+            width:10px !important;
+            height:8px !important;
+            left:19px !important;
+            top:13px !important;
+            border-left:3px solid #198754 !important;
+            border-bottom:3px solid #198754 !important;
+            transform:rotate(-45deg) !important;
+            box-sizing:border-box !important;
+        }}
+
+        .gsc-benefit:nth-child(2) .gsc-benefit-dot:before {{
+            content:"" !important;
+            position:absolute !important;
+            left:10px !important;
+            top:7px !important;
+            width:22px !important;
+            height:26px !important;
+            background:#0f5132 !important;
+            clip-path:polygon(50% 0%, 88% 15%, 82% 63%, 50% 100%, 18% 63%, 12% 15%) !important;
+        }}
+
+        .gsc-benefit:nth-child(2) .gsc-benefit-dot:after {{
+            content:"" !important;
+            position:absolute !important;
+            left:17px !important;
+            top:17px !important;
+            width:10px !important;
+            height:6px !important;
+            border-left:3px solid #ffffff !important;
+            border-bottom:3px solid #ffffff !important;
+            transform:rotate(-45deg) !important;
+        }}
+
+        @media (min-width: 900px) {{
+            .gsc-redesign-page {{
+                padding:46px 42px 54px !important;
             }}
 
-            .admin-hero {{
-                padding:16px;
+            .gsc-redesign-shell {{
+                max-width:1120px !important;
+                display:grid !important;
+                grid-template-columns:minmax(0, 1fr) minmax(380px, 470px) !important;
+                gap:34px 48px !important;
+                align-items:center !important;
             }}
 
-            .admin-hero h1 {{
-                font-size:28px;
+            .gsc-redesign-hero {{
+                padding:0 !important;
             }}
 
-            .admin-filter-card form {{
-                display:block;
+            .gsc-redesign-title {{
+                font-size:52px !important;
+                max-width:520px !important;
+                letter-spacing:-1.2px !important;
             }}
 
-            .admin-filter-card select,
-            .admin-filter-card button,
-            .admin-filter-card .reset-link {{
-                width:100%;
-                box-sizing:border-box;
-                margin:0 0 10px;
+            .gsc-redesign-copy {{
+                font-size:19px !important;
+                max-width:440px !important;
+            }}
+
+            .gsc-redesign-logo {{
+                width:215px !important;
+            }}
+
+            .gsc-track-card {{
+                padding:42px 34px 32px !important;
+            }}
+
+            .gsc-benefits {{
+                grid-column:1 / -1 !important;
+                max-width:820px !important;
+                margin:22px auto 0 !important;
+                grid-template-columns:1fr 1fr !important;
             }}
         }}
 
@@ -1747,7 +1696,7 @@ def build_table(rows):
                 details_parts.append(f"<b>{html_escape(key_text)}:</b> {html_escape(val)}")
 
         if not details_parts:
-            details_html = "<span style='color:#6b7280;'>—</span>"
+            details_html = "<span style='color:#6b7280;'>â</span>"
         else:
             details_html = "<details class='row-details'><summary>Details</summary><div>" + "<br>".join(details_parts[:12]) + "</div></details>"
 
@@ -2368,55 +2317,43 @@ def admin_dashboard():
     pdf_needed_count = sum(1 for r in all_rows if card_pdf_needs_attention(r))
 
     html = f"""
-    <div class="admin-hero">
-        <div>
-            <div class="admin-hero-kicker">Giant Sports Cards</div>
-            <h1>Admin Dashboard</h1>
-            <p>Manage PSA submissions, customer status, card PDFs, SMS alerts and buyback activity.</p>
-        </div>
-        <div class="admin-pill">{len(rows)} shown</div>
-    </div>
+    <h2 style="font-size:28px;margin:6px 0 14px;">Admin Dashboard</h2>
 
-    <div class="admin-stats-grid">
-        <a class="admin-stat" href="/admin?view=all&sort={sort}">
-            <div class="admin-stat-card">
-                <div class="admin-stat-label">Total</div>
-                <div class="admin-stat-value">{total_count}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:10px;margin:10px 0 18px;">
+        <a href="/admin?view=all&sort={sort}" style="text-decoration:none;color:inherit;">
+            <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
+                <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Total</div>
+                <div style="font-size:24px;font-weight:900;color:#111827;margin-top:3px;">{total_count}</div>
             </div>
         </a>
-
-        <a class="admin-stat" href="/admin?view=active&sort={sort}">
-            <div class="admin-stat-card">
-                <div class="admin-stat-label">Active</div>
-                <div class="admin-stat-value">{active_count}</div>
+        <a href="/admin?view=active&sort={sort}" style="text-decoration:none;color:inherit;">
+            <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
+                <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Active</div>
+                <div style="font-size:24px;font-weight:900;color:#111827;margin-top:3px;">{active_count}</div>
             </div>
         </a>
-
-        <a class="admin-stat" href="/admin?view=complete&sort={sort}">
-            <div class="admin-stat-card">
-                <div class="admin-stat-label">Complete</div>
-                <div class="admin-stat-value">{complete_count}</div>
+        <a href="/admin?view=complete&sort={sort}" style="text-decoration:none;color:inherit;">
+            <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
+                <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Complete</div>
+                <div style="font-size:24px;font-weight:900;color:#111827;margin-top:3px;">{complete_count}</div>
             </div>
         </a>
-
-        <a class="admin-stat" href="/admin?view=shipping&sort={sort}">
-            <div class="admin-stat-card">
-                <div class="admin-stat-label">Shipping Soon</div>
-                <div class="admin-stat-value">{shipping_count}</div>
+        <a href="/admin?view=shipping&sort={sort}" style="text-decoration:none;color:inherit;">
+            <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
+                <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Shipping Soon</div>
+                <div style="font-size:24px;font-weight:900;color:#111827;margin-top:3px;">{shipping_count}</div>
             </div>
         </a>
-
-        <a class="admin-stat" href="/admin?view=pickup&sort={sort}">
-            <div class="admin-stat-card">
-                <div class="admin-stat-label">Ready Pickup</div>
-                <div class="admin-stat-value">{pickup_count}</div>
+        <a href="/admin?view=pickup&sort={sort}" style="text-decoration:none;color:inherit;">
+            <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
+                <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Ready Pickup</div>
+                <div style="font-size:24px;font-weight:900;color:#111827;margin-top:3px;">{pickup_count}</div>
             </div>
         </a>
-
-        <a class="admin-stat" href="/admin?view=pdf_needed&sort={sort}">
-            <div class="admin-stat-card red">
-                <div class="admin-stat-label">PDF Needed</div>
-                <div class="admin-stat-value">{pdf_needed_count}</div>
+        <a href="/admin?view=pdf_needed&sort={sort}" style="text-decoration:none;color:inherit;">
+            <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #dc3545;">
+                <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">PDF Needed</div>
+                <div style="font-size:24px;font-weight:900;color:#111827;margin-top:3px;">{pdf_needed_count}</div>
             </div>
         </a>
     </div>
@@ -2429,7 +2366,7 @@ def admin_dashboard():
         status_select_html += f"<option value='{option}' {selected_attr}>{option}</option>"
 
     html += f"""
-    <div class="admin-filter-card">
+    <div class="filterbar">
         <form method="get" action="/admin">
             <div>
                 <label>Sort</label>
@@ -2634,8 +2571,8 @@ def admin_upload_psa():
 
                 month_pattern = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
                 date_pattern = month_pattern + r"\s+\d{1,2},\s+\d{4}"
-                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-–]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
-                date_range_full = date_pattern + r"\s*[-–]\s*" + date_pattern
+                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-â]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
+                date_range_full = date_pattern + r"\s*[-â]\s*" + date_pattern
 
                 value_pattern = re.compile(
                     rf"(Completed\s+{date_pattern}|Est\.\s*Complete\s*by\s+{date_range_full}|Est\.\s*Complete\s*by\s+{date_range_same_year}|Est\.\s*Complete\s*by\s+{date_pattern}|Estimated\s*Complete\s*by\s+{date_range_full}|Estimated\s*Complete\s*by\s+{date_range_same_year}|Estimated\s*Complete\s*by\s+{date_pattern}|Est\.\s*by\s+{date_range_full}|Est\.\s*by\s+{date_range_same_year}|Est\.\s*by\s+{date_pattern}|{date_pattern})",
@@ -2708,7 +2645,7 @@ def admin_upload_psa():
                             j += 1
 
                     # Split case:
-                    # • Sub
+                    # â¢ Sub
                     # #14550482
                     # Research & ID
                     elif re.search(r"\bSub\b\s*$", line, re.IGNORECASE) and i + 1 < len(lines):
@@ -2747,7 +2684,7 @@ def admin_upload_psa():
                             block_text = re.sub(r",\s+(\d{4})", r", \1", block_text)
 
                             matches = re.findall(
-                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
+                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
                                 block_text,
                                 re.IGNORECASE
                             )
@@ -3631,28 +3568,58 @@ def portal():
         .gsc-logo-badge {
             display:inline-flex;
             align-items:center;
-            justify-content:flex-start;
-            background:transparent;
-            border-radius:0;
-            padding:0;
-            box-shadow:none;
+            justify-content:center;
+            background:#07110d;
+            border-radius:12px;
+            padding:12px 14px;
+            box-shadow:0 8px 22px rgba(7,17,13,.18);
             margin:0 0 18px;
         }
 
         .gsc-redesign-logo {
-            width:172px;
+            width:168px;
             max-width:100%;
             height:auto;
             display:block;
-            filter:brightness(0) saturate(100%) invert(20%) sepia(44%) saturate(1023%) hue-rotate(105deg) brightness(89%) contrast(93%)
-                   drop-shadow(0 1px 0 #ffffff)
-                   drop-shadow(1px 0 0 #ffffff)
-                   drop-shadow(-1px 0 0 #ffffff)
-                   drop-shadow(0 -1px 0 #ffffff);
         }
 
         .gsc-menu-circle {
-            display:none;
+            position:absolute;
+            top:2px;
+            right:0;
+            width:42px;
+            height:42px;
+            border-radius:50%;
+            background:#f7f8f3;
+            border:1px solid #cbd5ce;
+            box-shadow:0 5px 14px rgba(15,81,50,.14);
+        }
+
+        .gsc-menu-circle span,
+        .gsc-menu-circle span:before,
+        .gsc-menu-circle span:after {
+            position:absolute;
+            display:block;
+            content:"";
+            width:18px;
+            height:2px;
+            left:11px;
+            background:#0f5132;
+            border-radius:4px;
+        }
+
+        .gsc-menu-circle span {
+            top:20px;
+        }
+
+        .gsc-menu-circle span:before {
+            top:-6px;
+            left:0;
+        }
+
+        .gsc-menu-circle span:after {
+            top:6px;
+            left:0;
         }
 
         .gsc-redesign-title {
@@ -3960,64 +3927,13 @@ def portal():
             padding:13px;
         }
 
-        .gsc-benefit-graphic {
-            width:42px;
-            height:42px;
-            border-radius:13px;
-            background:linear-gradient(180deg, #eaf5ee 0%, #d9ecdf 100%);
-            border:1px solid #bfd8c8;
+        .gsc-benefit-dot {
+            width:34px;
+            height:34px;
+            border-radius:10px;
+            background:#e7f2eb;
+            border:1px solid #c8ded0;
             flex:0 0 auto;
-            position:relative;
-            box-shadow:inset 0 1px 0 rgba(255,255,255,.75), 0 3px 8px rgba(15,81,50,.08);
-        }
-
-        .gsc-benefit-graphic.updates:before {
-            content:"";
-            position:absolute;
-            width:20px;
-            height:20px;
-            border:3px solid #0f5132;
-            border-radius:50%;
-            left:8px;
-            top:8px;
-            box-sizing:border-box;
-        }
-
-        .gsc-benefit-graphic.updates:after {
-            content:"";
-            position:absolute;
-            width:10px;
-            height:8px;
-            left:19px;
-            top:13px;
-            border-left:3px solid #198754;
-            border-bottom:3px solid #198754;
-            transform:rotate(-45deg);
-            transform-origin:left bottom;
-            box-sizing:border-box;
-        }
-
-        .gsc-benefit-graphic.care:before {
-            content:"";
-            position:absolute;
-            left:10px;
-            top:7px;
-            width:22px;
-            height:26px;
-            background:#0f5132;
-            clip-path:polygon(50% 0%, 88% 15%, 82% 63%, 50% 100%, 18% 63%, 12% 15%);
-        }
-
-        .gsc-benefit-graphic.care:after {
-            content:"";
-            position:absolute;
-            left:17px;
-            top:17px;
-            width:10px;
-            height:6px;
-            border-left:3px solid #ffffff;
-            border-bottom:3px solid #ffffff;
-            transform:rotate(-45deg);
         }
 
         .gsc-benefit-title {
@@ -4036,70 +3952,13 @@ def portal():
             font-weight:600;
         }
 
-
-        @media (min-width: 900px) {
-            .gsc-redesign-page {
-                padding:46px 42px 54px;
-            }
-
-            .gsc-redesign-shell {
-                max-width:1120px;
-                display:grid;
-                grid-template-columns:minmax(0, 1fr) minmax(380px, 470px);
-                gap:34px 48px;
-                align-items:center;
-            }
-
-            .gsc-redesign-hero {
-                padding:0;
-            }
-
-            .gsc-redesign-title {
-                font-size:52px;
-                max-width:520px;
-                letter-spacing:-1.2px;
-            }
-
-            .gsc-redesign-copy {
-                font-size:19px;
-                max-width:440px;
-            }
-
-            .gsc-redesign-logo {
-                width:215px;
-            }
-
-            .gsc-track-card {
-                padding:42px 34px 32px;
-            }
-
-            .gsc-benefits {
-                grid-column:1 / -1;
-                max-width:820px;
-                margin:22px auto 0;
-                grid-template-columns:1fr 1fr;
-            }
-
-            .gsc-benefit {
-                padding:18px;
-            }
-
-            .gsc-benefit-title {
-                font-size:14px;
-            }
-
-            .gsc-benefit-text {
-                font-size:13px;
-            }
-        }
-
         @media (max-width: 420px) {
             .gsc-redesign-page {
                 padding:20px 18px 34px;
             }
 
             .gsc-logo-badge {
-                padding:0;
+                padding:10px 12px;
             }
 
             .gsc-redesign-logo {
@@ -4168,7 +4027,7 @@ def portal():
 
             <div class="gsc-benefits">
                 <div class="gsc-benefit">
-                    <div class="gsc-benefit-graphic updates"></div>
+                    <div class="gsc-benefit-dot"></div>
                     <div>
                         <div class="gsc-benefit-title">Real-Time Updates</div>
                         <div class="gsc-benefit-text">View current PSA progress and pickup status.</div>
@@ -4176,7 +4035,7 @@ def portal():
                 </div>
 
                 <div class="gsc-benefit">
-                    <div class="gsc-benefit-graphic care"></div>
+                    <div class="gsc-benefit-dot"></div>
                     <div>
                         <div class="gsc-benefit-title">Expert Care</div>
                         <div class="gsc-benefit-text">Handled carefully from drop-off to pickup.</div>
@@ -4217,384 +4076,44 @@ def portal_orders():
 
     html = """
     <style>
-        body.portal-body > .topbar {
-            display:none;
-        }
+        body.portal-body > .topbar { display:none; }
+        body.portal-body { background:#f4f3ed; }
+        body.portal-body .container { padding:0; margin:0; width:100%; max-width:none; background:#f4f3ed; overflow-x:hidden; }
 
-        body.portal-body {
-            background:#f4f3ed;
-        }
+        .portal-results-page { min-height:100vh; background:radial-gradient(circle at 84% 16%, rgba(15,81,50,.13), transparent 27%), linear-gradient(180deg, #fbfaf4 0%, #eef4ee 100%); padding:22px 18px 42px; box-sizing:border-box; }
+        .portal-results-shell { width:100%; max-width:760px; margin:0 auto; }
+        .portal-logo-badge { display:inline-flex; align-items:center; justify-content:center; background:#07110d; border-radius:12px; padding:11px 13px; box-shadow:0 8px 22px rgba(7,17,13,.18); margin:0 0 15px; }
+        .portal-results-logo { width:155px; height:auto; display:block; }
+        .portal-results-title { margin:0; color:#06442d; font-family:Arial, Helvetica, sans-serif; font-weight:900; text-transform:uppercase; letter-spacing:-.7px; line-height:.98; font-size:32px; max-width:360px; }
+        .portal-results-copy { color:#374151; font-size:15px; line-height:1.38; font-weight:600; margin:9px 0 16px; max-width:440px; }
+        .portal-results-actions { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px; }
+        .portal-action-btn { display:inline-flex; align-items:center; justify-content:center; height:40px; padding:0 17px; border-radius:10px; text-decoration:none; font-weight:900; font-size:14px; color:#06442d; background:#ffffff; border:1px solid #06442d; box-sizing:border-box; }
+        .portal-action-btn.primary { background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%); color:#ffffff; border:0; box-shadow:0 8px 15px rgba(15,81,50,.22); }
 
-        body.portal-body .container {
-            padding:0;
-            margin:0;
-            width:100%;
-            max-width:none;
-            background:#f4f3ed;
-            overflow-x:hidden;
-        }
+        .portal-results-page .filterbar { background:rgba(255,255,255,.86); border:1px solid #d7dfd9; border-radius:16px; box-shadow:0 8px 24px rgba(15,81,50,.08); padding:14px; margin:0 0 16px; }
+        .portal-results-page .filterbar form { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; }
+        .portal-results-page .filterbar label { display:block; color:#06442d; font-size:12px; font-weight:900; text-transform:uppercase; margin-bottom:5px; }
+        .portal-results-page .filterbar select, .portal-results-page .filterbar button { min-height:40px; border-radius:10px; border:1px solid #cbd5ce; padding:0 12px; font-weight:800; background:#ffffff; color:#111827; }
+        .portal-results-page .filterbar button, .portal-results-page button { background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%); color:white; border:0; cursor:pointer; border-radius:10px; padding:10px 14px; font-weight:900; }
+        .portal-results-page .reset-link { min-height:40px; display:inline-flex; align-items:center; justify-content:center; padding:0 14px; border-radius:10px; background:#eef2ef; color:#06442d; text-decoration:none; font-weight:900; }
 
-        .portal-results-page {
-            min-height:100vh;
-            background:
-                radial-gradient(circle at 92% 7%, rgba(15,81,50,.10), transparent 22%),
-                linear-gradient(180deg, #fbfaf4 0%, #eef4ee 100%);
-            padding:18px 16px 34px;
-            box-sizing:border-box;
-        }
-
-        .portal-results-shell {
-            width:100%;
-            max-width:1100px;
-            margin:0 auto;
-        }
-
-        .portal-results-header {
-            display:grid;
-            grid-template-columns:auto minmax(0, 1fr) auto;
-            gap:16px;
-            align-items:center;
-            margin:0 0 14px;
-            background:rgba(255,255,255,.72);
-            border:1px solid #d7dfd9;
-            border-radius:18px;
-            padding:14px;
-            box-shadow:0 8px 24px rgba(15,81,50,.08);
-        }
-
-        .portal-logo-badge {
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            background:transparent;
-            border-radius:0;
-            padding:0;
-            box-shadow:none;
-            margin:0;
-        }
-
-        .portal-results-logo {
-            width:118px;
-            height:auto;
-            display:block;
-            filter:brightness(0) saturate(100%) invert(20%) sepia(44%) saturate(1023%) hue-rotate(105deg) brightness(89%) contrast(93%)
-                   drop-shadow(0 1px 0 #ffffff)
-                   drop-shadow(1px 0 0 #ffffff)
-                   drop-shadow(-1px 0 0 #ffffff)
-                   drop-shadow(0 -1px 0 #ffffff);
-        }
-
-        .portal-results-title {
-            margin:0;
-            color:#06442d;
-            font-family:Arial, Helvetica, sans-serif;
-            font-weight:900;
-            text-transform:uppercase;
-            letter-spacing:-.5px;
-            line-height:1;
-            font-size:26px;
-        }
-
-        .portal-results-copy {
-            color:#374151;
-            font-size:13px;
-            line-height:1.25;
-            font-weight:700;
-            margin:5px 0 0;
-            max-width:620px;
-        }
-
-        .portal-results-actions {
-            display:flex;
-            gap:8px;
-            flex-wrap:wrap;
-            justify-content:flex-end;
-        }
-
-        .portal-action-btn {
-            display:inline-flex;
-            align-items:center;
-            justify-content:center;
-            height:36px;
-            padding:0 14px;
-            border-radius:10px;
-            text-decoration:none;
-            font-weight:900;
-            font-size:13px;
-            color:#06442d;
-            background:#ffffff;
-            border:1px solid #06442d;
-            box-sizing:border-box;
-        }
-
-        .portal-action-btn.primary {
-            background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%);
-            color:#ffffff;
-            border:0;
-            box-shadow:0 7px 14px rgba(15,81,50,.18);
-        }
-
-        .portal-results-page .filterbar {
-            background:rgba(255,255,255,.88);
-            border:1px solid #d7dfd9;
-            border-radius:16px;
-            box-shadow:0 8px 24px rgba(15,81,50,.08);
-            padding:12px;
-            margin:0 0 14px;
-        }
-
-        .portal-results-page .filterbar form {
-            display:flex;
-            flex-wrap:wrap;
-            gap:10px;
-            align-items:flex-end;
-            margin:0;
-        }
-
-        .portal-results-page .filterbar label {
-            display:block;
-            color:#06442d;
-            font-size:11px;
-            font-weight:900;
-            text-transform:uppercase;
-            margin-bottom:4px;
-        }
-
-        .portal-results-page .filterbar select,
-        .portal-results-page .filterbar button {
-            min-height:38px;
-            border-radius:10px;
-            border:1px solid #cbd5ce;
-            padding:0 11px;
-            font-weight:800;
-            background:#ffffff;
-            color:#111827;
-        }
-
-        .portal-results-page .filterbar button,
-        .portal-results-page button {
-            background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%);
-            color:white;
-            border:0;
-            cursor:pointer;
-            border-radius:10px;
-            padding:9px 13px;
-            font-weight:900;
-        }
-
-        .portal-results-page .reset-link {
-            min-height:38px;
-            display:inline-flex;
-            align-items:center;
-            justify-content:center;
-            padding:0 13px;
-            border-radius:10px;
-            background:#eef2ef;
-            color:#06442d;
-            text-decoration:none;
-            font-weight:900;
-        }
-
-        .portal-results-grid {
-            display:grid;
-            grid-template-columns:1fr;
-            gap:14px;
-            align-items:start;
-        }
-
-        .portal-results-page .card {
-            background:
-                radial-gradient(circle at 98% 0%, rgba(25,135,84,.08), transparent 22%),
-                #ffffff;
-            border:1px solid #d7dfd9;
-            border-radius:18px;
-            box-shadow:0 10px 30px rgba(15,81,50,.09);
-            padding:16px;
-            margin:0;
-            box-sizing:border-box;
-        }
-
-        .portal-results-page .card h3 {
-            margin:0 0 10px;
-            color:#06442d;
-            font-size:22px;
-            font-weight:900;
-        }
-
-        .portal-results-page .card p {
-            margin:6px 0;
-            color:#111827;
-            font-size:14px;
-            line-height:1.35;
-        }
-
-        .portal-results-page .card .status {
-            color:#198754;
-            font-weight:900;
-        }
-
-        .portal-results-page .bar {
-            display:flex;
-            gap:6px;
-            flex-wrap:wrap;
-            margin:12px 0;
-        }
-
-        .portal-results-page .step {
-            padding:6px 9px;
-            border-radius:999px;
-            background:#eef2ef;
-            border:1px solid #d7dfd9;
-            color:#374151;
-            font-size:11px;
-            font-weight:800;
-        }
-
-        .portal-results-page .step.done {
-            background:#d1e7dd;
-            color:#0f5132;
-            border-color:#b8dcc8;
-        }
-
-        .portal-results-page .step.current {
-            background:#198754;
-            color:#ffffff;
-            border-color:#198754;
-        }
-
-        .portal-results-page h4 {
-            color:#06442d;
-            margin:10px 0 8px;
-            font-size:17px;
-            font-weight:900;
-        }
-
-        .portal-results-page hr {
-            border:0;
-            height:1px;
-            background:#d7dfd9;
-            margin:14px 0;
-        }
-
-        .portal-results-page .sell-check {
-            display:flex;
-            align-items:center;
-            gap:8px;
-            margin:8px 0;
-            color:#111827;
-            font-weight:700;
-            line-height:1.3;
-        }
-
-        .portal-results-page .buyback-collapsible {
-            margin-top:12px;
-            border:1px solid #d7dfd9;
-            border-radius:14px;
-            background:#f8faf8;
-            overflow:hidden;
-        }
-
-        .portal-results-page .buyback-collapsible summary {
-            color:#06442d;
-            font-weight:900;
-            cursor:pointer;
-            padding:13px 15px;
-            background:#eef6f2;
-            list-style:none;
-        }
-
-        .portal-results-page .buyback-collapsible summary::-webkit-details-marker {
-            display:none;
-        }
-
-        .portal-results-page .buyback-collapsible .buyback-inner {
-            padding:14px;
-        }
-
-        .portal-results-page .card-grid {
-            display:grid;
-            grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
-            gap:12px;
-        }
-
-        .portal-results-page .buy-card {
-            background:#ffffff;
-            border:1px solid #e5e7eb;
-            border-radius:14px;
-            padding:12px;
-            box-shadow:0 4px 14px rgba(15,81,50,.06);
-        }
-
-        .portal-results-page .buy-card img {
-            max-width:100%;
-            height:auto;
-            border-radius:8px;
-            display:block;
-            margin:0 auto 8px;
-        }
-
-        .portal-results-page .cert {
-            color:#06442d;
-            font-weight:900;
-        }
-
-        @media (min-width: 900px) {
-            .portal-results-page {
-                padding:28px 34px 44px;
-            }
-
-            .portal-results-grid {
-                grid-template-columns:repeat(2, minmax(0, 1fr));
-            }
-
-            .portal-results-logo {
-                width:130px;
-            }
-
-            .portal-results-title {
-                font-size:30px;
-            }
-        }
+        .portal-results-page .card { background:radial-gradient(circle at 98% 0%, rgba(25,135,84,.12), transparent 22%), #ffffff; border:1px solid #d7dfd9; border-radius:18px; box-shadow:0 10px 30px rgba(15,81,50,.09); padding:18px; margin-bottom:16px; }
+        .portal-results-page .card h3 { margin:0 0 12px; color:#06442d; font-size:23px; font-weight:900; }
+        .portal-results-page .card p { margin:7px 0; color:#111827; font-size:15px; line-height:1.35; }
+        .portal-results-page .card .status { color:#198754; font-weight:900; }
+        .portal-results-page .buyback-collapsible { margin-top:14px; border:1px solid #d7dfd9; border-radius:14px; padding:12px; background:#f8faf8; }
+        .portal-results-page .buyback-collapsible summary { color:#06442d; font-weight:900; cursor:pointer; }
+        .portal-results-page .card-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; }
+        .portal-results-page .buy-card { background:#ffffff; border:1px solid #e5e7eb; border-radius:14px; padding:12px; box-shadow:0 4px 14px rgba(15,81,50,.06); }
+        .portal-results-page .buy-card img { max-width:100%; height:auto; border-radius:8px; display:block; margin:0 auto 8px; }
+        .portal-results-page .sell-check { display:block; margin:9px 0; color:#111827; font-weight:700; }
 
         @media (max-width: 700px) {
-            .portal-results-page {
-                padding:16px 14px 30px;
-            }
-
-            .portal-results-header {
-                grid-template-columns:1fr;
-                gap:8px;
-                padding:12px;
-            }
-
-            .portal-results-logo {
-                width:112px;
-            }
-
-            .portal-results-title {
-                font-size:26px;
-            }
-
-            .portal-results-copy {
-                font-size:13px;
-            }
-
-            .portal-results-actions {
-                justify-content:flex-start;
-                margin-top:6px;
-            }
-
-            .portal-results-page .filterbar form {
-                display:block;
-            }
-
-            .portal-results-page .filterbar select,
-            .portal-results-page .filterbar button,
-            .portal-results-page .reset-link {
-                width:100%;
-                margin-bottom:9px;
-                box-sizing:border-box;
-            }
+            .portal-results-page { padding:20px 18px 34px; }
+            .portal-results-logo { width:150px; }
+            .portal-results-title { font-size:30px; }
+            .portal-results-page .filterbar form { display:block; }
+            .portal-results-page .filterbar select, .portal-results-page .filterbar button, .portal-results-page .reset-link { width:100%; margin-bottom:10px; box-sizing:border-box; }
         }
     </style>
 
@@ -4633,8 +4152,7 @@ def portal_orders():
     if not grouped:
         html += "<div class='card'>No matching orders found. Check phone number and last name.</div>"
         html += "</div></div>"
-        html += "</div></div></div>"
-    return page(html, mode="portal")
+        return page(html, mode="portal")
 
     statuses_available = customer_status_options()
 
@@ -4696,8 +4214,6 @@ def portal_orders():
         html += "</div></div>"
         return page(html, mode="portal")
 
-    html += "<div class='portal-results-grid'>"
-
     for sub, grouped_values in filtered_grouped.items():
         data, status = grouped_values[0], grouped_values[1]
         sms_opted = grouped_values[2] if len(grouped_values) > 2 else False
@@ -4723,189 +4239,4 @@ def portal_orders():
             buyback_html += f"""
             <hr>
             <details class="buyback-collapsible">
-                <summary>View cards / select cards to sell ({buyback_count})</summary>
-                <div class="buyback-inner">
-                    <p>Select any cards you may be interested in selling to Giant Sports Cards.</p>
-                    <form method="post" action="/portal/sell_interest">
-                        <input type="hidden" name="submission_number" value="{sub}">
-                        <div class="card-grid">
-            """
-
-            for row in buyback_rows:
-                cert_number, item_details, grade, image_data, interested = row[0], row[1], row[2], row[3], row[4]
-                card_type = row[5] if len(row) > 5 else ""
-                after_service = row[6] if len(row) > 6 else ""
-                images_url = row[7] if len(row) > 7 else ""
-                psa_estimate = display_blank_loading(row[8] if len(row) > 8 else "")
-                card_ladder_value = display_blank_loading(row[9] if len(row) > 9 else "")
-                pop = display_blank_loading(row[10] if len(row) > 10 else "")
-                pop_higher = display_blank_loading(row[11] if len(row) > 11 else "")
-                offer_amount = row[12] if len(row) > 12 else ""
-                offer_notes = row[13] if len(row) > 13 else ""
-                buyback_status = row[14] if len(row) > 14 else ""
-
-                checked = "checked" if interested else ""
-                img_html = f"<img src='{image_data}' alt='Card image'>" if image_data else ""
-
-                offer_display = ""
-                if offer_amount:
-                    response_buttons = ""
-                    if buyback_status == "Offer Sent":
-                        response_buttons = f"""
-                        <form method="post" action="/portal/buyback_offer_response" style="margin-top:8px;">
-                            <input type="hidden" name="submission_number" value="{sub}">
-                            <input type="hidden" name="cert_number" value="{cert_number}">
-                            <button name="response" value="Accepted">Accept Offer</button>
-                            <button name="response" value="Declined">Decline</button>
-                        </form>
-                        """
-                    offer_display = f"""
-                    <div style="margin-top:10px;padding:10px;border:1px solid #d1e7dd;border-radius:8px;background:#f3f7f5;">
-                        <b>Giant Sports Cards Buyback Offer:</b> {html_escape(offer_amount)}<br>
-                        <small>{html_escape(offer_notes)}</small><br>
-                        <b>Status:</b> {html_escape('Interest' if buyback_status == 'New' else buyback_status)}
-                        {response_buttons}
-                    </div>
-                    """
-
-                buyback_html += f"""
-                <div class="buy-card">
-                    {img_html}
-                    <div class="cert">Certification #: {cert_number}</div>
-                    <div><b>Type:</b> {card_type}</div>
-                    <div>{item_details}</div>
-                    <div><b>Grade:</b> {grade}</div>
-                    {offer_display}
-                    <label class="sell-check"><input type="checkbox" name="cert" value="{cert_number}" {checked}> Interested in selling</label>
-                </div>
-                """
-
-            buyback_html += """
-                        </div>
-                        <br>
-                        <button type="submit">Save</button>
-                    </form>
-                </div>
-            </details>
-            """
-
-        sms_mode = sms_mode or "none"
-        none_checked = "checked" if sms_mode == "none" else ""
-        pickup_checked = "checked" if sms_mode == "pickup" else ""
-        all_checked = "checked" if sms_mode == "all" else ""
-
-        sms_html = f"""
-        <hr>
-        <form method="post" action="/portal/sms_preferences">
-            <input type="hidden" name="submission_number" value="{sub}">
-            <h4>Text Notifications</h4>
-
-            <label class="sell-check">
-                <input type="radio" name="sms_mode" value="none" {none_checked}>
-                No text messages
-            </label>
-
-            <label class="sell-check">
-                <input type="radio" name="sms_mode" value="pickup" {pickup_checked}>
-                Text me when this submission is ready for pickup
-            </label>
-
-            <label class="sell-check">
-                <input type="radio" name="sms_mode" value="all" {all_checked}>
-                Text me for every PSA status change on this submission
-            </label>
-
-            <button type="submit">Save Text Settings</button>
-            <p><small>Texts go to the phone number on this order. Each text identifies the exact submission number. Message/data rates may apply.</small></p>
-        </form>
-        """
-
-        html += f"""
-        <div class="card">
-            <h3>{customer_name}</h3>
-            <p><b>Submission #:</b> {sub}</p>
-            <p><b>Status:</b> <span class="status">{display_status_label}</span></p>
-            <p><b>Arrived at PSA:</b> {arrived_completed}</p>
-            <p><b>Estimated Completion Date:</b> {estimated_completion}</p>
-            <p><b>Cards:</b> {cards}</p>
-            <p><b>Service:</b> {service}</p>
-            <p><b>Customer Drop-Off Date:</b> {date}</p>
-            {status_bar(display_status)}
-            {sms_html}
-            {buyback_html}
-        </div>
-        """
-
-    html += "</div></div></div>"
-    return page(html, mode="portal")
-
-
-@app.route("/portal/buyback_offer_response", methods=["POST"])
-def portal_buyback_offer_response():
-    phone = normalize_phone(session.get("phone"))
-    last = clean(session.get("last")).lower()
-
-    if not phone or not last:
-        return redirect("/portal")
-
-    submission_number = normalize_submission(request.form.get("submission_number"))
-    cert_number = normalize_submission(request.form.get("cert_number"))
-    response = clean(request.form.get("response"))
-
-    if response not in ["Accepted", "Declined"]:
-        return redirect("/portal/orders")
-
-    if not submission_number or not cert_number:
-        return redirect("/portal/orders")
-
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT raw_data
-    FROM submissions
-    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-    """, (submission_number,))
-    row = cur.fetchone()
-
-    if not row:
-        cur.close()
-        conn.close()
-        return redirect("/portal/orders")
-
-    data = row[0] or {}
-    name = str(get_field(data, ["Customer Name", "Name"])).lower()
-    contact = normalize_phone(get_field(data, ["Contact Info", "Phone", "Phone Number"]))
-
-    phone_match = bool(contact) and (phone in contact or contact in phone)
-    name_match = bool(last) and last in name
-
-    if not (phone_match and name_match):
-        cur.close()
-        conn.close()
-        return redirect("/portal/orders")
-
-    cur.execute("""
-    UPDATE card_buyback_items
-    SET buyback_status=%s,
-        updated_at=NOW()
-    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-      AND REGEXP_REPLACE(cert_number, '\\D', '', 'g')=%s
-      AND COALESCE(offer_amount, '') <> ''
-    """, (response, submission_number, cert_number))
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return redirect("/portal/orders")
-
-
-@app.route("/portal/logout")
-def portal_logout():
-    session.pop("phone", None)
-    session.pop("last", None)
-    return redirect("/portal")
-
-if __name__ == "__main__":
-    app.run()
+                <summary>View cards / select cards to sell ({buyback_
