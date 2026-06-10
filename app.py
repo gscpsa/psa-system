@@ -769,9 +769,9 @@ def page(content, mode="admin"):
         nav = """
         <a href="/admin">Dashboard</a>
         <a href="/admin/search">Search</a>
-        <a href="/admin/upload">Upload Excel</a>
-        <a href="/admin/upload_psa">Upload PSA PDF</a>
-        <a href="/admin/upload_cards">Upload Card PDF</a>
+        <a href="/admin/upload">Excel</a>
+        <a href="/admin/upload_psa">PSA PDF</a>
+        <a href="/admin/upload_cards">Card PDF</a>
         <a href="/admin/buyback_requests">Buyback</a>
         <a href="/admin/sms_notifications">SMS Queue</a>
         <a href="/portal">Portal</a>
@@ -1261,17 +1261,75 @@ def page(content, mode="admin"):
 
         /* Mobile portal form icon color consistency */
 
-        /* Admin dashboard visual theme */
-        body.admin-body {{
+        /* Final header/dashboard visual repair */
+        body.admin-body,
+        body.portal-body {{
             background:
-                radial-gradient(circle at 92% 4%, rgba(15,81,50,.10), transparent 22%),
+                radial-gradient(circle at 94% 4%, rgba(25,135,84,.10), transparent 24%),
                 linear-gradient(180deg, #fbfaf4 0%, #eef4ee 100%);
         }}
 
-        body.admin-body .topbar {{
-            background:#06442d;
-            box-shadow:0 8px 24px rgba(15,81,50,.16);
-            border-bottom:1px solid rgba(255,255,255,.10);
+        body.admin-body .topbar,
+        body.portal-body .topbar {{
+            background:
+                radial-gradient(circle at 96% 0%, rgba(25,135,84,.16), transparent 30%),
+                rgba(255,255,255,.90);
+            color:#06442d;
+            border-bottom:1px solid #d7dfd9;
+            box-shadow:0 8px 24px rgba(15,81,50,.08);
+            backdrop-filter:blur(10px);
+        }}
+
+        body.admin-body .brand,
+        body.portal-body .brand {{
+            color:#06442d;
+            min-width:auto;
+        }}
+
+        body.admin-body .brand img,
+        body.portal-body .brand img {{
+            max-height:62px;
+            max-width:190px;
+            filter:brightness(0) saturate(100%) invert(20%) sepia(44%) saturate(1023%) hue-rotate(105deg) brightness(89%) contrast(93%)
+                   drop-shadow(0 1px 0 #ffffff)
+                   drop-shadow(1px 0 0 #ffffff)
+                   drop-shadow(-1px 0 0 #ffffff)
+                   drop-shadow(0 -1px 0 #ffffff);
+        }}
+
+        body.admin-body .brand span,
+        body.portal-body .brand span {{
+            color:#06442d;
+            font-size:24px;
+            font-weight:950;
+            text-transform:uppercase;
+            letter-spacing:-.3px;
+            line-height:1;
+        }}
+
+        body.admin-body .links a,
+        body.portal-body .links a {{
+            color:#06442d;
+            background:#ffffff;
+            border:1px solid #cbd5ce;
+            padding:10px 13px;
+            border-radius:10px;
+            box-shadow:0 4px 12px rgba(15,81,50,.06);
+            font-size:13px;
+            font-weight:900;
+        }}
+
+        body.admin-body .links a:hover,
+        body.portal-body .links a:hover {{
+            background:#eef6f2;
+            color:#06442d;
+        }}
+
+        body.admin-body .links a[href="/admin"],
+        body.portal-body .links a[href="/portal"] {{
+            background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%);
+            color:#ffffff;
+            border:0;
         }}
 
         body.admin-body .container {{
@@ -1281,46 +1339,40 @@ def page(content, mode="admin"):
             box-sizing:border-box;
         }}
 
-        .admin-hero {{
-            background:rgba(255,255,255,.82);
+        .admin-clean-hero {{
+            background:rgba(255,255,255,.84);
             border:1px solid #d7dfd9;
             border-radius:20px;
-            padding:20px;
-            margin-bottom:18px;
+            padding:18px 20px;
+            margin-bottom:16px;
             box-shadow:0 10px 30px rgba(15,81,50,.09);
             display:flex;
             justify-content:space-between;
-            gap:18px;
+            gap:14px;
             align-items:flex-end;
             flex-wrap:wrap;
         }}
 
-        .admin-hero-kicker {{
+        .admin-clean-kicker {{
             color:#198754;
             font-size:12px;
-            font-weight:900;
+            font-weight:950;
             text-transform:uppercase;
             letter-spacing:1px;
-            margin-bottom:6px;
+            margin-bottom:5px;
         }}
 
-        .admin-hero h1 {{
+        .admin-clean-hero h1 {{
             color:#06442d;
-            font-size:34px;
+            font-size:32px;
             line-height:1;
             margin:0;
             text-transform:uppercase;
-            letter-spacing:-.7px;
+            letter-spacing:-.6px;
+            font-weight:950;
         }}
 
-        .admin-hero p {{
-            color:#374151;
-            margin:8px 0 0;
-            font-weight:700;
-            font-size:14px;
-        }}
-
-        .admin-pill {{
+        .admin-clean-pill {{
             background:#eef6f2;
             color:#06442d;
             border:1px solid #cfe3d7;
@@ -1334,7 +1386,7 @@ def page(content, mode="admin"):
             display:grid;
             grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
             gap:12px;
-            margin:0 0 18px;
+            margin:0 0 16px;
         }}
 
         .admin-stat {{
@@ -1351,16 +1403,16 @@ def page(content, mode="admin"):
             box-shadow:0 8px 24px rgba(15,81,50,.08);
             position:relative;
             overflow:hidden;
-            min-height:82px;
+            min-height:76px;
         }}
 
         .admin-stat-card:before {{
             content:"";
             position:absolute;
-            right:-24px;
-            top:-28px;
-            width:82px;
-            height:82px;
+            right:-25px;
+            top:-30px;
+            width:88px;
+            height:88px;
             border-radius:50%;
             background:rgba(25,135,84,.10);
         }}
@@ -1372,14 +1424,14 @@ def page(content, mode="admin"):
         .admin-stat-label {{
             color:#5f6b63;
             font-size:12px;
-            font-weight:900;
+            font-weight:950;
             text-transform:uppercase;
             letter-spacing:.5px;
         }}
 
         .admin-stat-value {{
             color:#06442d;
-            font-size:30px;
+            font-size:31px;
             font-weight:950;
             margin-top:4px;
             line-height:1;
@@ -1394,7 +1446,7 @@ def page(content, mode="admin"):
             border:1px solid #d7dfd9;
             border-radius:18px;
             padding:14px;
-            margin-bottom:18px;
+            margin-bottom:16px;
             box-shadow:0 8px 24px rgba(15,81,50,.08);
         }}
 
@@ -1410,7 +1462,7 @@ def page(content, mode="admin"):
             display:block;
             color:#06442d;
             font-size:12px;
-            font-weight:900;
+            font-weight:950;
             text-transform:uppercase;
             margin-bottom:5px;
         }}
@@ -1451,42 +1503,10 @@ def page(content, mode="admin"):
             font-weight:900;
         }}
 
-        .alert-summary {{
-            background:#fff7f7;
-            border:1px solid #f0b9c0;
-            border-radius:18px;
-            padding:18px;
-            margin:0 0 18px;
-            box-shadow:0 8px 24px rgba(220,53,69,.08);
-        }}
-
-        .alert-summary h2 {{
-            color:#b4232f;
-            margin:0 0 8px;
-            font-size:24px;
-            text-transform:uppercase;
-        }}
-
-        .alert-summary p {{
-            color:#374151;
-            margin:0 0 12px;
-            font-weight:700;
-        }}
-
-        .alert-summary summary {{
-            cursor:pointer;
-            color:#b4232f;
-            font-weight:900;
-            background:#ffe8ea;
-            border-radius:10px;
-            padding:10px 12px;
-            display:inline-block;
-        }}
-
+        body.admin-body .card,
         body.admin-body table {{
-            border-radius:14px;
-            overflow:hidden;
             border:1px solid #d7dfd9;
+            border-radius:16px;
             box-shadow:0 8px 24px rgba(15,81,50,.07);
         }}
 
@@ -1494,340 +1514,34 @@ def page(content, mode="admin"):
             background:#06442d;
         }}
 
-        body.admin-body tr:hover {{
-            background:#eef6f2;
-        }}
-
-
-        /* Unified premium design pass */
-        body.admin-body,
-        body.portal-body {{
-            background:
-                radial-gradient(circle at 94% 4%, rgba(25,135,84,.10), transparent 25%),
-                linear-gradient(180deg, #fbfaf4 0%, #eef4ee 100%);
-        }}
-
-        .topbar {{
-            background:
-                radial-gradient(circle at 96% 0%, rgba(25,135,84,.18), transparent 28%),
-                rgba(255,255,255,.88);
-            color:#06442d;
-            border-bottom:1px solid #d7dfd9;
-            box-shadow:0 8px 24px rgba(15,81,50,.08);
-            backdrop-filter:blur(10px);
-        }}
-
-        .brand {{
-            color:#06442d;
-            min-width:auto;
-        }}
-
-        .brand img {{
-            max-height:62px;
-            max-width:190px;
-            filter:brightness(0) saturate(100%) invert(20%) sepia(44%) saturate(1023%) hue-rotate(105deg) brightness(89%) contrast(93%)
-                   drop-shadow(0 1px 0 #ffffff)
-                   drop-shadow(1px 0 0 #ffffff)
-                   drop-shadow(-1px 0 0 #ffffff)
-                   drop-shadow(0 -1px 0 #ffffff);
-        }}
-
-        .brand span {{
-            color:#06442d;
-            font-size:24px;
-            font-weight:950;
-            text-transform:uppercase;
-            letter-spacing:-.3px;
-        }}
-
-        .links a {{
-            color:#06442d;
-            background:#ffffff;
-            border:1px solid #cbd5ce;
-            padding:10px 13px;
-            border-radius:10px;
-            box-shadow:0 4px 12px rgba(15,81,50,.06);
-            font-size:13px;
-            font-weight:900;
-        }}
-
-        .links a:hover {{
-            background:#eef6f2;
-            color:#06442d;
-        }}
-
-        .links a[href="/admin"],
-        .links a[href="/portal"] {{
-            background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%);
-            color:#ffffff;
-            border:0;
-        }}
-
-        .container {{
-            max-width:1280px;
-            margin:0 auto;
-            padding:22px 18px 44px;
-            box-sizing:border-box;
-        }}
-
-        .page-intro {{
-            background:rgba(255,255,255,.84);
-            border:1px solid #d7dfd9;
-            border-radius:20px;
-            padding:20px;
-            margin-bottom:18px;
-            box-shadow:0 10px 30px rgba(15,81,50,.09);
-        }}
-
-        .page-kicker {{
-            color:#198754;
-            font-size:12px;
-            font-weight:950;
-            text-transform:uppercase;
-            letter-spacing:1px;
-            margin-bottom:6px;
-        }}
-
-        .page-title {{
-            color:#06442d;
-            font-size:34px;
-            line-height:1;
-            margin:0;
-            text-transform:uppercase;
-            letter-spacing:-.7px;
-            font-weight:950;
-        }}
-
-        .page-subtitle {{
-            color:#374151;
-            margin:9px 0 0;
-            font-weight:750;
-            font-size:15px;
-            line-height:1.4;
-            max-width:780px;
-        }}
-
-        .action-guide {{
-            display:grid;
-            grid-template-columns:repeat(auto-fit, minmax(230px, 1fr));
-            gap:12px;
-            margin:0 0 18px;
-        }}
-
-        .guide-card {{
-            background:#ffffff;
-            border:1px solid #d7dfd9;
-            border-radius:18px;
-            padding:16px;
-            box-shadow:0 8px 24px rgba(15,81,50,.08);
-            position:relative;
-            overflow:hidden;
-        }}
-
-        .guide-card:before {{
-            content:"";
-            position:absolute;
-            right:-28px;
-            top:-30px;
-            width:92px;
-            height:92px;
-            border-radius:50%;
-            background:rgba(25,135,84,.10);
-        }}
-
-        .guide-title {{
-            color:#06442d;
-            font-size:15px;
-            font-weight:950;
-            text-transform:uppercase;
-            letter-spacing:.3px;
-            margin-bottom:5px;
-        }}
-
-        .guide-text {{
-            color:#4b5563;
-            font-size:13px;
-            font-weight:700;
-            line-height:1.35;
-        }}
-
-        .admin-stats-grid {{
-            display:grid;
-            grid-template-columns:repeat(auto-fit, minmax(155px, 1fr));
-            gap:12px;
-            margin:0 0 18px;
-        }}
-
-        .admin-stat {{
-            display:block;
-            text-decoration:none;
-            color:inherit;
-        }}
-
-        .admin-stat-card {{
-            background:#ffffff;
-            border:1px solid #d7dfd9;
-            border-radius:18px;
-            padding:16px;
-            box-shadow:0 8px 24px rgba(15,81,50,.08);
-            position:relative;
-            overflow:hidden;
-            min-height:92px;
-        }}
-
-        .admin-stat-card:before {{
-            content:"";
-            position:absolute;
-            right:-25px;
-            top:-30px;
-            width:90px;
-            height:90px;
-            border-radius:50%;
-            background:rgba(25,135,84,.10);
-        }}
-
-        .admin-stat-card.red:before {{ background:rgba(220,53,69,.10); }}
-
-        .admin-stat-label {{
-            color:#5f6b63;
-            font-size:12px;
-            font-weight:950;
-            text-transform:uppercase;
-            letter-spacing:.5px;
-        }}
-
-        .admin-stat-value {{
-            color:#06442d;
-            font-size:31px;
-            font-weight:950;
-            margin-top:4px;
-            line-height:1;
-        }}
-
-        .admin-stat-help {{
-            color:#6b7280;
-            font-size:12px;
-            font-weight:700;
-            margin-top:6px;
-            line-height:1.25;
-        }}
-
-        .admin-stat-card.red .admin-stat-value {{ color:#b4232f; }}
-
-        .admin-filter-card,
-        .filterbar {{
-            background:rgba(255,255,255,.88);
-            border:1px solid #d7dfd9;
-            border-radius:18px;
-            padding:14px;
-            margin-bottom:18px;
-            box-shadow:0 8px 24px rgba(15,81,50,.08);
-        }}
-
-        .admin-filter-card form,
-        .filterbar form {{
-            display:flex;
-            flex-wrap:wrap;
-            gap:12px;
-            align-items:flex-end;
-            margin:0;
-        }}
-
-        .admin-filter-card label,
-        .filterbar label {{
-            display:block;
-            color:#06442d;
-            font-size:12px;
-            font-weight:950;
-            text-transform:uppercase;
-            margin-bottom:5px;
-        }}
-
-        .admin-filter-card select,
-        .filterbar select {{
-            min-height:40px;
-            border-radius:10px;
-            border:1px solid #cbd5ce;
-            padding:0 12px;
-            font-weight:800;
-            background:#ffffff;
-            color:#111827;
-            min-width:175px;
-        }}
-
-        .admin-filter-card button,
-        .filterbar button,
-        button {{
-            min-height:40px;
-            background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%);
-            color:white;
-            border:0;
-            border-radius:10px;
-            padding:0 15px;
-            font-weight:900;
-            cursor:pointer;
-            margin:0;
-        }}
-
-        .admin-filter-card .reset-link,
-        .filterbar .reset-link {{
-            min-height:40px;
-            display:inline-flex;
-            align-items:center;
-            justify-content:center;
-            padding:0 15px;
-            border-radius:10px;
-            background:#eef2ef;
-            color:#06442d;
-            text-decoration:none;
-            font-weight:900;
-        }}
-
-        .card {{
-            border:1px solid #d7dfd9;
-            border-radius:18px;
-            box-shadow:0 8px 24px rgba(15,81,50,.08);
-        }}
-
-        table {{
-            border-radius:14px;
-            overflow:hidden;
-            border:1px solid #d7dfd9;
-            box-shadow:0 8px 24px rgba(15,81,50,.07);
-        }}
-
-        th {{ background:#06442d; }}
-
         @media (max-width: 700px) {{
-            .brand img {{ max-height:54px; max-width:150px; }}
-            .brand span {{ font-size:20px; }}
-            .container {{ padding:16px 12px 34px; }}
-            .page-intro {{ padding:16px; }}
-            .page-title {{ font-size:28px; }}
-            .admin-filter-card form,
-            .filterbar form {{ display:block; }}
-            .admin-filter-card select,
-            .admin-filter-card button,
-            .admin-filter-card .reset-link,
-            .filterbar select,
-            .filterbar button,
-            .filterbar .reset-link {{
-                width:100%;
-                box-sizing:border-box;
-                margin:0 0 10px;
+            body.admin-body .brand,
+            body.portal-body .brand {{
+                min-width:100%;
+                flex-direction:row;
+                align-items:center;
             }}
-        }}
 
-        @media (max-width: 700px) {{
+            body.admin-body .brand img,
+            body.portal-body .brand img {{
+                max-height:54px;
+                max-width:150px;
+            }}
+
+            body.admin-body .brand span,
+            body.portal-body .brand span {{
+                font-size:20px;
+            }}
+
             body.admin-body .container {{
                 padding:16px 12px 34px;
             }}
 
-            .admin-hero {{
+            .admin-clean-hero {{
                 padding:16px;
             }}
 
-            .admin-hero h1 {{
+            .admin-clean-hero h1 {{
                 font-size:28px;
             }}
 
@@ -2688,29 +2402,12 @@ def admin_dashboard():
     pdf_needed_count = sum(1 for r in all_rows if card_pdf_needs_attention(r))
 
     html = f"""
-    <div class="page-intro">
-        <div class="page-kicker">Giant Sports Cards Operations</div>
-        <h1 class="page-title">Admin Dashboard</h1>
-        <p class="page-subtitle">A live command center for PSA submissions, customer pickup status, card PDF review, text notifications and buyback activity.</p>
-    </div>
-
-    <div class="action-guide">
-        <div class="guide-card">
-            <div class="guide-title">Dashboard</div>
-            <div class="guide-text">View the full submission queue, filter by status, and check which orders need attention.</div>
+    <div class="admin-clean-hero">
+        <div>
+            <div class="admin-clean-kicker">Giant Sports Cards</div>
+            <h1>Admin Dashboard</h1>
         </div>
-        <div class="guide-card">
-            <div class="guide-title">Upload Excel</div>
-            <div class="guide-text">Import the latest PSA spreadsheet to refresh customer submissions and status fields.</div>
-        </div>
-        <div class="guide-card">
-            <div class="guide-title">Upload Card PDF</div>
-            <div class="guide-text">Attach card-detail PDFs when orders reach Shipping Soon or Complete so graded cards can display in the portal.</div>
-        </div>
-        <div class="guide-card">
-            <div class="guide-title">Buyback</div>
-            <div class="guide-text">Review customer sell interest, send offers, track accepted offers, and mark purchases complete.</div>
-        </div>
+        <div class="admin-clean-pill">{len(rows)} shown</div>
     </div>
 
     <div class="admin-stats-grid">
@@ -2718,42 +2415,41 @@ def admin_dashboard():
             <div class="admin-stat-card">
                 <div class="admin-stat-label">Total</div>
                 <div class="admin-stat-value">{total_count}</div>
-                <div class="admin-stat-help">Every submission currently stored.</div>
             </div>
         </a>
+
         <a class="admin-stat" href="/admin?view=active&sort={sort}">
             <div class="admin-stat-card">
                 <div class="admin-stat-label">Active</div>
                 <div class="admin-stat-value">{active_count}</div>
-                <div class="admin-stat-help">Orders still moving through PSA.</div>
             </div>
         </a>
+
         <a class="admin-stat" href="/admin?view=complete&sort={sort}">
             <div class="admin-stat-card">
                 <div class="admin-stat-label">Complete</div>
                 <div class="admin-stat-value">{complete_count}</div>
-                <div class="admin-stat-help">Finished at PSA and awaiting next step.</div>
             </div>
         </a>
+
         <a class="admin-stat" href="/admin?view=shipping&sort={sort}">
             <div class="admin-stat-card">
                 <div class="admin-stat-label">Shipping Soon</div>
                 <div class="admin-stat-value">{shipping_count}</div>
-                <div class="admin-stat-help">Likely nearing return shipment.</div>
             </div>
         </a>
+
         <a class="admin-stat" href="/admin?view=pickup&sort={sort}">
             <div class="admin-stat-card">
                 <div class="admin-stat-label">Ready Pickup</div>
                 <div class="admin-stat-value">{pickup_count}</div>
-                <div class="admin-stat-help">Customers can pick these up.</div>
             </div>
         </a>
+
         <a class="admin-stat" href="/admin?view=pdf_needed&sort={sort}">
             <div class="admin-stat-card red">
                 <div class="admin-stat-label">PDF Needed</div>
                 <div class="admin-stat-value">{pdf_needed_count}</div>
-                <div class="admin-stat-help">Card PDFs still need review/upload.</div>
             </div>
         </a>
     </div>
@@ -4942,7 +4638,7 @@ def portal_orders():
                     <img class="portal-results-logo" src="data:image/png;base64,__PORTAL_LOGO__" alt="Giant Sports Cards">
                 </div>
                 <h1 class="portal-results-title">Your PSA Orders</h1>
-                <p class="portal-results-copy">Review your PSA status, pickup readiness, text preferences and buyback offers in one place.</p>
+                <p class="portal-results-copy">Track status, pickup readiness, text alerts and buyback offers.</p>
                 <div class="portal-results-actions">
                     <a class="portal-action-btn primary" href="/portal">Home</a>
                     <a class="portal-action-btn" href="/portal/logout">Logout</a>
@@ -5073,4 +4769,94 @@ def portal_orders():
                 card_type = row[5] if len(row) > 5 else ""
                 after_service = row[6] if len(row) > 6 else ""
                 images_url = row[7] if len(row) > 7 else ""
-                psa_estimat
+                psa_estimate = display_blank_loading(row[8] if len(row) > 8 else "")
+                card_ladder_value = display_blank_loading(row[9] if len(row) > 9 else "")
+                pop = display_blank_loading(row[10] if len(row) > 10 else "")
+                pop_higher = display_blank_loading(row[11] if len(row) > 11 else "")
+                offer_amount = row[12] if len(row) > 12 else ""
+                offer_notes = row[13] if len(row) > 13 else ""
+                buyback_status = row[14] if len(row) > 14 else ""
+
+                checked = "checked" if interested else ""
+                img_html = f"<img src='{image_data}' alt='Card image'>" if image_data else ""
+
+                offer_display = ""
+                if offer_amount:
+                    response_buttons = ""
+                    if buyback_status == "Offer Sent":
+                        response_buttons = f"""
+                        <form method="post" action="/portal/buyback_offer_response" style="margin-top:8px;">
+                            <input type="hidden" name="submission_number" value="{sub}">
+                            <input type="hidden" name="cert_number" value="{cert_number}">
+                            <button name="response" value="Accepted">Accept Offer</button>
+                            <button name="response" value="Declined">Decline</button>
+                        </form>
+                        """
+                    offer_display = f"""
+                    <div style="margin-top:10px;padding:10px;border:1px solid #d1e7dd;border-radius:8px;background:#f3f7f5;">
+                        <b>Giant Sports Cards Buyback Offer:</b> {html_escape(offer_amount)}<br>
+                        <small>{html_escape(offer_notes)}</small><br>
+                        <b>Status:</b> {html_escape('Interest' if buyback_status == 'New' else buyback_status)}
+                        {response_buttons}
+                    </div>
+                    """
+
+                buyback_html += f"""
+                <div class="buy-card">
+                    {img_html}
+                    <div class="cert">Certification #: {cert_number}</div>
+                    <div><b>Type:</b> {card_type}</div>
+                    <div>{item_details}</div>
+                    <div><b>Grade:</b> {grade}</div>
+                    {offer_display}
+                    <label class="sell-check"><input type="checkbox" name="cert" value="{cert_number}" {checked}> Interested in selling</label>
+                </div>
+                """
+
+            buyback_html += """
+                        </div>
+                        <br>
+                        <button type="submit">Save</button>
+                    </form>
+                </div>
+            </details>
+            """
+
+        sms_mode = sms_mode or "none"
+        none_checked = "checked" if sms_mode == "none" else ""
+        pickup_checked = "checked" if sms_mode == "pickup" else ""
+        all_checked = "checked" if sms_mode == "all" else ""
+
+        sms_html = f"""
+        <hr>
+        <form method="post" action="/portal/sms_preferences">
+            <input type="hidden" name="submission_number" value="{sub}">
+            <h4>Text Notifications</h4>
+
+            <label class="sell-check">
+                <input type="radio" name="sms_mode" value="none" {none_checked}>
+                No text messages
+            </label>
+
+            <label class="sell-check">
+                <input type="radio" name="sms_mode" value="pickup" {pickup_checked}>
+                Text me when this submission is ready for pickup
+            </label>
+
+            <label class="sell-check">
+                <input type="radio" name="sms_mode" value="all" {all_checked}>
+                Text me for every PSA status change on this submission
+            </label>
+
+            <button type="submit">Save Text Settings</button>
+            <p><small>Texts go to the phone number on this order. Each text identifies the exact submission number. Message/data rates may apply.</small></p>
+        </form>
+        """
+
+        html += f"""
+        <div class="card">
+            <h3>{customer_name}</h3>
+            <p><b>Submission #:</b> {sub}</p>
+            <p><b>Status:</b> <span class="status">{display_status_label}</span></p>
+            <p><b>Arrived at PSA:</b> {arrived_completed}</p>
+            <p><b>Estimated Completion Date:</b> {estimated_comple
