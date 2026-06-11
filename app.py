@@ -4098,401 +4098,59 @@ def portal_orders():
 
     html = """
     <style>
-        body.portal-body > .topbar {
-            display:none;
-        }
-
-        body.portal-body {
-            background:#f4f3ed;
-        }
-
         body.portal-body .container {
-            padding:0;
-            margin:0;
-            width:100%;
-            max-width:none;
-            background:#f4f3ed;
-            overflow-x:hidden;
-        }
-
-        .portal-results-page {
-            min-height:100vh;
             background:
-                radial-gradient(circle at 92% 7%, rgba(15,81,50,.10), transparent 22%),
-                linear-gradient(180deg, #fbfaf4 0%, #eef4ee 100%);
-            padding:18px 16px 34px;
-            box-sizing:border-box;
+                radial-gradient(circle at 94% 4%, rgba(25,135,84,.10), transparent 24%),
+                linear-gradient(180deg, #fbfaf4 0%, #eef4ee 100%) !important;
+            padding:18px !important;
+            box-sizing:border-box !important;
         }
 
-        .portal-results-shell {
-            width:100%;
-            max-width:1100px;
-            margin:0 auto;
+        body.portal-body h2 {
+            color:#06442d !important;
+            font-size:30px !important;
+            font-weight:950 !important;
+            text-transform:uppercase !important;
+            letter-spacing:-.5px !important;
+            margin:0 0 14px !important;
         }
 
-        .portal-results-header {
-            display:grid;
-            grid-template-columns:auto minmax(0, 1fr) auto;
-            gap:16px;
-            align-items:center;
-            margin:0 0 14px;
-            background:rgba(255,255,255,.72);
-            border:1px solid #d7dfd9;
-            border-radius:18px;
-            padding:14px;
-            box-shadow:0 8px 24px rgba(15,81,50,.08);
+        body.portal-body .filterbar,
+        body.portal-body .card {
+            background:#ffffff !important;
+            border:1px solid #d7dfd9 !important;
+            border-radius:16px !important;
+            box-shadow:0 8px 24px rgba(15,81,50,.08) !important;
         }
 
-        .portal-logo-badge {
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            background:transparent;
-            border-radius:0;
-            padding:0;
-            box-shadow:none;
-            margin:0;
+        body.portal-body .card h3 {
+            color:#06442d !important;
+            font-weight:950 !important;
         }
 
-        .portal-results-logo {
-            width:118px;
-            height:auto;
-            display:block;
-            filter:brightness(0) saturate(100%) invert(20%) sepia(44%) saturate(1023%) hue-rotate(105deg) brightness(89%) contrast(93%)
-                   drop-shadow(0 1px 0 #ffffff)
-                   drop-shadow(1px 0 0 #ffffff)
-                   drop-shadow(-1px 0 0 #ffffff)
-                   drop-shadow(0 -1px 0 #ffffff);
+        body.portal-body .status {
+            color:#198754 !important;
+            font-weight:900 !important;
         }
 
-        .portal-results-title {
-            margin:0;
-            color:#06442d;
-            font-family:Arial, Helvetica, sans-serif;
-            font-weight:900;
-            text-transform:uppercase;
-            letter-spacing:-.5px;
-            line-height:1;
-            font-size:26px;
-        }
-
-        .portal-results-copy {
-            color:#374151;
-            font-size:13px;
-            line-height:1.25;
-            font-weight:700;
-            margin:5px 0 0;
-            max-width:620px;
-        }
-
-        .portal-results-actions {
-            display:flex;
-            gap:8px;
-            flex-wrap:wrap;
-            justify-content:flex-end;
-        }
-
-        .portal-action-btn {
-            display:inline-flex;
-            align-items:center;
-            justify-content:center;
-            height:36px;
-            padding:0 14px;
-            border-radius:10px;
-            text-decoration:none;
-            font-weight:900;
-            font-size:13px;
-            color:#06442d;
-            background:#ffffff;
-            border:1px solid #06442d;
-            box-sizing:border-box;
-        }
-
-        .portal-action-btn.primary {
-            background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%);
-            color:#ffffff;
-            border:0;
-            box-shadow:0 7px 14px rgba(15,81,50,.18);
-        }
-
-        .portal-results-page .filterbar {
-            background:rgba(255,255,255,.88);
-            border:1px solid #d7dfd9;
-            border-radius:16px;
-            box-shadow:0 8px 24px rgba(15,81,50,.08);
-            padding:12px;
-            margin:0 0 14px;
-        }
-
-        .portal-results-page .filterbar form {
-            display:flex;
-            flex-wrap:wrap;
-            gap:10px;
-            align-items:flex-end;
-            margin:0;
-        }
-
-        .portal-results-page .filterbar label {
-            display:block;
-            color:#06442d;
-            font-size:11px;
-            font-weight:900;
-            text-transform:uppercase;
-            margin-bottom:4px;
-        }
-
-        .portal-results-page .filterbar select,
-        .portal-results-page .filterbar button {
-            min-height:38px;
-            border-radius:10px;
-            border:1px solid #cbd5ce;
-            padding:0 11px;
-            font-weight:800;
-            background:#ffffff;
-            color:#111827;
-        }
-
-        .portal-results-page .filterbar button,
-        .portal-results-page button {
-            background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%);
-            color:white;
-            border:0;
-            cursor:pointer;
-            border-radius:10px;
-            padding:9px 13px;
-            font-weight:900;
-        }
-
-        .portal-results-page .reset-link {
-            min-height:38px;
-            display:inline-flex;
-            align-items:center;
-            justify-content:center;
-            padding:0 13px;
-            border-radius:10px;
-            background:#eef2ef;
-            color:#06442d;
-            text-decoration:none;
-            font-weight:900;
-        }
-
-        .portal-results-grid {
-            display:grid;
-            grid-template-columns:1fr;
-            gap:14px;
-            align-items:start;
-        }
-
-        .portal-results-page .card {
-            background:
-                radial-gradient(circle at 98% 0%, rgba(25,135,84,.08), transparent 22%),
-                #ffffff;
-            border:1px solid #d7dfd9;
-            border-radius:18px;
-            box-shadow:0 10px 30px rgba(15,81,50,.09);
-            padding:16px;
-            margin:0;
-            box-sizing:border-box;
-        }
-
-        .portal-results-page .card h3 {
-            margin:0 0 10px;
-            color:#06442d;
-            font-size:22px;
-            font-weight:900;
-        }
-
-        .portal-results-page .card p {
-            margin:6px 0;
-            color:#111827;
-            font-size:14px;
-            line-height:1.35;
-        }
-
-        .portal-results-page .card .status {
-            color:#198754;
-            font-weight:900;
-        }
-
-        .portal-results-page .bar {
-            display:flex;
-            gap:6px;
-            flex-wrap:wrap;
-            margin:12px 0;
-        }
-
-        .portal-results-page .step {
-            padding:6px 9px;
-            border-radius:999px;
-            background:#eef2ef;
-            border:1px solid #d7dfd9;
-            color:#374151;
-            font-size:11px;
-            font-weight:800;
-        }
-
-        .portal-results-page .step.done {
-            background:#d1e7dd;
-            color:#0f5132;
-            border-color:#b8dcc8;
-        }
-
-        .portal-results-page .step.current {
-            background:#198754;
-            color:#ffffff;
-            border-color:#198754;
-        }
-
-        .portal-results-page h4 {
-            color:#06442d;
-            margin:10px 0 8px;
-            font-size:17px;
-            font-weight:900;
-        }
-
-        .portal-results-page hr {
-            border:0;
-            height:1px;
-            background:#d7dfd9;
-            margin:14px 0;
-        }
-
-        .portal-results-page .sell-check {
-            display:flex;
-            align-items:center;
-            gap:8px;
-            margin:8px 0;
-            color:#111827;
-            font-weight:700;
-            line-height:1.3;
-        }
-
-        .portal-results-page .buyback-collapsible {
-            margin-top:12px;
-            border:1px solid #d7dfd9;
-            border-radius:14px;
-            background:#f8faf8;
-            overflow:hidden;
-        }
-
-        .portal-results-page .buyback-collapsible summary {
-            color:#06442d;
-            font-weight:900;
-            cursor:pointer;
-            padding:13px 15px;
-            background:#eef6f2;
-            list-style:none;
-        }
-
-        .portal-results-page .buyback-collapsible summary::-webkit-details-marker {
-            display:none;
-        }
-
-        .portal-results-page .buyback-collapsible .buyback-inner {
-            padding:14px;
-        }
-
-        .portal-results-page .card-grid {
-            display:grid;
-            grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
-            gap:12px;
-        }
-
-        .portal-results-page .buy-card {
-            background:#ffffff;
-            border:1px solid #e5e7eb;
-            border-radius:14px;
-            padding:12px;
-            box-shadow:0 4px 14px rgba(15,81,50,.06);
-        }
-
-        .portal-results-page .buy-card img {
-            max-width:100%;
-            height:auto;
-            border-radius:8px;
-            display:block;
-            margin:0 auto 8px;
-        }
-
-        .portal-results-page .cert {
-            color:#06442d;
-            font-weight:900;
+        body.portal-body button {
+            background:linear-gradient(180deg, #198754 0%, #0f6f3f 100%) !important;
+            color:#ffffff !important;
+            border:0 !important;
+            border-radius:10px !important;
+            font-weight:900 !important;
         }
 
         @media (min-width: 900px) {
-            .portal-results-page {
-                padding:28px 34px 44px;
-            }
-
-            .portal-results-grid {
-                grid-template-columns:repeat(2, minmax(0, 1fr));
-            }
-
-            .portal-results-logo {
-                width:130px;
-            }
-
-            .portal-results-title {
-                font-size:30px;
-            }
-        }
-
-        @media (max-width: 700px) {
-            .portal-results-page {
-                padding:16px 14px 30px;
-            }
-
-            .portal-results-header {
-                grid-template-columns:1fr;
-                gap:8px;
-                padding:12px;
-            }
-
-            .portal-results-logo {
-                width:112px;
-            }
-
-            .portal-results-title {
-                font-size:26px;
-            }
-
-            .portal-results-copy {
-                font-size:13px;
-            }
-
-            .portal-results-actions {
-                justify-content:flex-start;
-                margin-top:6px;
-            }
-
-            .portal-results-page .filterbar form {
-                display:block;
-            }
-
-            .portal-results-page .filterbar select,
-            .portal-results-page .filterbar button,
-            .portal-results-page .reset-link {
-                width:100%;
-                margin-bottom:9px;
-                box-sizing:border-box;
+            body.portal-body .container {
+                max-width:1120px !important;
+                margin:0 auto !important;
+                padding:28px 24px 44px !important;
             }
         }
     </style>
-
-    <div class="portal-results-page">
-        <div class="portal-results-shell">
-            <div class="portal-results-header">
-                <div class="portal-logo-badge">
-                    <img class="portal-results-logo" src="data:image/png;base64,__PORTAL_LOGO__" alt="Giant Sports Cards">
-                </div>
-                <h1 class="portal-results-title">Your PSA Orders</h1>
-                <p class="portal-results-copy">Track status, pickup readiness, text alerts and buyback offers.</p>
-                <div class="portal-results-actions">
-                    <a class="portal-action-btn primary" href="/portal">Home</a>
-                    <a class="portal-action-btn" href="/portal/logout">Logout</a>
-                </div>
-            </div>
-    """.replace("__PORTAL_LOGO__", portal_logo_b64)
+    <h2>Your Orders</h2>
+    """
 
     grouped = {}
 
@@ -4513,9 +4171,7 @@ def portal_orders():
 
     if not grouped:
         html += "<div class='card'>No matching orders found. Check phone number and last name.</div>"
-        html += "</div></div>"
-        html += "</div></div></div>"
-    return page(html, mode="portal")
+        return page(html, mode="portal")
 
     statuses_available = customer_status_options()
 
@@ -4574,10 +4230,7 @@ def portal_orders():
 
     if not filtered_grouped:
         html += "<div class='card'>No submissions match the selected filters.</div>"
-        html += "</div></div>"
         return page(html, mode="portal")
-
-    html += "<div class='portal-results-grid'>"
 
     for sub, grouped_values in filtered_grouped.items():
         data, status = grouped_values[0], grouped_values[1]
@@ -4697,96 +4350,4 @@ def portal_orders():
             </label>
 
             <button type="submit">Save Text Settings</button>
-            <p><small>Texts go to the phone number on this order. Each text identifies the exact submission number. Message/data rates may apply.</small></p>
-        </form>
-        """
-
-        html += f"""
-        <div class="card">
-            <h3>{customer_name}</h3>
-            <p><b>Submission #:</b> {sub}</p>
-            <p><b>Status:</b> <span class="status">{display_status_label}</span></p>
-            <p><b>Arrived at PSA:</b> {arrived_completed}</p>
-            <p><b>Estimated Completion Date:</b> {estimated_completion}</p>
-            <p><b>Cards:</b> {cards}</p>
-            <p><b>Service:</b> {service}</p>
-            <p><b>Customer Drop-Off Date:</b> {date}</p>
-            {status_bar(display_status)}
-            {sms_html}
-            {buyback_html}
-        </div>
-        """
-
-    html += "</div></div></div>"
-    return page(html, mode="portal")
-
-
-@app.route("/portal/buyback_offer_response", methods=["POST"])
-def portal_buyback_offer_response():
-    phone = normalize_phone(session.get("phone"))
-    last = clean(session.get("last")).lower()
-
-    if not phone or not last:
-        return redirect("/portal")
-
-    submission_number = normalize_submission(request.form.get("submission_number"))
-    cert_number = normalize_submission(request.form.get("cert_number"))
-    response = clean(request.form.get("response"))
-
-    if response not in ["Accepted", "Declined"]:
-        return redirect("/portal/orders")
-
-    if not submission_number or not cert_number:
-        return redirect("/portal/orders")
-
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT raw_data
-    FROM submissions
-    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-    """, (submission_number,))
-    row = cur.fetchone()
-
-    if not row:
-        cur.close()
-        conn.close()
-        return redirect("/portal/orders")
-
-    data = row[0] or {}
-    name = str(get_field(data, ["Customer Name", "Name"])).lower()
-    contact = normalize_phone(get_field(data, ["Contact Info", "Phone", "Phone Number"]))
-
-    phone_match = bool(contact) and (phone in contact or contact in phone)
-    name_match = bool(last) and last in name
-
-    if not (phone_match and name_match):
-        cur.close()
-        conn.close()
-        return redirect("/portal/orders")
-
-    cur.execute("""
-    UPDATE card_buyback_items
-    SET buyback_status=%s,
-        updated_at=NOW()
-    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-      AND REGEXP_REPLACE(cert_number, '\\D', '', 'g')=%s
-      AND COALESCE(offer_amount, '') <> ''
-    """, (response, submission_number, cert_number))
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return redirect("/portal/orders")
-
-
-@app.route("/portal/logout")
-def portal_logout():
-    session.pop("phone", None)
-    session.pop("last", None)
-    return redirect("/portal")
-
-if __name__ == "__main__":
-    app.run()
+            <p><small>Texts go to the phone number on this order. Eac
