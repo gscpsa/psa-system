@@ -4178,9 +4178,44 @@ def portal_orders():
 
     for r in rows:
         data = r[0] or {}
-        name = str(get_field(data, ["Customer Name", "Name"])).lower()
-        contact = normalize_phone(get_field(data, ["Contact Info", "Phone", "Phone Number"]))
-        sub = normalize_submission(get_field(data, ["Submission #", "Submission Number"]))
+        name = str(get_field(data, [
+            "Customer Name",
+            "Customer",
+            "Name",
+            "Full Name",
+            "First Last",
+            "Billing Name",
+            "Bill To",
+            "Client",
+            "Customer Full Name"
+        ])).lower()
+
+        contact = normalize_phone(get_field(data, [
+            "Customer Contact",
+            "Contact",
+            "Contact Info",
+            "Phone",
+            "Phone Number",
+            "Customer Phone",
+            "Mobile",
+            "Mobile Phone",
+            "Cell",
+            "Cell Phone",
+            "Telephone",
+            "Billing Phone",
+            "Customer Phone Number"
+        ]))
+
+        sub = normalize_submission(get_field(data, [
+            "Submission #",
+            "Submission Number",
+            "Submission",
+            "Order #",
+            "Order Number",
+            "PSA Order #",
+            "PSA Order Number",
+            "PSA Submission #"
+        ]))
 
         phone_match = bool(contact) and (phone in contact or contact in phone)
         name_match = bool(last) and last in name
@@ -4259,7 +4294,7 @@ def portal_orders():
         sms_opted = grouped_values[2] if len(grouped_values) > 2 else False
         sms_pickup_only = grouped_values[3] if len(grouped_values) > 3 else True
         sms_mode = grouped_values[4] if len(grouped_values) > 4 else ("pickup" if sms_opted and sms_pickup_only else ("all" if sms_opted else "none"))
-        customer_name = get_field(data, ["Customer Name", "Name"])
+        customer_name = get_field(data, ["Customer Name", "Customer", "Name", "Full Name", "Billing Name", "Client"])
         cards = get_field(data, ["# Of Cards", "# of Cards", "Cards"])
         service = clean_service_display(get_field(data, ["Service Type", "Service"]))
         date = get_dropoff_date(data)
