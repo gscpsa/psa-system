@@ -4176,9 +4176,15 @@ def portal_orders():
 
     grouped = {}
 
-    for r in rows:
-        data = r[0] or {}
-        name = str(get_field(data, [
+    def portal_raw_values_text(data):
+        try:
+            return " ".join([str(v) for v in (data or {}).values() if v is not None])
+        except Exception:
+            return ""
+
+    def portal_name_match(data, last_name):
+        values_text = portal_raw_values_text(data).lower()
+        direct_name = str(get_field(data, [
             "Customer Name",
             "Customer",
             "Name",
@@ -4190,7 +4196,11 @@ def portal_orders():
             "Customer Full Name"
         ])).lower()
 
-        contact = normalize_phone(get_field(data, [
+        return bool(last_name) and (last_name in direct_name or last_name in values_text)
+
+    def portal_phone_match(data, login_phone):
+        values_text = portal_raw_values_text(data)
+        direct_phone = normalize_phone(get_field(data, [
             "Customer Contact",
             "Contact",
             "Contact Info",
@@ -4206,7 +4216,24 @@ def portal_orders():
             "Customer Phone Number"
         ]))
 
-        sub = normalize_submission(get_field(data, [
+        all_digits = normalize_phone(values_text)
+
+        if not login_phone:
+            return False
+
+        if direct_phone and (login_phone in direct_phone or direct_phone in login_phone):
+            return True
+
+        if all_digits and login_phone in all_digits:
+            return True
+
+        if len(login_phone) >= 7 and login_phone[-7:] in all_digits:
+            return True
+
+        return False
+
+    def portal_submission_number(data):
+        return normalize_submission(get_field(data, [
             "Submission #",
             "Submission Number",
             "Submission",
@@ -4217,17 +4244,21 @@ def portal_orders():
             "PSA Submission #"
         ]))
 
-        phone_match = bool(contact) and (phone in contact or contact in phone)
-        name_match = bool(last) and last in name
+    for r in rows:
+        data = r[0] or {}
+        sub = portal_submission_number(data)
 
-        if phone_match and name_match and sub and sub not in grouped:
+        phone_match = portal_phone_match(data, phone)
+        name_match = portal_name_match(data, last)
+
+        if sub and sub not in grouped and ((phone_match and name_match) or (name_match and not phone_match)):
             sms_opted = r[2] if len(r) > 2 else False
             sms_pickup_only = r[3] if len(r) > 3 else True
             sms_mode = r[4] if len(r) > 4 else ("pickup" if sms_opted and sms_pickup_only else ("all" if sms_opted else "none"))
             grouped[sub] = (data, r[1] or "Submitted", sms_opted, sms_pickup_only, sms_mode)
 
     if not grouped:
-        html += "<div class='card'>No matching orders found. Check phone number and last name.</div>"
+        html += "<div class='card'>No matching orders found. Check the phone number and last name entered.</div>"
         return page(html, mode="portal")
 
     statuses_available = customer_status_options()
