@@ -1722,16 +1722,13 @@ def extract_card_items_from_pdf(pdf_path):
     """
     PSA card-detail PDF parser.
 
-    This parser is intentionally row/block based instead of OCR-label based.
-    It extracts:
-    - Submission #
-    - Order #
-    - Cert #
-    - Grade
-    - full PSA card description
-    - embedded card thumbnail image
+    Uses the printable PSA order text:
+      grade line
+      description line(s)
+      PSA DNA Certified
+      Cert #123456789
 
-    It avoids using the slab/label OCR as the description.
+    Then assigns card images by page/order from the left thumbnail column.
     """
     items = []
     submission_number = ""
@@ -1755,14 +1752,68 @@ def extract_card_items_from_pdf(pdf_path):
         except Exception:
             return ""
 
-    def block_text(block):
-        parts = []
-        for line in block.get("lines", []):
-            for span in line.get("spans", []):
-                txt = span.get("text", "")
-                if txt:
-                    parts.append(txt)
-        return norm_text(" ".join(parts))
+    grade_regex = re.compile(
+        r"^(?:"
+        r"GEM\s+MINT|MINT|NEAR\s+MINT(?:-MINT)?|EXCELLENT(?:-MINT)?|"
+        r"EX(?:-MT)?|VERY\s+GOOD|GOOD|FAIR|POOR|PR|AUTHENTIC|"
+        r"N\d+|NM(?:-MT)?|VG(?:-EX)?"
+        r")\b.*",
+        re.IGNORECASE
+    )
+
+    def is_grade_line(text):
+        return bool(grade_regex.search(norm_text(text)))
+
+    def is_bad_description_line(text):
+        t = norm_text(text)
+        low = t.lower()
+
+        if not t:
+            return True
+        if len(t) < 6:
+            return True
+
+        bad = [
+            "due to extraordinary demand",
+            "learn more",
+            "value services",
+            "order #",
+            "submission #",
+            "status",
+            "complete",
+            "completed jun",
+            "track package",
+            "tracking number",
+            "items",
+            "please make sure",
+            "download csv",
+            "view grades",
+            "your grades are ready",
+            "show more",
+            "psa dna",
+            "psa d",
+            "certified",
+            "cert #",
+            "payment",
+            "address",
+            "amex",
+            "send to vault",
+            "vault terms",
+            "collectors",
+            "all rights reserved",
+            "https://",
+            "customer service",
+            "shipped back",
+            "ship back",
+        ]
+
+        if any(x in low for x in bad):
+            return True
+
+        if is_grade_line(t):
+            return True
+
+        return False
 
     def is_thumbnail_block(block):
         if block.get("type") != 1:
@@ -1779,174 +1830,62 @@ def extract_card_items_from_pdf(pdf_path):
         if width_px <= 0 or height_px <= 0:
             return False
 
-        # PSA thumbnails live in the far-left column. This excludes banner/header/full-page images.
-        if not (20 <= x0 <= 95):
+        # PSA card thumbnails are small images in the far-left item column.
+        if not (15 <= x0 <= 130):
             return False
-        if not (8 <= box_w <= 70):
+        if not (8 <= box_w <= 95):
             return False
-        if not (28 <= box_h <= 95):
+        if not (18 <= box_h <= 130):
             return False
-        if width_px < 80 or height_px < 120:
+        if width_px < 40 or height_px < 55:
+            return False
+
+        # Exclude wide banners/logos.
+        if width_px > height_px * 1.5:
             return False
 
         return True
 
-    def crop_thumbnail_from_page(pdf_page, target_y):
+    all_text = []
+    page_infos = []
+
+    for page_index, page in enumerate(doc):
         try:
-            if target_y is None:
-                return ""
-
-            page_rect = pdf_page.rect
-
-            # Left card-thumbnail column.
-            x0 = max(0, page_rect.width * 0.045)
-            x1 = min(page_rect.width * 0.135, x0 + 70)
-
-            y0 = max(0, target_y - 48)
-            y1 = min(page_rect.height, target_y + 48)
-
-            clip = fitz.Rect(x0, y0, x1, y1)
-            pix = pdf_page.get_pixmap(matrix=fitz.Matrix(3, 3), clip=clip, alpha=False)
-
-            if pix.width < 40 or pix.height < 60:
-                return ""
-
-            return to_data_uri(pix.tobytes("png"), "png")
+            text = page.get_text("text") or ""
         except Exception:
-            return ""
+            text = ""
 
-    grade_regex = re.compile(
-        r"^(?:"
-        r"GEM\s+MINT|MINT|NEAR\s+MINT(?:-MINT)?|EXCELLENT(?:-MINT)?|"
-        r"EX(?:-MT)?|VERY\s+GOOD|GOOD|FAIR|POOR|PR|AUTHENTIC|"
-        r"N\d+|NM(?:-MT)?|VG(?:-EX)?"
-        r")\b.*",
-        re.IGNORECASE
-    )
+        all_text.append(text)
 
-    def is_grade_line(text):
-        return bool(grade_regex.search(norm_text(text)))
-
-    def is_noise_line(text):
-        t = norm_text(text)
-        low = t.lower()
-
-        if not t:
-            return True
-
-        noise_fragments = [
-            "due to extraordinary demand",
-            "learn more",
-            "order arrived",
-            "order prep",
-            "research & id",
-            "grading",
-            "assembly",
-            "qa checks",
-            "grades ready",
-            "complete",
-            "completed jun",
-            "track package",
-            "tracking number",
-            "payment method",
-            "payment & address",
-            "return address",
-            "download csv",
-            "view grades",
-            "your grades are ready",
-            "grader notes",
-            "show more",
-            "status",
-            "changing your address",
-            "customer service",
-            "vault terms",
-            "amex ending",
-            "collectors holdings",
-            "all rights reserved",
-            "https://",
-            "items ",
-            "psa estimate",
-            "card ladder",
-            "pop ",
-            "psa dna",
-            "psa d",
-            "certified",
-            "cert #",
-            "shipped back to you",
-            "please make sure",
-            "send to vault",
-        ]
-
-        if any(fragment in low for fragment in noise_fragments):
-            return True
-
-        if low.startswith("order #") or low.startswith("submission #"):
-            return True
-        if low.startswith("cert") or low.startswith("item "):
-            return True
-
-        return False
-
-    all_page_text = []
-    page_data = []
-
-    for page_index, pdf_page in enumerate(doc):
-        page_text = ""
+        images = []
         try:
-            page_text = pdf_page.get_text("text") or ""
-        except Exception:
-            page_text = ""
-
-        all_page_text.append(page_text)
-
-        text_blocks = []
-        image_blocks = []
-
-        try:
-            page_dict = pdf_page.get_text("dict")
+            page_dict = page.get_text("dict")
             for block in page_dict.get("blocks", []):
-                bbox = block.get("bbox") or (0, 0, 0, 0)
-                x0, y0, x1, y1 = bbox
-                y_mid = (y0 + y1) / 2
-
-                if block.get("type") == 0:
-                    txt = block_text(block)
-                    if txt:
-                        text_blocks.append({
-                            "text": txt,
-                            "bbox": bbox,
-                            "x0": x0,
-                            "y0": y0,
-                            "x1": x1,
-                            "y1": y1,
-                            "y_mid": y_mid,
-                        })
-
-                elif is_thumbnail_block(block):
-                    image_data = to_data_uri(block.get("image"), block.get("ext", "jpeg"))
+                if is_thumbnail_block(block):
+                    bbox = block.get("bbox") or (0, 0, 0, 0)
+                    image_data = to_data_uri(block.get("image"), block.get("ext", "png"))
                     if image_data:
-                        image_blocks.append({
+                        x0, y0, x1, y1 = bbox
+                        images.append({
                             "image_data": image_data,
-                            "bbox": bbox,
                             "x0": x0,
                             "y0": y0,
                             "x1": x1,
                             "y1": y1,
-                            "y_mid": y_mid,
+                            "y_mid": (y0 + y1) / 2,
                         })
         except Exception:
             pass
 
-        text_blocks.sort(key=lambda b: (b["y_mid"], b["x0"]))
-        image_blocks.sort(key=lambda b: (b["y_mid"], b["x0"]))
+        images.sort(key=lambda img: (img["y_mid"], img["x0"]))
 
-        page_data.append({
-            "page": pdf_page,
-            "text_blocks": text_blocks,
-            "image_blocks": image_blocks,
+        page_infos.append({
+            "page": page,
+            "text": text,
+            "images": images,
         })
 
-    full_text = "\n".join(all_page_text)
+    full_text = "\n".join(all_text)
 
     sub_match = re.search(r"Submission\s*#\s*(\d+)", full_text, re.IGNORECASE)
     if sub_match:
@@ -1956,120 +1895,107 @@ def extract_card_items_from_pdf(pdf_path):
     if order_match:
         order_number = normalize_submission(order_match.group(1)) or ""
 
-    used_images_by_page = {}
-    seen_certs = set()
+    def parse_page_lines(page_index, page_text):
+        parsed = []
+        lines = [norm_text(line) for line in (page_text or "").splitlines()]
+        lines = [line for line in lines if line]
 
-    for page_index, pdata in enumerate(page_data):
-        blocks = pdata["text_blocks"]
-
-        for block_index, block in enumerate(blocks):
-            cert_match = re.search(r"Cert\s*#\s*(\d+)", block["text"], re.IGNORECASE)
+        for i, line in enumerate(lines):
+            cert_match = re.search(r"Cert\s*#\s*(\d+)", line, re.IGNORECASE)
             if not cert_match:
                 continue
 
             cert_number = normalize_submission(cert_match.group(1)) or ""
-            if not cert_number or cert_number in seen_certs:
+            if not cert_number:
                 continue
 
-            cert_y = block["y_mid"]
-
             grade = ""
-            description_parts = []
+            description = ""
 
-            # Card rows are visually above the Cert # line:
-            # grade line, description line(s), PSA DNA/Cert line.
-            nearby_previous = blocks[max(0, block_index - 7):block_index]
-            nearby_previous = [
-                b for b in nearby_previous
-                if abs(b["y_mid"] - cert_y) <= 80
-            ]
+            # Look above the cert. The PSA order print format has the grade then description
+            # in the previous few lines.
+            prev_lines = lines[max(0, i - 8):i]
 
-            for prev in nearby_previous:
-                text = norm_text(prev["text"])
+            # Find grade nearest above cert.
+            for prev in reversed(prev_lines):
+                if is_grade_line(prev):
+                    grade = prev
+                    break
 
-                if not grade and is_grade_line(text):
-                    grade = text
-                    continue
+            # Description is usually the closest clean non-grade line above cert.
+            desc_candidates = []
+            for prev in prev_lines:
+                if not is_bad_description_line(prev):
+                    desc_candidates.append(prev)
 
-                if is_noise_line(text):
-                    continue
+            if desc_candidates:
+                # For wrapped descriptions, combine the last 1-2 clean lines.
+                if len(desc_candidates) >= 2 and len(desc_candidates[-1]) < 35:
+                    description = norm_text(desc_candidates[-2] + " " + desc_candidates[-1])
+                else:
+                    description = desc_candidates[-1]
 
-                if is_grade_line(text):
-                    continue
-
-                # Real card description lines usually contain a year/brand/player/card text
-                # and are not PSA DNA/cert/grade label fragments.
-                if len(text) >= 8:
-                    description_parts.append(text)
-
-            description = norm_text(" ".join(description_parts))
-
-            # If no grade was found nearby, look a little farther back.
-            if not grade:
-                for prev in reversed(blocks[max(0, block_index - 10):block_index]):
-                    if is_grade_line(prev["text"]):
-                        grade = norm_text(prev["text"])
-                        break
-
-            # Last-resort line parser using the page text around the cert.
-            if not description or not grade:
-                lines = [norm_text(x) for x in pdata.get("page").get_text("text").splitlines() if norm_text(x)]
-                cert_line_index = None
-                for i, line in enumerate(lines):
-                    if re.search(r"Cert\s*#\s*" + re.escape(cert_number), line, re.IGNORECASE):
-                        cert_line_index = i
-                        break
-
-                if cert_line_index is not None:
-                    for line in reversed(lines[max(0, cert_line_index - 6):cert_line_index]):
-                        if not grade and is_grade_line(line):
-                            grade = line
-                            continue
-
-                        if not description and not is_noise_line(line) and not is_grade_line(line) and len(line) >= 8:
-                            description = line
-
-            # Match image by closest row/Cert y on the same page.
-            image_data = ""
-            images = pdata["image_blocks"]
-            used_images = used_images_by_page.setdefault(page_index, set())
-            candidates = []
-
-            for image_index, img in enumerate(images):
-                if image_index in used_images:
-                    continue
-
-                dy = abs(img["y_mid"] - cert_y)
-                if dy <= 90:
-                    candidates.append((dy, img["x0"], image_index, img))
-
-            if candidates:
-                candidates.sort(key=lambda x: (x[0], x[1]))
-                _, _, image_index, img = candidates[0]
-                used_images.add(image_index)
-                image_data = img["image_data"]
-
-            if not image_data:
-                image_data = crop_thumbnail_from_page(pdata["page"], cert_y)
-
-            items.append({
-                "submission_number": submission_number,
-                "order_number": order_number,
+            parsed.append({
+                "page_index": page_index,
                 "cert_number": cert_number,
-                "card_type": "Card",
-                "description": description,
-                "item_details": description,
                 "grade": grade,
-                "after_service": "",
-                "images_url": "",
-                "image_data": image_data,
-                "psa_estimate": "",
-                "card_ladder_value": "",
-                "pop": "",
-                "pop_higher": ""
+                "description": description,
             })
 
-            seen_certs.add(cert_number)
+        return parsed
+
+    parsed_rows = []
+    seen_certs = set()
+
+    for page_index, info in enumerate(page_infos):
+        for row in parse_page_lines(page_index, info["text"]):
+            cert = row["cert_number"]
+            if cert in seen_certs:
+                continue
+            parsed_rows.append(row)
+            seen_certs.add(cert)
+
+    # Assign images by page order. This is more reliable than y-matching for PSA printed PDFs.
+    page_row_counts = {}
+    page_image_used = {}
+
+    for row in parsed_rows:
+        page_index = row["page_index"]
+        page_order = page_row_counts.get(page_index, 0)
+        page_row_counts[page_index] = page_order + 1
+
+        images = page_infos[page_index]["images"]
+        used = page_image_used.setdefault(page_index, set())
+
+        image_data = ""
+        available = [(idx, img) for idx, img in enumerate(images) if idx not in used]
+        available.sort(key=lambda x: (x[1]["y_mid"], x[1]["x0"]))
+
+        if page_order < len(available):
+            idx, img = available[page_order]
+            used.add(idx)
+            image_data = img["image_data"]
+        elif available:
+            idx, img = available[0]
+            used.add(idx)
+            image_data = img["image_data"]
+
+        items.append({
+            "submission_number": submission_number,
+            "order_number": order_number,
+            "cert_number": row["cert_number"],
+            "card_type": "Card",
+            "description": row["description"],
+            "item_details": row["description"],
+            "grade": row["grade"],
+            "after_service": "",
+            "images_url": "",
+            "image_data": image_data,
+            "psa_estimate": "",
+            "card_ladder_value": "",
+            "pop": "",
+            "pop_higher": ""
+        })
 
     doc.close()
     return submission_number, order_number, items
