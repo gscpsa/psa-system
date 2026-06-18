@@ -676,7 +676,10 @@ def normalize_psa_status(status):
         return "Assembly"
     if s == "shipping soon":
         return "Shipping Soon"
-    if s == "complete":
+
+    # PSA sometimes shows completed shipped orders, especially Walk-Through,
+    # as "Track Package" / "Shipped to you" instead of a plain "Complete" status.
+    if s in ["complete", "completed", "track package"]:
         return "Complete"
 
     return None
@@ -1893,7 +1896,7 @@ def extract_card_items_from_pdf(pdf_path):
         order_number = normalize_submission(order_match.group(1)) or ""
 
     noise = re.compile(
-        r"(Due to extraordinary demand|Learn more|Order Arrived|Order Prep|Research & ID|Grading|Assembly|QA Checks|Grades Ready|Complete|Track Package|Tracking number|Payment Method|Payment & Address|Return Address|Download CSV|View Grades|Your grades are ready|Grader Notes|Show More|Status|Changing your address|Customer Service|Vault Terms|Amex ending|Collectors Holdings|All rights reserved|https?://|Items\s+\d+|PSA Estimate|Card Ladder|Pop\b)",
+        r"(Due to extraordinary demand|Learn more|Order Arrived|Order Prep|Research & ID|Grading|Assembly|QA Checks|Grades Ready|Complete|Completed|Track Package|Tracking number|Payment Method|Payment & Address|Return Address|Download CSV|View Grades|Your grades are ready|Grader Notes|Show More|Status|Changing your address|Customer Service|Vault Terms|Amex ending|Collectors Holdings|All rights reserved|https?://|Items\s+\d+|PSA Estimate|Card Ladder|Pop\b|PSA\s*DNA|PSA\s*D\b|Certified|Cert\s*#)",
         re.IGNORECASE
     )
 
@@ -1997,31 +2000,63 @@ def extract_card_items_from_pdf(pdf_path):
         grade = ""
         description = ""
 
-        for line in reversed(before_lines[-45:]):
-            low = line.lower()
+        def is_good_card_description_line(line):
+            text = clean(line)
+            low = text.lower()
 
+            if not text:
+                return False
+            if noise.search(text):
+                return False
+            if is_psa_grade_line(text):
+                return False
+            if "order " in low or "submission #" in low:
+                return False
+            if low.startswith("cert") or low.startswith("item "):
+                return False
+            if "estimate" in low or "ladder" in low or low.startswith("pop"):
+                return False
+            if "shipped" in low or "ship back" in low:
+                return False
+            # Avoid OCR fragments from the slab label/image area.
+            if len(text) < 12:
+                return False
+            if re.fullmatch(r"(near|min|mint|gem|psa|d|dna|certified|card|auto|autograph|au|\d+|\W+)(\s+.*)?", low):
+                return False
+
+            return True
+
+        # PSA card-detail PDFs usually place text like:
+        # GRADE LINE
+        # CARD DESCRIPTION
+        # PSA DNA Certified
+        # Cert #123...
+        # Walking backward from Cert #, skip PSA DNA/Certified and choose the real card line.
+        for line in reversed(before_lines[-60:]):
             if not grade and is_psa_grade_line(line):
                 grade = line
                 continue
 
-            if not description:
-                if (
-                    not noise.search(line)
-                    and not is_psa_grade_line(line)
-                    and "order " not in low
-                    and "submission #" not in low
-                    and not low.startswith("cert")
-                    and not low.startswith("item ")
-                    and "estimate" not in low
-                    and "ladder" not in low
-                    and not low.startswith("pop")
-                    and "shipped" not in low
-                ):
-                    description = line
-                    continue
+            if not description and is_good_card_description_line(line):
+                description = line
+                continue
 
             if grade and description:
                 break
+
+        # Some PSA rows wrap the final description piece onto the next line before PSA DNA.
+        # If the selected line is very short, try combining adjacent clean lines.
+        if description:
+            try:
+                idx_desc = before_lines.index(description)
+                if idx_desc + 1 < len(before_lines):
+                    next_piece = before_lines[idx_desc + 1]
+                    if is_good_card_description_line(next_piece) and not is_psa_grade_line(next_piece):
+                        combined = (description + " " + next_piece).strip()
+                        if len(combined) > len(description):
+                            description = combined
+            except Exception:
+                pass
 
         for line in after_lines[:45]:
             low = line.lower()
@@ -2496,7 +2531,7 @@ def admin_upload_psa():
             pages_read = 0
 
             status_regex = re.compile(
-                r"(Order\s+Arrived|Research\s*&\s*ID|Grading|QA\s+Checks|Assembly|Shipping\s+Soon|Complete)",
+                r"(Order\s+Arrived|Research\s*&\s*ID|Grading|QA\s+Checks|Assembly|Shipping\s+Soon|Complete|Completed|Track\s+Package)",
                 re.IGNORECASE
             )
 
@@ -2681,9 +2716,33 @@ def admin_upload_psa():
                 except Exception:
                     pass
 
+            combined_pdf_text = "\n".join(pdf_text_parts)
+
+            # Safety guard: the PSA status uploader should not process PSA card-detail / grades PDFs.
+            # Those PDFs contain Cert # lines and card descriptions; they belong in Upload Card PDF.
+            cert_count_for_guard = len(re.findall(r"Cert\s*#\s*\d+", combined_pdf_text, re.IGNORECASE))
+            looks_like_card_detail_pdf = (
+                cert_count_for_guard >= 2
+                or re.search(r"Your grades are ready|View Grades|PSA DNA Certified|Download CSV", combined_pdf_text, re.IGNORECASE)
+            )
+            if looks_like_card_detail_pdf:
+                try:
+                    os.unlink(temp.name)
+                except Exception:
+                    pass
+                return page("""
+                <div class="card">
+                    <h2>Wrong PSA PDF Uploader</h2>
+                    <p>This looks like a PSA card-detail / grades PDF because it contains cert numbers and card results.</p>
+                    <p>Use <b>Cards PDF</b> for this file. The PSA PDF uploader is only for the PSA orders/status list.</p>
+                    <a class="btn" href="/admin/upload_cards">Go to Cards PDF Upload</a>
+                    <a class="btn" href="/admin/upload_psa">Back to PSA PDF Upload</a>
+                </div>
+                """)
+
             # Full-text pass for Arrived / Completed.
             # This is independent from status updates so protected/skipped statuses do not block the date field.
-            full_text_ac_map = extract_arrived_completed_from_full_text("\n".join(pdf_text_parts))
+            full_text_ac_map = extract_arrived_completed_from_full_text(combined_pdf_text)
             for ac_sub, ac_value in full_text_ac_map.items():
                 if ac_value:
                     ac_map[ac_sub] = ac_value
@@ -2945,6 +3004,8 @@ def admin_upload_cards():
                     item.get("pop_higher", "")
                 ))
                 saved += 1
+            # Card-detail PDFs only attach cert/card data.
+            # They must never change the PSA submission status.
             cur.execute("""
             UPDATE submissions
             SET card_pdf_uploaded_at=NOW(),
