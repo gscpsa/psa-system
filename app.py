@@ -1722,12 +1722,10 @@ def extract_card_items_from_pdf(pdf_path):
     """
     PSA card-detail PDF parser.
 
-    Fixes:
-    - Uses Cert # rows as anchors.
-    - Pulls grade and description from the same visual row.
-    - Crops the visible left-side card thumbnail from the rendered PDF page instead of
-      trusting embedded PDF image object order.
-    - Supports wrapped description continuation lines such as "AU".
+    Line-first version:
+    - Finds cards from page text lines so it cannot return 0 when Cert # lines exist.
+    - Uses PyMuPDF search coordinates only for image cropping.
+    - Crops the visible card thumbnail from the left side of the same row.
     """
     items = []
     submission_number = ""
@@ -1808,6 +1806,7 @@ def extract_card_items_from_pdf(pdf_path):
             "card ladder",
             "psa estimate",
             "pop ",
+            "6/18/26",
         ]
 
         if any(x in low for x in bad_fragments):
@@ -1818,41 +1817,40 @@ def extract_card_items_from_pdf(pdf_path):
 
         return False
 
-    def block_text(block):
-        parts = []
-        for line in block.get("lines", []):
-            for span in line.get("spans", []):
-                txt = span.get("text", "")
-                if txt:
-                    parts.append(txt)
-        return norm_text(" ".join(parts))
+    def get_cert_y(page, cert_number, fallback_y=None):
+        # Try several searches because PyMuPDF can split "Cert #146..." strangely.
+        for needle in [f"Cert #{cert_number}", f"#{cert_number}", cert_number]:
+            try:
+                rects = page.search_for(needle)
+                if rects:
+                    return (rects[0].y0 + rects[0].y1) / 2
+            except Exception:
+                pass
+        return fallback_y
 
-    def crop_thumbnail_from_page(pdf_page, row_top, row_bottom):
-        """
-        Crop the actual visible thumbnail from the left card-image column for the
-        same visual row as the Cert #. This is more reliable than embedded image order.
-        """
+    def crop_thumbnail_from_page(page, cert_y, row_index=None, rows_on_page=None):
         try:
-            page_rect = pdf_page.rect
+            page_rect = page.rect
 
-            # PSA printable layout card image column is left of the text, around x=35..65.
-            x0 = 28
-            x1 = 74
+            if cert_y is None:
+                # Last fallback based on visible PSA layout. Page 1 has header before item rows;
+                # page 2 starts item rows near top.
+                if rows_on_page and row_index is not None:
+                    start_y = 445 if page.number == 0 else 65
+                    spacing = 90
+                    cert_y = start_y + (row_index * spacing) + 35
+                else:
+                    return ""
 
-            # Center crop inside the card row. Use full row, but constrain to avoid Show More bars.
-            pad_top = 2
-            pad_bottom = 2
-            y0 = max(0, row_top + pad_top)
-            y1 = min(page_rect.height, row_bottom - pad_bottom)
+            # Crop the actual visible left card image. PSA printable PDFs put thumbnails in x 35..63.
+            x0 = 32
+            x1 = 68
+            y0 = max(0, cert_y - 43)
+            y1 = min(page_rect.height, cert_y + 12)
 
-            # If the row is too short or weird, use a sane fixed thumbnail height around the row.
-            if y1 - y0 < 38:
-                mid = (row_top + row_bottom) / 2
-                y0 = max(0, mid - 35)
-                y1 = min(page_rect.height, mid + 35)
-
+            # Use a high enough scale to preserve the card thumbnail.
             clip = fitz.Rect(x0, y0, x1, y1)
-            pix = pdf_page.get_pixmap(matrix=fitz.Matrix(3, 3), clip=clip, alpha=False)
+            pix = page.get_pixmap(matrix=fitz.Matrix(4, 4), clip=clip, alpha=False)
 
             if pix.width < 40 or pix.height < 55:
                 return ""
@@ -1862,46 +1860,15 @@ def extract_card_items_from_pdf(pdf_path):
             return ""
 
     full_text_parts = []
-    page_infos = []
+    page_texts = []
 
-    for page_index, page in enumerate(doc):
+    for page in doc:
         try:
-            page_text = page.get_text("text") or ""
+            text = page.get_text("text") or ""
         except Exception:
-            page_text = ""
-
-        full_text_parts.append(page_text)
-
-        text_blocks = []
-        try:
-            page_dict = page.get_text("dict")
-            for block in page_dict.get("blocks", []):
-                if block.get("type") != 0:
-                    continue
-
-                txt = block_text(block)
-                if not txt:
-                    continue
-
-                x0, y0, x1, y1 = block.get("bbox") or (0, 0, 0, 0)
-                text_blocks.append({
-                    "text": txt,
-                    "x0": x0,
-                    "y0": y0,
-                    "x1": x1,
-                    "y1": y1,
-                    "y_mid": (y0 + y1) / 2,
-                })
-        except Exception:
-            pass
-
-        text_blocks.sort(key=lambda b: (b["y_mid"], b["x0"]))
-
-        page_infos.append({
-            "page": page,
-            "text": page_text,
-            "text_blocks": text_blocks,
-        })
+            text = ""
+        page_texts.append(text)
+        full_text_parts.append(text)
 
     full_text = "\n".join(full_text_parts)
 
@@ -1915,127 +1882,69 @@ def extract_card_items_from_pdf(pdf_path):
 
     seen_certs = set()
 
-    for page_index, info in enumerate(page_infos):
-        page = info["page"]
-        blocks = info["text_blocks"]
+    for page_index, page in enumerate(doc):
+        page_text = page_texts[page_index] if page_index < len(page_texts) else ""
+        lines = [norm_text(line) for line in page_text.splitlines()]
+        lines = [line for line in lines if line]
 
-        cert_rows = []
-        for idx, block in enumerate(blocks):
-            cert_match = re.search(r"Cert\s*#\s*(\d+)", block["text"], re.IGNORECASE)
-            if not cert_match:
+        # Locate all cert lines first. This is the source of truth.
+        cert_line_positions = []
+        for i, line in enumerate(lines):
+            cert_match = re.search(r"Cert\s*#\s*(\d+)", line, re.IGNORECASE)
+            if cert_match:
+                cert_number = normalize_submission(cert_match.group(1)) or ""
+                if cert_number and cert_number not in seen_certs:
+                    cert_line_positions.append((i, cert_number, line))
+
+        rows_on_page = len(cert_line_positions)
+
+        for row_index, (line_index, cert_number, cert_line) in enumerate(cert_line_positions):
+            if cert_number in seen_certs:
                 continue
 
-            cert_number = normalize_submission(cert_match.group(1)) or ""
-            if not cert_number or cert_number in seen_certs:
-                continue
-
-            cert_rows.append((idx, block, cert_number))
-
-        for row_i, (block_index, cert_block, cert_number) in enumerate(cert_rows):
-            cert_y = cert_block["y_mid"]
-
-            # Row bottom is just before next visible card row / Show More area, or a fixed default.
-            if row_i + 1 < len(cert_rows):
-                next_cert_y = cert_rows[row_i + 1][1]["y_mid"]
-                row_bottom = max(cert_y + 8, next_cert_y - 22)
-            else:
-                # End of page row. Keep it tight enough to avoid footer.
-                row_bottom = min(page.rect.height - 18, cert_y + 34)
-
-            # Row top begins above grade line. Use the previous Show More/row divider when possible.
-            previous_cert_y = cert_rows[row_i - 1][1]["y_mid"] if row_i > 0 else None
-            if previous_cert_y is not None:
-                row_top = max(previous_cert_y + 22, cert_y - 82)
-            else:
-                row_top = max(0, cert_y - 82)
-
-            nearby = []
-            for b in blocks:
-                # Same right-side card text column.
-                if b["x0"] < 55:
-                    continue
-                if b["y_mid"] >= cert_y + 2:
-                    continue
-                if cert_y - b["y_mid"] > 105:
-                    continue
-                nearby.append(b)
-
-            nearby.sort(key=lambda b: (b["y_mid"], b["x0"]))
+            # Look above the cert line. PSA format is:
+            # grade
+            # description
+            # optional short continuation like AU
+            # PSA DNA Certified Cert #...
+            prev_lines = lines[max(0, line_index - 8):line_index]
 
             grade = ""
-            grade_y = None
-            for b in reversed(nearby):
-                if is_grade_line(b["text"]):
-                    grade = norm_text(b["text"])
-                    grade_y = b["y_mid"]
+            for prev in reversed(prev_lines):
+                if is_grade_line(prev):
+                    grade = prev
                     break
 
-            description_parts = []
-            for b in nearby:
-                text = norm_text(b["text"])
-
-                if is_bad_description_line(text):
+            desc_candidates = []
+            grade_seen = False
+            for prev in prev_lines:
+                if is_grade_line(prev):
+                    grade_seen = True
                     continue
 
-                # If grade exists, only use description after grade in the visual row.
-                if grade_y is not None and b["y_mid"] < grade_y - 2:
+                # Prefer lines after the grade, but still allow fallback if grade not detected.
+                if grade and not grade_seen:
                     continue
 
-                # Short continuation lines like "AU" are valid only after a main description.
-                if len(text) < 8 and not description_parts:
+                if is_bad_description_line(prev):
                     continue
 
-                description_parts.append(text)
+                if len(prev) < 8 and not desc_candidates:
+                    continue
 
-            # Remove duplicates while preserving order.
-            clean_parts = []
-            seen_part_keys = set()
-            for part in description_parts:
-                key = part.lower()
-                if key not in seen_part_keys:
-                    seen_part_keys.add(key)
-                    clean_parts.append(part)
+                desc_candidates.append(prev)
 
-            description = norm_text(" ".join(clean_parts))
+            if desc_candidates:
+                # Keep wrapped short continuation lines like AU.
+                if len(desc_candidates) >= 2 and len(desc_candidates[-1]) <= 5:
+                    description = norm_text(desc_candidates[-2] + " " + desc_candidates[-1])
+                else:
+                    description = norm_text(" ".join(desc_candidates[-2:]) if len(desc_candidates) >= 2 and len(desc_candidates[-1]) <= 18 else desc_candidates[-1])
+            else:
+                description = ""
 
-            # Fallback line-based extraction if block parsing misses wrapped text.
-            if not description or not grade:
-                lines = [norm_text(line) for line in (info["text"] or "").splitlines()]
-                lines = [line for line in lines if line]
-                cert_line_index = None
-
-                for i, line in enumerate(lines):
-                    if re.search(r"Cert\s*#\s*" + re.escape(cert_number), line, re.IGNORECASE):
-                        cert_line_index = i
-                        break
-
-                if cert_line_index is not None:
-                    prev_lines = lines[max(0, cert_line_index - 8):cert_line_index]
-
-                    if not grade:
-                        for prev in reversed(prev_lines):
-                            if is_grade_line(prev):
-                                grade = prev
-                                break
-
-                    if not description:
-                        candidates = []
-                        for prev in prev_lines:
-                            if is_bad_description_line(prev):
-                                continue
-                            if len(prev) < 8 and not candidates:
-                                continue
-                            candidates.append(prev)
-
-                        if candidates:
-                            # Keep continuation line such as AU with the prior long description.
-                            if len(candidates) >= 2 and len(candidates[-1]) <= 5:
-                                description = norm_text(candidates[-2] + " " + candidates[-1])
-                            else:
-                                description = norm_text(candidates[-1])
-
-            # Crop the actual visual thumbnail from this row. This avoids shifted images.
-            image_data = crop_thumbnail_from_page(page, row_top, row_bottom)
+            cert_y = get_cert_y(page, cert_number, None)
+            image_data = crop_thumbnail_from_page(page, cert_y, row_index=row_index, rows_on_page=rows_on_page)
 
             items.append({
                 "submission_number": submission_number,
@@ -2054,6 +1963,31 @@ def extract_card_items_from_pdf(pdf_path):
                 "pop_higher": ""
             })
 
+            seen_certs.add(cert_number)
+
+    # Absolute fallback: regex the full text if page iteration somehow missed the certs.
+    if not items:
+        certs = re.findall(r"Cert\s*#\s*(\d+)", full_text, re.IGNORECASE)
+        for cert_number in certs:
+            cert_number = normalize_submission(cert_number) or ""
+            if not cert_number or cert_number in seen_certs:
+                continue
+            items.append({
+                "submission_number": submission_number,
+                "order_number": order_number,
+                "cert_number": cert_number,
+                "card_type": "Card",
+                "description": "",
+                "item_details": "",
+                "grade": "",
+                "after_service": "",
+                "images_url": "",
+                "image_data": "",
+                "psa_estimate": "",
+                "card_ladder_value": "",
+                "pop": "",
+                "pop_higher": ""
+            })
             seen_certs.add(cert_number)
 
     doc.close()
