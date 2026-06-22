@@ -1722,10 +1722,11 @@ def extract_card_items_from_pdf(pdf_path):
     """
     PSA card-detail PDF parser.
 
-    Line-first version:
-    - Finds cards from page text lines so it cannot return 0 when Cert # lines exist.
-    - Uses PyMuPDF search coordinates only for image cropping.
-    - Crops the visible card thumbnail from the left side of the same row.
+    Fixes:
+    - Finds cards from page text lines so it does not return 0 when Cert # lines exist.
+    - Matches PSA embedded thumbnail images by page + vertical row position.
+    - Uses rendered crop only as fallback when no embedded thumbnail is available.
+    - Preserves wrapped description continuation lines such as "AU".
     """
     items = []
     submission_number = ""
@@ -1745,6 +1746,9 @@ def extract_card_items_from_pdf(pdf_path):
         if not image_bytes:
             return ""
         try:
+            ext = str(ext or "png").lower().replace("jpg", "jpeg")
+            if ext not in ["png", "jpeg", "webp"]:
+                ext = "png"
             return f"data:image/{ext};base64,{base64.b64encode(image_bytes).decode('ascii')}"
         except Exception:
             return ""
@@ -1806,7 +1810,6 @@ def extract_card_items_from_pdf(pdf_path):
             "card ladder",
             "psa estimate",
             "pop ",
-            "6/18/26",
         ]
 
         if any(x in low for x in bad_fragments):
@@ -1818,7 +1821,6 @@ def extract_card_items_from_pdf(pdf_path):
         return False
 
     def get_cert_y(page, cert_number, fallback_y=None):
-        # Try several searches because PyMuPDF can split "Cert #146..." strangely.
         for needle in [f"Cert #{cert_number}", f"#{cert_number}", cert_number]:
             try:
                 rects = page.search_for(needle)
@@ -1828,13 +1830,65 @@ def extract_card_items_from_pdf(pdf_path):
                 pass
         return fallback_y
 
+    def extract_page_image_blocks(page):
+        images = []
+
+        try:
+            page_dict = page.get_text("dict")
+            for block in page_dict.get("blocks", []):
+                if block.get("type") != 1:
+                    continue
+
+                bbox = block.get("bbox") or (0, 0, 0, 0)
+                x0, y0, x1, y1 = bbox
+                box_w = abs(x1 - x0)
+                box_h = abs(y1 - y0)
+                width_px = int(block.get("width") or 0)
+                height_px = int(block.get("height") or 0)
+
+                if width_px <= 0 or height_px <= 0:
+                    continue
+
+                # PSA card thumbnails are small vertical images in the left item column.
+                # Keep this flexible for different browser/PDF scaling.
+                if x0 > 160:
+                    continue
+                if box_w < 8 or box_w > 125:
+                    continue
+                if box_h < 18 or box_h > 155:
+                    continue
+                if width_px < 35 or height_px < 45:
+                    continue
+
+                # Exclude banners/logos/backgrounds/wide images.
+                if width_px > height_px * 1.65:
+                    continue
+
+                image_data = to_data_uri(block.get("image"), block.get("ext", "png"))
+                if not image_data:
+                    continue
+
+                images.append({
+                    "image_data": image_data,
+                    "x0": x0,
+                    "y0": y0,
+                    "x1": x1,
+                    "y1": y1,
+                    "y_mid": (y0 + y1) / 2,
+                    "width_px": width_px,
+                    "height_px": height_px,
+                })
+        except Exception:
+            pass
+
+        images.sort(key=lambda img: (img["y_mid"], img["x0"]))
+        return images
+
     def crop_thumbnail_from_page(page, cert_y, row_index=None, rows_on_page=None):
         try:
             page_rect = page.rect
 
             if cert_y is None:
-                # Last fallback based on visible PSA layout. Page 1 has header before item rows;
-                # page 2 starts item rows near top.
                 if rows_on_page and row_index is not None:
                     start_y = 445 if page.number == 0 else 65
                     spacing = 90
@@ -1842,13 +1896,12 @@ def extract_card_items_from_pdf(pdf_path):
                 else:
                     return ""
 
-            # Crop the actual visible left card image. PSA printable PDFs put thumbnails in x 35..63.
-            x0 = 32
-            x1 = 68
-            y0 = max(0, cert_y - 43)
-            y1 = min(page_rect.height, cert_y + 12)
+            # Flexible visible thumbnail crop. This is fallback only.
+            x0 = 24
+            x1 = 88
+            y0 = max(0, cert_y - 52)
+            y1 = min(page_rect.height, cert_y + 18)
 
-            # Use a high enough scale to preserve the card thumbnail.
             clip = fitz.Rect(x0, y0, x1, y1)
             pix = page.get_pixmap(matrix=fitz.Matrix(4, 4), clip=clip, alpha=False)
 
@@ -1860,14 +1913,19 @@ def extract_card_items_from_pdf(pdf_path):
             return ""
 
     full_text_parts = []
-    page_texts = []
+    page_infos = []
 
     for page in doc:
         try:
             text = page.get_text("text") or ""
         except Exception:
             text = ""
-        page_texts.append(text)
+
+        page_infos.append({
+            "page": page,
+            "text": text,
+            "images": extract_page_image_blocks(page),
+        })
         full_text_parts.append(text)
 
     full_text = "\n".join(full_text_parts)
@@ -1881,13 +1939,17 @@ def extract_card_items_from_pdf(pdf_path):
         order_number = normalize_submission(order_match.group(1)) or ""
 
     seen_certs = set()
+    used_images_by_page = {}
 
-    for page_index, page in enumerate(doc):
-        page_text = page_texts[page_index] if page_index < len(page_texts) else ""
+    for page_index, info in enumerate(page_infos):
+        page = info["page"]
+        page_text = info["text"]
+        page_images = info["images"]
+        used_images = used_images_by_page.setdefault(page_index, set())
+
         lines = [norm_text(line) for line in page_text.splitlines()]
         lines = [line for line in lines if line]
 
-        # Locate all cert lines first. This is the source of truth.
         cert_line_positions = []
         for i, line in enumerate(lines):
             cert_match = re.search(r"Cert\s*#\s*(\d+)", line, re.IGNORECASE)
@@ -1902,11 +1964,6 @@ def extract_card_items_from_pdf(pdf_path):
             if cert_number in seen_certs:
                 continue
 
-            # Look above the cert line. PSA format is:
-            # grade
-            # description
-            # optional short continuation like AU
-            # PSA DNA Certified Cert #...
             prev_lines = lines[max(0, line_index - 8):line_index]
 
             grade = ""
@@ -1922,7 +1979,6 @@ def extract_card_items_from_pdf(pdf_path):
                     grade_seen = True
                     continue
 
-                # Prefer lines after the grade, but still allow fallback if grade not detected.
                 if grade and not grade_seen:
                     continue
 
@@ -1935,16 +1991,52 @@ def extract_card_items_from_pdf(pdf_path):
                 desc_candidates.append(prev)
 
             if desc_candidates:
-                # Keep wrapped short continuation lines like AU.
                 if len(desc_candidates) >= 2 and len(desc_candidates[-1]) <= 5:
                     description = norm_text(desc_candidates[-2] + " " + desc_candidates[-1])
                 else:
-                    description = norm_text(" ".join(desc_candidates[-2:]) if len(desc_candidates) >= 2 and len(desc_candidates[-1]) <= 18 else desc_candidates[-1])
+                    description = norm_text(
+                        " ".join(desc_candidates[-2:])
+                        if len(desc_candidates) >= 2 and len(desc_candidates[-1]) <= 18
+                        else desc_candidates[-1]
+                    )
             else:
                 description = ""
 
             cert_y = get_cert_y(page, cert_number, None)
-            image_data = crop_thumbnail_from_page(page, cert_y, row_index=row_index, rows_on_page=rows_on_page)
+
+            image_data = ""
+
+            # Primary mapping: closest unused embedded thumbnail image by vertical row.
+            if cert_y is not None and page_images:
+                candidates = []
+                for image_index, img in enumerate(page_images):
+                    if image_index in used_images:
+                        continue
+
+                    dy = abs(img["y_mid"] - cert_y)
+
+                    # Broad enough for different PSA print layouts.
+                    if dy <= 135:
+                        candidates.append((dy, img["y_mid"], image_index, img))
+
+                if candidates:
+                    candidates.sort(key=lambda x: (x[0], x[1]))
+                    _, _, image_index, img = candidates[0]
+                    used_images.add(image_index)
+                    image_data = img["image_data"]
+
+            # Fallback by row order on same page if cert_y search failed.
+            if not image_data and page_images:
+                available = [(idx, img) for idx, img in enumerate(page_images) if idx not in used_images]
+                available.sort(key=lambda x: (x[1]["y_mid"], x[1]["x0"]))
+                if row_index < len(available):
+                    image_index, img = available[row_index]
+                    used_images.add(image_index)
+                    image_data = img["image_data"]
+
+            # Last fallback: visible crop.
+            if not image_data:
+                image_data = crop_thumbnail_from_page(page, cert_y, row_index=row_index, rows_on_page=rows_on_page)
 
             items.append({
                 "submission_number": submission_number,
@@ -1965,7 +2057,6 @@ def extract_card_items_from_pdf(pdf_path):
 
             seen_certs.add(cert_number)
 
-    # Absolute fallback: regex the full text if page iteration somehow missed the certs.
     if not items:
         certs = re.findall(r"Cert\s*#\s*(\d+)", full_text, re.IGNORECASE)
         for cert_number in certs:
