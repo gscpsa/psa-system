@@ -368,6 +368,64 @@ def get_dropoff_date(data):
 
     return ""
 
+
+def get_psa_received_date(data):
+    data = data or {}
+
+    value = get_field(data, [
+        "Date PSA Received",
+        "PSA Received Date",
+        "Received at PSA",
+        "PSA Received",
+        "Arrived at PSA",
+        "Arrived At PSA",
+        "Arrived / Completed",
+        "Arrived/Completed",
+        "Order Arrived",
+        "Order Arrived Date"
+    ])
+
+    parsed = parse_arrived_completed_value(value)
+    if parsed.get("arrived"):
+        return parsed["arrived"]
+
+    cleaned = strip_arrived_at_psa_prefix(value)
+    if cleaned:
+        return cleaned
+
+    return ""
+
+
+def get_expected_completion_date(data):
+    data = data or {}
+
+    value = get_field(data, [
+        "Expected Delivery Date",
+        "Expected Completion Date",
+        "Expected Complete Date",
+        "Expected Date",
+        "Estimated Completion Date",
+        "Est. Complete by",
+        "Estimated Complete by",
+        "Est Complete by",
+        "Est. Completion",
+        "Estimated Completion",
+        "ETA",
+        "Due Date",
+        "Arrived / Completed",
+        "Arrived/Completed"
+    ])
+
+    parsed = parse_arrived_completed_value(value)
+    if parsed.get("estimated"):
+        return parsed["estimated"]
+
+    cleaned = date_only_display(value)
+    if cleaned:
+        return cleaned
+
+    return ""
+
 def strip_arrived_at_psa_prefix(value):
     text = str(value or "").strip()
     # Remove one or more leading labels, including accidental duplicates.
@@ -1673,9 +1731,9 @@ def build_table(rows):
         dropoff = get_dropoff_date(data)
         display_status = customer_status_label(status or "Submitted")
 
-        arrived_completed_raw = get_field(data, ["Arrived / Completed"])
+        arrived_completed_raw = get_psa_received_date(data)
         arrived_completed_data = parse_arrived_completed_value(arrived_completed_raw)
-        estimated_completion = get_field(data, ["Estimated Completion Date", "Est. Complete by", "Estimated Complete by", "Est Complete by", "Estimated Completion", "Est. Completion"]) or arrived_completed_data["estimated"]
+        estimated_completion = get_expected_completion_date(data)
 
         details_parts = []
 
@@ -4521,11 +4579,11 @@ def portal_orders():
         cards = get_field(data, ["# Of Cards", "# of Cards", "Cards"])
         service = clean_service_display(get_field(data, ["Service Type", "Service"]))
         date = get_dropoff_date(data)
-        arrived_completed_raw = get_field(data, ["Arrived / Completed"])
+        arrived_completed_raw = get_psa_received_date(data)
         arrived_completed_data = parse_arrived_completed_value(arrived_completed_raw)
         arrived_completed = arrived_completed_data["display"]
         arrived_completed = strip_arrived_at_psa_prefix(arrived_completed)
-        estimated_completion = get_field(data, ["Estimated Completion Date", "Est. Complete by", "Estimated Complete by", "Est Complete by", "Estimated Completion", "Est. Completion"]) or arrived_completed_data["estimated"]
+        estimated_completion = get_expected_completion_date(data)
         display_status = status or "Submitted"
         display_status_label = customer_status_label(display_status)
 
@@ -4610,8 +4668,8 @@ def portal_orders():
             <h3>{customer_name}</h3>
             <p><b>Submission #:</b> {sub}</p>
             <p><b>Status:</b> <span class="status">{display_status_label}</span></p>
-            <p><b>Arrived at PSA:</b> {arrived_completed}</p>
-            <p><b>Estimated Completion Date:</b> {estimated_completion}</p>
+            <p><b>Date PSA Received:</b> {arrived_completed}</p>
+            <p><b>Expected Completion Date:</b> {estimated_completion}</p>
             <p><b>Cards:</b> {cards}</p>
             <p><b>Service:</b> {service}</p>
             <p><b>Customer Drop-Off Date:</b> {date}</p>
