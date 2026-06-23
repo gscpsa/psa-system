@@ -1,7 +1,8 @@
 from flask import Flask, request, session, redirect
 import pandas as pd
 import psycopg2
-import os, io, json, re, traceback, base64
+import os, io, json, re, traceback, base64, smtplib
+from email.message import EmailMessage
 from functools import wraps
 
 app = Flask(__name__)
@@ -13,6 +14,12 @@ SMS_PROVIDER = os.getenv("SMS_PROVIDER", "queue_only").lower()
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
 TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER", "")
+SELL_BUYBACK_EMAIL = os.getenv("SELL_BUYBACK_EMAIL", "sell@giantsportscards.com")
+SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587") or "587")
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_FROM = os.getenv("SMTP_FROM", SELL_BUYBACK_EMAIL)
 
 # =========================
 # DATABASE
@@ -274,6 +281,8 @@ def get_field(data, names):
 def customer_status_label(status):
     if status == "Delivered to Us":
         return "Ready For Pickup"
+    if status == "Complete":
+        return "Grading Complete"
     return status or "Submitted"
 
 def psa_status_steps():
@@ -551,6 +560,59 @@ def build_buyback_offer_message(submission_number, cert_number, item_details, gr
 
     return " ".join(parts)
 
+
+def send_buyback_interest_email(customer_name, contact_info, submission_number, selected_cards):
+    """
+    Sends the customer's sell-interest notification to the team.
+    Uses SMTP_* environment variables when configured.
+    """
+    subject = "PSA Customer Interested In Selling Cards"
+    manage_link = f"{PUBLIC_PORTAL_URL}/admin/buyback_requests?queue=interest"
+
+    card_lines = []
+    for card in selected_cards:
+        cert = str(card.get("cert_number", "")).strip()
+        desc = str(card.get("description", "")).strip()
+        grade = str(card.get("grade", "")).strip()
+        line = f"- Cert #{cert}"
+        if desc:
+            line += f": {desc}"
+        if grade:
+            line += f" | Grade: {grade}"
+        card_lines.append(line)
+
+    body = f"""A PSA customer selected cards they may be interested in selling.
+
+Name: {customer_name}
+Contact Info: {contact_info}
+Submission #: {submission_number}
+
+Card(s):
+{chr(10).join(card_lines)}
+
+Manage / add offer:
+{manage_link}
+"""
+
+    if not SMTP_HOST:
+        return False, "SMTP not configured"
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = SMTP_FROM
+    msg["To"] = SELL_BUYBACK_EMAIL
+    msg.set_content(body)
+
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as server:
+            server.starttls()
+            if SMTP_USER and SMTP_PASSWORD:
+                server.login(SMTP_USER, SMTP_PASSWORD)
+            server.send_message(msg)
+        return True, "Sent"
+    except Exception:
+        return False, traceback.format_exc()
+
 def queue_buyback_offer_sms(cur, submission_number, cert_number, offer_amount, offer_notes):
     if not offer_amount:
         return False
@@ -777,6 +839,7 @@ def page(content, mode="admin"):
         <a href="/admin/buyback_requests">Buyback</a>
         <a href="/admin/sms_notifications">SMS Queue</a>
         <a href="/portal">Portal</a>
+        <a href="/admin/setup_info">Setup</a>
         <a href="/admin/logout">Logout</a>
         """
     else:
@@ -1612,7 +1675,7 @@ def build_table(rows):
 
         arrived_completed_raw = get_field(data, ["Arrived / Completed"])
         arrived_completed_data = parse_arrived_completed_value(arrived_completed_raw)
-        estimated_completion = get_field(data, ["Estimated Completion Date"]) or arrived_completed_data["estimated"]
+        estimated_completion = get_field(data, ["Estimated Completion Date", "Est. Complete by", "Estimated Complete by", "Est Complete by", "Estimated Completion", "Est. Completion"]) or arrived_completed_data["estimated"]
 
         details_parts = []
 
@@ -2181,6 +2244,36 @@ def admin_login():
         </form>
     </div>
     """)
+
+
+@app.route("/admin/setup_info")
+@admin_required
+def admin_setup_info():
+    admin_pw_source = "ADMIN_PASSWORD Railway environment variable" if os.getenv("ADMIN_PASSWORD") else "default fallback password: admin123"
+    return page(f"""
+    <div class="card">
+        <h2>Setup Info</h2>
+        <p><b>Admin password source:</b> {html_escape(admin_pw_source)}</p>
+        <h3>Twilio SMS Setup</h3>
+        <p>Add these Railway environment variables:</p>
+        <pre>SMS_PROVIDER=twilio
+TWILIO_ACCOUNT_SID=your_twilio_account_sid
+TWILIO_AUTH_TOKEN=your_twilio_auth_token
+TWILIO_FROM_NUMBER=your_twilio_phone_number</pre>
+        <p>Twilio pricing is usage-based. Typical costs are a monthly phone-number fee plus per-message carrier/SMS fees. Check Twilio directly before launch.</p>
+        <h3>Buyback Email Setup</h3>
+        <p>Buyback interest emails go to <b>{html_escape(SELL_BUYBACK_EMAIL)}</b>. To send email from the app, configure:</p>
+        <pre>SELL_BUYBACK_EMAIL=sell@giantsportscards.com
+SMTP_HOST=your_smtp_host
+SMTP_PORT=587
+SMTP_USER=your_smtp_user
+SMTP_PASSWORD=your_smtp_password
+SMTP_FROM=no-reply@giantsportscards.com</pre>
+        <h3>CNAME</h3>
+        <p>Point <b>psa.giantsportscards.com</b> as a CNAME to the Railway-provided domain, then add that custom domain in Railway.</p>
+    </div>
+    """)
+
 
 @app.route("/admin/logout")
 def admin_logout():
@@ -3373,44 +3466,53 @@ def portal_sms_preferences():
     sms_opt_in = sms_mode != "none"
     sms_pickup_only = sms_mode == "pickup"
 
-    if not submission_number:
-        return redirect("/portal/orders")
-
     conn = get_conn()
     cur = conn.cursor()
 
     cur.execute("""
-    SELECT raw_data
+    SELECT submission_number, raw_data
     FROM submissions
-    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-    """, (submission_number,))
-    row = cur.fetchone()
+    ORDER BY last_updated DESC
+    """)
+    rows = cur.fetchall()
 
-    if not row:
-        cur.close()
-        conn.close()
-        return redirect("/portal/orders")
+    matched_subs = []
+    for sub_value, data in rows:
+        data = data or {}
+        name = str(get_field(data, [
+            "Customer Name", "Customer", "Name", "Full Name", "Billing Name", "Client"
+        ])).lower()
 
-    data = row[0] or {}
-    name = str(get_field(data, ["Customer Name", "Name"])).lower()
-    contact = normalize_phone(get_field(data, ["Contact Info", "Phone", "Phone Number"]))
+        contact = normalize_phone(get_field(data, [
+            "Contact Info", "Phone", "Phone Number", "Customer Phone", "Customer Contact",
+            "Mobile", "Cell", "Telephone", "Billing Phone"
+        ]))
 
-    phone_match = bool(contact) and (phone in contact or contact in phone)
-    name_match = bool(last) and last in name
+        sub_clean = normalize_submission(sub_value)
 
-    if phone_match and name_match:
+        phone_match = bool(contact) and (phone in contact or contact in phone)
+        name_match = bool(last) and last in name
+
+        if phone_match and name_match and sub_clean:
+            if submission_number and sub_clean != submission_number:
+                continue
+            matched_subs.append(sub_clean)
+
+    if matched_subs:
         cur.execute("""
         UPDATE submissions
         SET sms_opt_in=%s,
             sms_pickup_only=%s,
+            sms_mode=%s,
             last_updated=NOW()
-        WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-        """, (sms_opt_in, sms_pickup_only, submission_number))
+        WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g') = ANY(%s)
+        """, (sms_opt_in, sms_pickup_only, sms_mode, matched_subs))
         conn.commit()
 
     cur.close()
     conn.close()
     return redirect("/portal/orders")
+
 
 @app.route("/portal/sell_interest", methods=["POST"])
 def portal_sell_interest():
@@ -3418,39 +3520,87 @@ def portal_sell_interest():
     last = clean(session.get("last")).lower()
     if not phone or not last:
         return redirect("/portal")
+
     certs = request.form.getlist("cert")
     submission_number = normalize_submission(request.form.get("submission_number"))
     if not submission_number:
         return redirect("/portal/orders")
+
     conn = get_conn()
     cur = conn.cursor()
+
     cur.execute("""
     SELECT raw_data FROM submissions
     WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
     """, (submission_number,))
     row = cur.fetchone()
     if not row:
-        cur.close(); conn.close(); return redirect("/portal/orders")
+        cur.close()
+        conn.close()
+        return redirect("/portal/orders")
+
     data = row[0] or {}
-    name = str(get_field(data, ["Customer Name", "Name"])).lower()
-    contact = normalize_phone(get_field(data, ["Contact Info", "Phone", "Phone Number"]))
+    customer_name = get_field(data, ["Customer Name", "Customer", "Name", "Full Name", "Billing Name", "Client"])
+    contact_info = get_field(data, [
+        "Contact Info", "Phone", "Phone Number", "Customer Phone", "Customer Contact",
+        "Mobile", "Cell", "Telephone", "Billing Phone"
+    ])
+
+    name = str(customer_name or "").lower()
+    contact = normalize_phone(contact_info)
     phone_match = bool(contact) and (phone in contact or contact in phone)
     name_match = bool(last) and last in name
+
     if not (phone_match and name_match):
-        cur.close(); conn.close(); return redirect("/portal/orders")
+        cur.close()
+        conn.close()
+        return redirect("/portal/orders")
+
     cur.execute("""
     UPDATE card_buyback_items SET interested=FALSE, updated_at=NOW()
     WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
     """, (submission_number,))
+
+    selected_cards = []
     for cert in certs:
         cert_clean = normalize_submission(cert)
         if cert_clean:
             cur.execute("""
-            UPDATE card_buyback_items SET interested=TRUE, updated_at=NOW()
+            UPDATE card_buyback_items
+            SET interested=TRUE,
+                buyback_status=CASE WHEN COALESCE(buyback_status, 'New') IN ('', 'New') THEN 'New' ELSE buyback_status END,
+                updated_at=NOW()
             WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
               AND REGEXP_REPLACE(cert_number, '\\D', '', 'g')=%s
             """, (submission_number, cert_clean))
-    conn.commit(); cur.close(); conn.close()
+
+            cur.execute("""
+            SELECT cert_number, COALESCE(description, item_details, ''), COALESCE(grade, '')
+            FROM card_buyback_items
+            WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+              AND REGEXP_REPLACE(cert_number, '\\D', '', 'g')=%s
+            LIMIT 1
+            """, (submission_number, cert_clean))
+            card_row = cur.fetchone()
+            if card_row:
+                selected_cards.append({
+                    "cert_number": card_row[0],
+                    "description": card_row[1],
+                    "grade": card_row[2]
+                })
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    if selected_cards:
+        send_buyback_interest_email(
+            customer_name or "",
+            contact_info or phone,
+            submission_number,
+            selected_cards
+        )
+
     return redirect("/portal/orders")
 
 
@@ -4060,7 +4210,6 @@ def portal():
 
                 <div class="gsc-redesign-actions">
                     <a class="gsc-redesign-btn primary" href="/portal">Home</a>
-                    <a class="gsc-redesign-btn" href="/portal/logout">Logout</a>
                 </div>
             </div>
 
@@ -4268,6 +4417,42 @@ def portal_orders():
         html += "<div class='card'>No matching orders found. Check phone number and last name.</div>"
         return page(html, mode="portal")
 
+
+    # Customer-level text notification preference. Applies to all matched submissions for this logged-in customer.
+    matched_modes = [str(v[4] if len(v) > 4 else "none").lower() for v in grouped.values()]
+    current_sms_mode = "none"
+    if matched_modes:
+        if "all" in matched_modes:
+            current_sms_mode = "all"
+        elif "pickup" in matched_modes:
+            current_sms_mode = "pickup"
+
+    none_checked = "checked" if current_sms_mode == "none" else ""
+    pickup_checked = "checked" if current_sms_mode == "pickup" else ""
+    all_checked = "checked" if current_sms_mode == "all" else ""
+
+    html += f"""
+    <div class="card">
+        <h3>Text Notifications</h3>
+        <p>Choose one text preference for all PSA submissions tied to this phone/name. Message and data rates may apply. You can change this anytime.</p>
+        <form method="post" action="/portal/sms_preferences">
+            <label class="sell-check">
+                <input type="radio" name="sms_mode" value="none" {none_checked}>
+                No text messages
+            </label>
+            <label class="sell-check">
+                <input type="radio" name="sms_mode" value="pickup" {pickup_checked}>
+                Text me when an order is ready for pickup
+            </label>
+            <label class="sell-check">
+                <input type="radio" name="sms_mode" value="all" {all_checked}>
+                Text me for every PSA status change
+            </label>
+            <button type="submit">Save Text Settings</button>
+        </form>
+    </div>
+    """
+
     statuses_available = customer_status_options()
 
     def selected(option_value, current_value):
@@ -4340,7 +4525,7 @@ def portal_orders():
         arrived_completed_data = parse_arrived_completed_value(arrived_completed_raw)
         arrived_completed = arrived_completed_data["display"]
         arrived_completed = strip_arrived_at_psa_prefix(arrived_completed)
-        estimated_completion = get_field(data, ["Estimated Completion Date"]) or arrived_completed_data["estimated"]
+        estimated_completion = get_field(data, ["Estimated Completion Date", "Est. Complete by", "Estimated Complete by", "Est Complete by", "Estimated Completion", "Est. Completion"]) or arrived_completed_data["estimated"]
         display_status = status or "Submitted"
         display_status_label = customer_status_label(display_status)
 
@@ -4418,36 +4603,7 @@ def portal_orders():
             </details>
             """
 
-        sms_mode = sms_mode or "none"
-        none_checked = "checked" if sms_mode == "none" else ""
-        pickup_checked = "checked" if sms_mode == "pickup" else ""
-        all_checked = "checked" if sms_mode == "all" else ""
-
-        sms_html = f"""
-        <hr>
-        <form method="post" action="/portal/sms_preferences">
-            <input type="hidden" name="submission_number" value="{sub}">
-            <h4>Text Notifications</h4>
-
-            <label class="sell-check">
-                <input type="radio" name="sms_mode" value="none" {none_checked}>
-                No text messages
-            </label>
-
-            <label class="sell-check">
-                <input type="radio" name="sms_mode" value="pickup" {pickup_checked}>
-                Text me when this submission is ready for pickup
-            </label>
-
-            <label class="sell-check">
-                <input type="radio" name="sms_mode" value="all" {all_checked}>
-                Text me for every PSA status change on this submission
-            </label>
-
-            <button type="submit">Save Text Settings</button>
-            <p><small>Texts go to the phone number on this order. Each text identifies the exact submission number. Message/data rates may apply.</small></p>
-        </form>
-        """
+        sms_html = ""
 
         html += f"""
         <div class="card">
