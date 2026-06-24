@@ -285,6 +285,7 @@ def customer_status_label(status):
         return "Grading Complete"
     return status or "Submitted"
 
+
 def psa_status_steps():
     return [
         "Submitted",
@@ -1442,7 +1443,7 @@ def page(content, mode="admin"):
         }}
 
         body.portal-body .gsc-redesign-logo {{
-            width:155px !important;
+            width: 240px !important;
             height:auto !important;
             filter:brightness(0) saturate(100%) invert(20%) sepia(44%) saturate(1023%) hue-rotate(105deg) brightness(89%) contrast(93%)
                    drop-shadow(0 1px 0 #ffffff)
@@ -3512,63 +3513,37 @@ def admin_buyback_status():
 def portal_sms_preferences():
     phone = normalize_phone(session.get("phone"))
     last = clean(session.get("last")).lower()
-
     if not phone or not last:
         return redirect("/portal")
-
-    submission_number = normalize_submission(request.form.get("submission_number"))
     sms_mode = request.form.get("sms_mode", "none")
     if sms_mode not in ["none", "pickup", "all"]:
         sms_mode = "none"
-
     sms_opt_in = sms_mode != "none"
     sms_pickup_only = sms_mode == "pickup"
-
     conn = get_conn()
     cur = conn.cursor()
-
     cur.execute("""
     SELECT submission_number, raw_data
     FROM submissions
     ORDER BY last_updated DESC
     """)
     rows = cur.fetchall()
-
     matched_subs = []
     for sub_value, data in rows:
         data = data or {}
-        name = str(get_field(data, [
-            "Customer Name", "Customer", "Name", "Full Name", "Billing Name", "Client"
-        ])).lower()
-
-        contact = normalize_phone(get_field(data, [
-            "Contact Info", "Phone", "Phone Number", "Customer Phone", "Customer Contact",
-            "Mobile", "Cell", "Telephone", "Billing Phone"
-        ]))
-
+        name = str(get_field(data, ["Customer Name", "Customer", "Name", "Full Name", "Billing Name", "Client"])).lower()
+        contact = normalize_phone(get_field(data, ["Contact Info", "Phone", "Phone Number", "Customer Phone", "Customer Contact", "Mobile", "Cell", "Telephone", "Billing Phone"]))
         sub_clean = normalize_submission(sub_value)
-
-        phone_match = bool(contact) and (phone in contact or contact in phone)
-        name_match = bool(last) and last in name
-
-        if phone_match and name_match and sub_clean:
-            if submission_number and sub_clean != submission_number:
-                continue
+        if bool(contact) and (phone in contact or contact in phone) and bool(last) and last in name and sub_clean:
             matched_subs.append(sub_clean)
-
     if matched_subs:
         cur.execute("""
         UPDATE submissions
-        SET sms_opt_in=%s,
-            sms_pickup_only=%s,
-            sms_mode=%s,
-            last_updated=NOW()
+        SET sms_opt_in=%s, sms_pickup_only=%s, sms_mode=%s, last_updated=NOW()
         WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g') = ANY(%s)
         """, (sms_opt_in, sms_pickup_only, sms_mode, matched_subs))
         conn.commit()
-
-    cur.close()
-    conn.close()
+    cur.close(); conn.close()
     return redirect("/portal/orders")
 
 
@@ -3578,47 +3553,29 @@ def portal_sell_interest():
     last = clean(session.get("last")).lower()
     if not phone or not last:
         return redirect("/portal")
-
     certs = request.form.getlist("cert")
     submission_number = normalize_submission(request.form.get("submission_number"))
     if not submission_number:
         return redirect("/portal/orders")
-
-    conn = get_conn()
-    cur = conn.cursor()
-
+    conn = get_conn(); cur = conn.cursor()
     cur.execute("""
     SELECT raw_data FROM submissions
     WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
     """, (submission_number,))
     row = cur.fetchone()
     if not row:
-        cur.close()
-        conn.close()
-        return redirect("/portal/orders")
-
+        cur.close(); conn.close(); return redirect("/portal/orders")
     data = row[0] or {}
     customer_name = get_field(data, ["Customer Name", "Customer", "Name", "Full Name", "Billing Name", "Client"])
-    contact_info = get_field(data, [
-        "Contact Info", "Phone", "Phone Number", "Customer Phone", "Customer Contact",
-        "Mobile", "Cell", "Telephone", "Billing Phone"
-    ])
-
+    contact_info = get_field(data, ["Contact Info", "Phone", "Phone Number", "Customer Phone", "Customer Contact", "Mobile", "Cell", "Telephone", "Billing Phone"])
     name = str(customer_name or "").lower()
     contact = normalize_phone(contact_info)
-    phone_match = bool(contact) and (phone in contact or contact in phone)
-    name_match = bool(last) and last in name
-
-    if not (phone_match and name_match):
-        cur.close()
-        conn.close()
-        return redirect("/portal/orders")
-
+    if not (bool(contact) and (phone in contact or contact in phone) and bool(last) and last in name):
+        cur.close(); conn.close(); return redirect("/portal/orders")
     cur.execute("""
     UPDATE card_buyback_items SET interested=FALSE, updated_at=NOW()
     WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
     """, (submission_number,))
-
     selected_cards = []
     for cert in certs:
         cert_clean = normalize_submission(cert)
@@ -3631,7 +3588,6 @@ def portal_sell_interest():
             WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
               AND REGEXP_REPLACE(cert_number, '\\D', '', 'g')=%s
             """, (submission_number, cert_clean))
-
             cur.execute("""
             SELECT cert_number, COALESCE(description, item_details, ''), COALESCE(grade, '')
             FROM card_buyback_items
@@ -3641,24 +3597,10 @@ def portal_sell_interest():
             """, (submission_number, cert_clean))
             card_row = cur.fetchone()
             if card_row:
-                selected_cards.append({
-                    "cert_number": card_row[0],
-                    "description": card_row[1],
-                    "grade": card_row[2]
-                })
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
+                selected_cards.append({"cert_number": card_row[0], "description": card_row[1], "grade": card_row[2]})
+    conn.commit(); cur.close(); conn.close()
     if selected_cards:
-        send_buyback_interest_email(
-            customer_name or "",
-            contact_info or phone,
-            submission_number,
-            selected_cards
-        )
-
+        send_buyback_interest_email(customer_name or "", contact_info or phone, submission_number, selected_cards)
     return redirect("/portal/orders")
 
 
@@ -3767,7 +3709,7 @@ def portal():
         }
 
         .gsc-redesign-logo {
-            width:172px;
+            width: 240px;
             max-width:100%;
             height:auto;
             display:block;
@@ -4193,7 +4135,7 @@ def portal():
             }
 
             .gsc-redesign-logo {
-                width:215px;
+                width: 240px;
             }
 
             .gsc-track-card {
@@ -4230,7 +4172,7 @@ def portal():
             }
 
             .gsc-redesign-logo {
-                width:150px;
+                width: 240px;
             }
 
             .gsc-redesign-title {
