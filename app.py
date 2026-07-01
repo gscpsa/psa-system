@@ -232,9 +232,9 @@ def normalize_phone(v):
 
 def normalize_key_text(value):
     text = str(value or "").strip().lower()
-    text = text.replace("ƒ", "f")
-    text = text.replace("æ", "f")
-    text = text.replace("â\x80\x99", "'")
+    text = text.replace("Æ", "f")
+    text = text.replace("Ã¦Â", "f")
+    text = text.replace("Ã¢\x80\x99", "'")
     text = text.replace(".", "")
     text = re.sub(r"\s+", " ", text)
     return text
@@ -246,10 +246,10 @@ def is_dropoff_date_key(key):
     direct_names = [
         "fand",
         "f and",
-        "ƒand",
-        "ƒ and",
-        "æand",
-        "æ and",
+        "Æand",
+        "Æ and",
+        "Ã¦Âand",
+        "Ã¦Â and",
         "submission date",
         "customer drop-off date",
         "customer drop off date",
@@ -307,8 +307,8 @@ def clean_service_display(service):
     value = str(service or "").strip()
     if " - " in value:
         return value.split(" - ", 1)[0].strip()
-    if " – " in value:
-        return value.split(" – ", 1)[0].strip()
+    if " â " in value:
+        return value.split(" â ", 1)[0].strip()
     return value
 
 def date_only_display(value):
@@ -353,10 +353,10 @@ def get_dropoff_date(data):
         "Customer Drop-Off Date",
         "Customer Drop Off Date",
         "Submission Date",
-        "ƒand",
-        "ƒand.",
         "Æand",
         "Æand.",
+        "ÃÂand",
+        "ÃÂand.",
         "fand",
         "Fand",
         "F and",
@@ -446,8 +446,8 @@ def parse_arrived_completed_value(value):
 
     month = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
     date_single = month + r"\s+\d{1,2},\s+\d{4}"
-    date_range_same_year = month + r"\s+\d{1,2}\s*[-–]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
-    date_range_full = date_single + r"\s*[-–]\s*" + date_single
+    date_range_same_year = month + r"\s+\d{1,2}\s*[-â]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
+    date_range_full = date_single + r"\s*[-â]\s*" + date_single
 
     completed_match = re.search(r"Completed\s+(" + date_single + r")", text, re.IGNORECASE)
     if completed_match:
@@ -621,10 +621,6 @@ def build_buyback_offer_message(submission_number, cert_number, item_details, gr
 
 
 def send_buyback_interest_email(customer_name, contact_info, submission_number, selected_cards):
-    """
-    Sends the customer's sell-interest notification to the team.
-    Uses SMTP_* environment variables when configured.
-    """
     subject = "PSA Customer Interested In Selling Cards"
     manage_link = f"{PUBLIC_PORTAL_URL}/admin/buyback_requests?queue=interest"
 
@@ -633,6 +629,7 @@ def send_buyback_interest_email(customer_name, contact_info, submission_number, 
         cert = str(card.get("cert_number", "")).strip()
         desc = str(card.get("description", "")).strip()
         grade = str(card.get("grade", "")).strip()
+
         line = f"- Cert #{cert}"
         if desc:
             line += f": {desc}"
@@ -646,10 +643,10 @@ Name: {customer_name}
 Contact Info: {contact_info}
 Submission #: {submission_number}
 
-Card(s):
+Card(s) with Cert #:
 {chr(10).join(card_lines)}
 
-Manage / add offer:
+Manage this request and add an offer in the Buyback admin dashboard:
 {manage_link}
 
 Note: Staff should manage the offer and status inside the Buyback admin screen. Email replies do not automatically update the app.
@@ -673,6 +670,8 @@ Note: Staff should manage the offer and status inside the Buyback admin screen. 
         return True, "Sent"
     except Exception:
         return False, traceback.format_exc()
+
+
 
 def queue_buyback_offer_sms(cur, submission_number, cert_number, offer_amount, offer_notes):
     if not offer_amount:
@@ -1173,7 +1172,7 @@ def page(content, mode="admin"):
             color:#198754;
         }}
         .buyback-collapsible[open] summary:after {{
-            content:"–";
+            content:"â";
         }}
         .buyback-collapsible .buyback-inner {{
             padding:14px;
@@ -1790,7 +1789,7 @@ def build_table(rows):
                 details_parts.append(f"<b>{html_escape(key_text)}:</b> {html_escape(val)}")
 
         if not details_parts:
-            details_html = "<span style='color:#6b7280;'>—</span>"
+            details_html = "<span style='color:#6b7280;'>â</span>"
         else:
             details_html = "<details class='row-details'><summary>Details</summary><div>" + "<br>".join(details_parts[:12]) + "</div></details>"
 
@@ -2676,8 +2675,8 @@ def admin_upload_psa():
 
                 month_pattern = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
                 date_pattern = month_pattern + r"\s+\d{1,2},\s+\d{4}"
-                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-–]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
-                date_range_full = date_pattern + r"\s*[-–]\s*" + date_pattern
+                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-â]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
+                date_range_full = date_pattern + r"\s*[-â]\s*" + date_pattern
 
                 value_pattern = re.compile(
                     rf"(Completed\s+{date_pattern}|Est\.\s*Complete\s*by\s+{date_range_full}|Est\.\s*Complete\s*by\s+{date_range_same_year}|Est\.\s*Complete\s*by\s+{date_pattern}|Estimated\s*Complete\s*by\s+{date_range_full}|Estimated\s*Complete\s*by\s+{date_range_same_year}|Estimated\s*Complete\s*by\s+{date_pattern}|Est\.\s*by\s+{date_range_full}|Est\.\s*by\s+{date_range_same_year}|Est\.\s*by\s+{date_pattern}|{date_pattern})",
@@ -2750,7 +2749,7 @@ def admin_upload_psa():
                             j += 1
 
                     # Split case:
-                    # • Sub
+                    # â¢ Sub
                     # #14550482
                     # Research & ID
                     elif re.search(r"\bSub\b\s*$", line, re.IGNORECASE) and i + 1 < len(lines):
@@ -2789,7 +2788,7 @@ def admin_upload_psa():
                             block_text = re.sub(r",\s+(\d{4})", r", \1", block_text)
 
                             matches = re.findall(
-                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
+                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-â]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
                                 block_text,
                                 re.IGNORECASE
                             )
@@ -4258,9 +4257,7 @@ def portal():
 
                 <p class="gsc-redesign-copy">Track your submission every step of the way.</p>
 
-                <div class="gsc-redesign-actions">
-                    <a class="gsc-redesign-btn primary" href="/portal">Home</a>
-                </div>
+                <div class="gsc-redesign-actions"></div>
             </div>
 
             <div class="gsc-track-card">
