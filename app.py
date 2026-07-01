@@ -651,6 +651,8 @@ Card(s):
 
 Manage / add offer:
 {manage_link}
+
+Note: Staff should manage the offer and status inside the Buyback admin screen. Email replies do not automatically update the app.
 """
 
     if not SMTP_HOST:
@@ -898,7 +900,6 @@ def page(content, mode="admin"):
         <a href="/admin/buyback_requests">Buyback</a>
         <a href="/admin/sms_notifications">SMS Queue</a>
         <a href="/portal">Portal</a>
-        <a href="/admin/setup_info">Setup</a>
         <a href="/admin/logout">Logout</a>
         """
     else:
@@ -1443,7 +1444,7 @@ def page(content, mode="admin"):
         }}
 
         body.portal-body .gsc-redesign-logo {{
-            width: 280px !important;
+            width:270px !important;
             height:auto !important;
             filter:brightness(0) saturate(100%) invert(20%) sepia(44%) saturate(1023%) hue-rotate(105deg) brightness(89%) contrast(93%)
                    drop-shadow(0 1px 0 #ffffff)
@@ -1600,6 +1601,18 @@ def page(content, mode="admin"):
             body.portal-body .topbar .brand img {{
                 max-height:95px !important;
                 max-width:260px !important;
+            }}
+        }}
+
+        /* CUSTOMER RESULTS LOGO FINAL SIZE */
+        body.portal-body .portal-results-logo {{
+            width:190px !important;
+            max-width:65vw !important;
+            height:auto !important;
+        }}
+        @media (max-width: 700px) {{
+            body.portal-body .portal-results-logo {{
+                width:160px !important;
             }}
         }}
 </style>
@@ -2314,44 +2327,6 @@ def admin_login():
             <input type="password" name="password" placeholder="Admin password">
             <button>Login</button>
         </form>
-    </div>
-    """)
-
-
-@app.route("/admin/setup_info")
-@admin_required
-def admin_setup_info():
-    admin_pw_source = "ADMIN_PASSWORD Railway environment variable" if os.getenv("ADMIN_PASSWORD") else "default fallback password: admin123"
-    return page(f"""
-    <div class="card">
-        <h2>Setup Info</h2>
-
-        <h3>Admin Password</h3>
-        <p><b>Admin password source:</b> {html_escape(admin_pw_source)}</p>
-
-        <h3>Twilio SMS Setup</h3>
-        <p>To enable live texting, Jon needs to create or approve a Twilio account, add a payment method, and purchase/assign an SMS-capable Twilio phone number.</p>
-        <p>Add these Railway environment variables:</p>
-        <pre>SMS_PROVIDER=twilio
-TWILIO_ACCOUNT_SID=your_twilio_account_sid
-TWILIO_AUTH_TOKEN=your_twilio_auth_token
-TWILIO_FROM_NUMBER=your_twilio_phone_number</pre>
-        <p><b>Cost structure:</b> Twilio is usage-based. Expect a monthly phone-number cost plus per-message SMS/carrier fees. Exact pricing depends on Twilio's current rates, message volume, destination, and carrier fees.</p>
-        <p><b>Consent:</b> The customer portal now requires visible customer opt-in before text messages are enabled. Customers can choose no texts, pickup-only texts, or every-status-change texts. The consent language tells them message/data rates may apply and that they can reply STOP to opt out.</p>
-
-        <h3>Buyback Email Setup</h3>
-        <p>When a customer selects cards they may want to sell, the app emails <b>{html_escape(SELL_BUYBACK_EMAIL)}</b> with name, contact info, submission number, card descriptions, and cert numbers. The message includes a link to the Admin Buyback dashboard.</p>
-        <p>To send email from the app, configure:</p>
-        <pre>SELL_BUYBACK_EMAIL=sell@giantsportscards.com
-SMTP_HOST=your_smtp_host
-SMTP_PORT=587
-SMTP_USER=your_smtp_user
-SMTP_PASSWORD=your_smtp_password
-SMTP_FROM=no-reply@giantsportscards.com</pre>
-
-        <h3>Domain / Website</h3>
-        <p>For <b>psa.giantsportscards.com</b>, add the custom domain in Railway, then create a DNS CNAME record pointing psa.giantsportscards.com to the Railway-provided target.</p>
-        <p>For the main Giant Sports Cards PSA page, add a section or button that links customers to <b>{html_escape(PUBLIC_PORTAL_URL)}</b>.</p>
     </div>
     """)
 
@@ -3535,42 +3510,62 @@ def admin_buyback_status():
 def portal_sms_preferences():
     phone = normalize_phone(session.get("phone"))
     last = clean(session.get("last")).lower()
+
     if not phone or not last:
         return redirect("/portal")
+
     sms_mode = request.form.get("sms_mode", "none")
     sms_consent = request.form.get("sms_consent") == "yes"
+
     if sms_mode not in ["none", "pickup", "all"]:
         sms_mode = "none"
-    # Visible consent is required before enabling text messages.
+
     if sms_mode != "none" and not sms_consent:
         sms_mode = "none"
 
     sms_opt_in = sms_mode != "none"
     sms_pickup_only = sms_mode == "pickup"
+
     conn = get_conn()
     cur = conn.cursor()
+
     cur.execute("""
     SELECT submission_number, raw_data
     FROM submissions
     ORDER BY last_updated DESC
     """)
     rows = cur.fetchall()
+
     matched_subs = []
     for sub_value, data in rows:
         data = data or {}
-        name = str(get_field(data, ["Customer Name", "Customer", "Name", "Full Name", "Billing Name", "Client"])).lower()
-        contact = normalize_phone(get_field(data, ["Contact Info", "Phone", "Phone Number", "Customer Phone", "Customer Contact", "Mobile", "Cell", "Telephone", "Billing Phone"]))
+        name = str(get_field(data, [
+            "Customer Name", "Customer", "Name", "Full Name", "Billing Name", "Client"
+        ])).lower()
+        contact = normalize_phone(get_field(data, [
+            "Contact Info", "Phone", "Phone Number", "Customer Phone", "Customer Contact",
+            "Mobile", "Cell", "Telephone", "Billing Phone"
+        ]))
         sub_clean = normalize_submission(sub_value)
-        if bool(contact) and (phone in contact or contact in phone) and bool(last) and last in name and sub_clean:
+        phone_match = bool(contact) and (phone in contact or contact in phone)
+        name_match = bool(last) and last in name
+
+        if phone_match and name_match and sub_clean:
             matched_subs.append(sub_clean)
+
     if matched_subs:
         cur.execute("""
         UPDATE submissions
-        SET sms_opt_in=%s, sms_pickup_only=%s, sms_mode=%s, last_updated=NOW()
+        SET sms_opt_in=%s,
+            sms_pickup_only=%s,
+            sms_mode=%s,
+            last_updated=NOW()
         WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g') = ANY(%s)
         """, (sms_opt_in, sms_pickup_only, sms_mode, matched_subs))
         conn.commit()
-    cur.close(); conn.close()
+
+    cur.close()
+    conn.close()
     return redirect("/portal/orders")
 
 
@@ -3580,29 +3575,47 @@ def portal_sell_interest():
     last = clean(session.get("last")).lower()
     if not phone or not last:
         return redirect("/portal")
+
     certs = request.form.getlist("cert")
     submission_number = normalize_submission(request.form.get("submission_number"))
     if not submission_number:
         return redirect("/portal/orders")
-    conn = get_conn(); cur = conn.cursor()
+
+    conn = get_conn()
+    cur = conn.cursor()
+
     cur.execute("""
     SELECT raw_data FROM submissions
     WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
     """, (submission_number,))
     row = cur.fetchone()
     if not row:
-        cur.close(); conn.close(); return redirect("/portal/orders")
+        cur.close()
+        conn.close()
+        return redirect("/portal/orders")
+
     data = row[0] or {}
     customer_name = get_field(data, ["Customer Name", "Customer", "Name", "Full Name", "Billing Name", "Client"])
-    contact_info = get_field(data, ["Contact Info", "Phone", "Phone Number", "Customer Phone", "Customer Contact", "Mobile", "Cell", "Telephone", "Billing Phone"])
+    contact_info = get_field(data, [
+        "Contact Info", "Phone", "Phone Number", "Customer Phone", "Customer Contact",
+        "Mobile", "Cell", "Telephone", "Billing Phone"
+    ])
+
     name = str(customer_name or "").lower()
     contact = normalize_phone(contact_info)
-    if not (bool(contact) and (phone in contact or contact in phone) and bool(last) and last in name):
-        cur.close(); conn.close(); return redirect("/portal/orders")
+    phone_match = bool(contact) and (phone in contact or contact in phone)
+    name_match = bool(last) and last in name
+
+    if not (phone_match and name_match):
+        cur.close()
+        conn.close()
+        return redirect("/portal/orders")
+
     cur.execute("""
     UPDATE card_buyback_items SET interested=FALSE, updated_at=NOW()
     WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
     """, (submission_number,))
+
     selected_cards = []
     for cert in certs:
         cert_clean = normalize_submission(cert)
@@ -3615,6 +3628,7 @@ def portal_sell_interest():
             WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
               AND REGEXP_REPLACE(cert_number, '\\D', '', 'g')=%s
             """, (submission_number, cert_clean))
+
             cur.execute("""
             SELECT cert_number, COALESCE(description, item_details, ''), COALESCE(grade, '')
             FROM card_buyback_items
@@ -3624,10 +3638,19 @@ def portal_sell_interest():
             """, (submission_number, cert_clean))
             card_row = cur.fetchone()
             if card_row:
-                selected_cards.append({"cert_number": card_row[0], "description": card_row[1], "grade": card_row[2]})
-    conn.commit(); cur.close(); conn.close()
+                selected_cards.append({
+                    "cert_number": card_row[0],
+                    "description": card_row[1],
+                    "grade": card_row[2]
+                })
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
     if selected_cards:
         send_buyback_interest_email(customer_name or "", contact_info or phone, submission_number, selected_cards)
+
     return redirect("/portal/orders")
 
 
