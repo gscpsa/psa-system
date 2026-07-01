@@ -1407,8 +1407,8 @@ def page(content, mode="admin"):
 
         body.admin-body .brand img,
         body.portal-body .brand img {{
-            max-height:70px !important;
-            max-width:210px !important;
+            max-height: 105px !important;
+            max-width: 320px !important;
             filter:brightness(0) saturate(100%) invert(20%) sepia(44%) saturate(1023%) hue-rotate(105deg) brightness(89%) contrast(93%)
                    drop-shadow(0 1px 0 #ffffff)
                    drop-shadow(1px 0 0 #ffffff)
@@ -1443,7 +1443,7 @@ def page(content, mode="admin"):
         }}
 
         body.portal-body .gsc-redesign-logo {{
-            width: 240px !important;
+            width: 280px !important;
             height:auto !important;
             filter:brightness(0) saturate(100%) invert(20%) sepia(44%) saturate(1023%) hue-rotate(105deg) brightness(89%) contrast(93%)
                    drop-shadow(0 1px 0 #ffffff)
@@ -1589,7 +1589,20 @@ def page(content, mode="admin"):
                 box-sizing:border-box;
             }}
         }}
-    </style>
+    
+        /* CUSTOMER RESULTS TOPBAR LOGO SIZE FIX */
+        body.portal-body .topbar .brand img {{
+            max-height:105px !important;
+            max-width:320px !important;
+            height:auto !important;
+        }}
+        @media (max-width: 700px) {{
+            body.portal-body .topbar .brand img {{
+                max-height:95px !important;
+                max-width:260px !important;
+            }}
+        }}
+</style>
     </head>
     <body class="{mode}-body">
         <div class="topbar">
@@ -2312,24 +2325,33 @@ def admin_setup_info():
     return page(f"""
     <div class="card">
         <h2>Setup Info</h2>
+
+        <h3>Admin Password</h3>
         <p><b>Admin password source:</b> {html_escape(admin_pw_source)}</p>
+
         <h3>Twilio SMS Setup</h3>
+        <p>To enable live texting, Jon needs to create or approve a Twilio account, add a payment method, and purchase/assign an SMS-capable Twilio phone number.</p>
         <p>Add these Railway environment variables:</p>
         <pre>SMS_PROVIDER=twilio
 TWILIO_ACCOUNT_SID=your_twilio_account_sid
 TWILIO_AUTH_TOKEN=your_twilio_auth_token
 TWILIO_FROM_NUMBER=your_twilio_phone_number</pre>
-        <p>Twilio pricing is usage-based. Typical costs are a monthly phone-number fee plus per-message carrier/SMS fees. Check Twilio directly before launch.</p>
+        <p><b>Cost structure:</b> Twilio is usage-based. Expect a monthly phone-number cost plus per-message SMS/carrier fees. Exact pricing depends on Twilio's current rates, message volume, destination, and carrier fees.</p>
+        <p><b>Consent:</b> The customer portal now requires visible customer opt-in before text messages are enabled. Customers can choose no texts, pickup-only texts, or every-status-change texts. The consent language tells them message/data rates may apply and that they can reply STOP to opt out.</p>
+
         <h3>Buyback Email Setup</h3>
-        <p>Buyback interest emails go to <b>{html_escape(SELL_BUYBACK_EMAIL)}</b>. To send email from the app, configure:</p>
+        <p>When a customer selects cards they may want to sell, the app emails <b>{html_escape(SELL_BUYBACK_EMAIL)}</b> with name, contact info, submission number, card descriptions, and cert numbers. The message includes a link to the Admin Buyback dashboard.</p>
+        <p>To send email from the app, configure:</p>
         <pre>SELL_BUYBACK_EMAIL=sell@giantsportscards.com
 SMTP_HOST=your_smtp_host
 SMTP_PORT=587
 SMTP_USER=your_smtp_user
 SMTP_PASSWORD=your_smtp_password
 SMTP_FROM=no-reply@giantsportscards.com</pre>
-        <h3>CNAME</h3>
-        <p>Point <b>psa.giantsportscards.com</b> as a CNAME to the Railway-provided domain, then add that custom domain in Railway.</p>
+
+        <h3>Domain / Website</h3>
+        <p>For <b>psa.giantsportscards.com</b>, add the custom domain in Railway, then create a DNS CNAME record pointing psa.giantsportscards.com to the Railway-provided target.</p>
+        <p>For the main Giant Sports Cards PSA page, add a section or button that links customers to <b>{html_escape(PUBLIC_PORTAL_URL)}</b>.</p>
     </div>
     """)
 
@@ -3516,8 +3538,13 @@ def portal_sms_preferences():
     if not phone or not last:
         return redirect("/portal")
     sms_mode = request.form.get("sms_mode", "none")
+    sms_consent = request.form.get("sms_consent") == "yes"
     if sms_mode not in ["none", "pickup", "all"]:
         sms_mode = "none"
+    # Visible consent is required before enabling text messages.
+    if sms_mode != "none" and not sms_consent:
+        sms_mode = "none"
+
     sms_opt_in = sms_mode != "none"
     sms_pickup_only = sms_mode == "pickup"
     conn = get_conn()
@@ -4430,6 +4457,7 @@ def portal_orders():
     none_checked = "checked" if current_sms_mode == "none" else ""
     pickup_checked = "checked" if current_sms_mode == "pickup" else ""
     all_checked = "checked" if current_sms_mode == "all" else ""
+    consent_checked = "checked" if current_sms_mode != "none" else ""
 
     html += f"""
     <div class="card">
@@ -4447,6 +4475,10 @@ def portal_orders():
             <label class="sell-check">
                 <input type="radio" name="sms_mode" value="all" {all_checked}>
                 Text me for every PSA status change
+            </label>
+            <label class="sell-check">
+                <input type="checkbox" name="sms_consent" value="yes" {consent_checked}>
+                I agree to receive PSA order text messages from Giant Sports Cards at the phone number used for this lookup. Message and data rates may apply. Reply STOP to opt out.
             </label>
             <button type="submit">Save Text Settings</button>
         </form>
