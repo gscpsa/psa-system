@@ -278,6 +278,30 @@ def get_field(data, names):
                 return v
     return ""
 
+
+def get(data, names, default=""):
+    """
+    Compatibility helper for older portal code.
+
+    Supports:
+    - get(data, "Customer Name")
+    - get(data, ["Customer Name", "Customer", "Name"])
+    - get(data, "Customer Name", "Name") style fallback
+    """
+    data = data or {}
+
+    if isinstance(names, (list, tuple)):
+        return get_field(data, list(names)) or default
+
+    # If default was accidentally passed as a second possible field name,
+    # treat it as another candidate when it looks like a field label.
+    candidates = [names]
+    if default and isinstance(default, str) and default not in ["", None]:
+        candidates.append(default)
+
+    return get_field(data, candidates) or ""
+
+
 def customer_status_label(status):
     if status == "Delivered to Us":
         return "Ready For Pickup"
@@ -4764,4 +4788,179 @@ def portal_orders():
         sms_opted = grouped_values[2] if len(grouped_values) > 2 else False
         sms_pickup_only = grouped_values[3] if len(grouped_values) > 3 else True
         sms_mode = grouped_values[4] if len(grouped_values) > 4 else ("pickup" if sms_opted and sms_pickup_only else ("all" if sms_opted else "none"))
-        customer_name = get
+        customer_name = get_field(data, ["Customer Name", "Customer", "Name", "Full Name", "Billing Name", "Client"])
+        cards = get_field(data, ["# Of Cards", "# of Cards", "Cards"])
+        service = clean_service_display(get_field(data, ["Service Type", "Service"]))
+        date = get_dropoff_date(data)
+        arrived_completed_raw = get_psa_received_date(data)
+        arrived_completed_data = parse_arrived_completed_value(arrived_completed_raw)
+        arrived_completed = arrived_completed_data["display"]
+        arrived_completed = strip_arrived_at_psa_prefix(arrived_completed)
+        estimated_completion = get_expected_completion_date(data)
+        display_status = status or "Submitted"
+        display_status_label = customer_status_label(display_status)
+
+        buyback_rows = get_buyback_items_for_submission(sub)
+        buyback_html = ""
+
+        if buyback_rows:
+            buyback_count = len(buyback_rows)
+            buyback_html += f"""
+            <hr>
+            <details class="buyback-collapsible">
+                <summary>View cards / select cards to sell ({buyback_count})</summary>
+                <div class="buyback-inner">
+                    <p>Select any cards you may be interested in selling to Giant Sports Cards.</p>
+                    <form method="post" action="/portal/sell_interest">
+                        <input type="hidden" name="submission_number" value="{sub}">
+                        <div class="card-grid">
+            """
+
+            for row in buyback_rows:
+                cert_number, item_details, grade, image_data, interested = row[0], row[1], row[2], row[3], row[4]
+                card_type = row[5] if len(row) > 5 else ""
+                after_service = row[6] if len(row) > 6 else ""
+                images_url = row[7] if len(row) > 7 else ""
+                psa_estimate = display_blank_loading(row[8] if len(row) > 8 else "")
+                card_ladder_value = display_blank_loading(row[9] if len(row) > 9 else "")
+                pop = display_blank_loading(row[10] if len(row) > 10 else "")
+                pop_higher = display_blank_loading(row[11] if len(row) > 11 else "")
+                offer_amount = row[12] if len(row) > 12 else ""
+                offer_notes = row[13] if len(row) > 13 else ""
+                buyback_status = row[14] if len(row) > 14 else ""
+
+                checked = "checked" if interested else ""
+                img_html = f"<img src='{image_data}' alt='Card image'>" if image_data else ""
+
+                offer_display = ""
+                if offer_amount:
+                    response_buttons = ""
+                    if buyback_status == "Offer Sent":
+                        response_buttons = f"""
+                        <form method="post" action="/portal/buyback_offer_response" style="margin-top:8px;">
+                            <input type="hidden" name="submission_number" value="{sub}">
+                            <input type="hidden" name="cert_number" value="{cert_number}">
+                            <button name="response" value="Accepted">Accept Offer</button>
+                            <button name="response" value="Declined">Decline</button>
+                        </form>
+                        """
+                    offer_display = f"""
+                    <div style="margin-top:10px;padding:10px;border:1px solid #d1e7dd;border-radius:8px;background:#f3f7f5;">
+                        <b>Giant Sports Cards Buyback Offer:</b> {html_escape(offer_amount)}<br>
+                        <small>{html_escape(offer_notes)}</small><br>
+                        <b>Current Status:</b> {html_escape('Interest' if buyback_status == 'New' else buyback_status)}
+                        {response_buttons}
+                    </div>
+                    """
+
+                buyback_html += f"""
+                <div class="buy-card">
+                    {img_html}
+                    <div class="cert">Certification #: {cert_number}</div>
+                    <div><b>Type:</b> {card_type}</div>
+                    <div>{item_details}</div>
+                    <div><b>Grade:</b> {grade}</div>
+                    {offer_display}
+                    <label class="sell-check"><input type="checkbox" name="cert" value="{cert_number}" {checked}> Request an offer</label>
+                </div>
+                """
+
+            buyback_html += """
+                        </div>
+                        <br>
+                        <button type="submit">Request Offer</button>
+                    </form>
+                </div>
+            </details>
+            """
+
+        sms_html = ""
+
+        html += f"""
+        <div class="card">
+            <h3>{customer_name}</h3>
+            <p><b>PSA Submission:</b> {sub}</p>
+            <p><b>Current Status:</b> <span class="status status-badge">â {display_status_label}</span></p>
+            <p><b>Received by PSA:</b> {arrived_completed}</p>
+            <p><b>Estimated Completion:</b> {estimated_completion}</p>
+            <p><b>Cards:</b> {cards}</p>
+            <p><b>Service Level:</b> {service}</p>
+            <p><b>Customer Drop-Off:</b> {date}</p>
+            {status_bar(display_status)}
+            {sms_html}
+            {buyback_html}
+        </div>
+        """
+
+    return page(html, mode="portal")
+
+
+@app.route("/portal/buyback_offer_response", methods=["POST"])
+def portal_buyback_offer_response():
+    phone = normalize_phone(session.get("phone"))
+    last = clean(session.get("last")).lower()
+
+    if not phone or not last:
+        return redirect("/portal")
+
+    submission_number = normalize_submission(request.form.get("submission_number"))
+    cert_number = normalize_submission(request.form.get("cert_number"))
+    response = clean(request.form.get("response"))
+
+    if response not in ["Accepted", "Declined"]:
+        return redirect("/portal/orders")
+
+    if not submission_number or not cert_number:
+        return redirect("/portal/orders")
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute("""
+    SELECT raw_data
+    FROM submissions
+    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+    """, (submission_number,))
+    row = cur.fetchone()
+
+    if not row:
+        cur.close()
+        conn.close()
+        return redirect("/portal/orders")
+
+    data = row[0] or {}
+    name = str(get_field(data, ["Customer Name", "Name"])).lower()
+    contact = normalize_phone(get_field(data, ["Contact Info", "Phone", "Phone Number"]))
+
+    phone_match = bool(contact) and (phone in contact or contact in phone)
+    name_match = bool(last) and last in name
+
+    if not (phone_match and name_match):
+        cur.close()
+        conn.close()
+        return redirect("/portal/orders")
+
+    cur.execute("""
+    UPDATE card_buyback_items
+    SET buyback_status=%s,
+        updated_at=NOW()
+    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+      AND REGEXP_REPLACE(cert_number, '\\D', '', 'g')=%s
+      AND COALESCE(offer_amount, '') <> ''
+    """, (response, submission_number, cert_number))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return redirect("/portal/orders")
+
+
+@app.route("/portal/logout")
+def portal_logout():
+    session.pop("phone", None)
+    session.pop("last", None)
+    return redirect("/portal")
+
+if __name__ == "__main__":
+    app.run()
