@@ -1690,6 +1690,19 @@ def page(content, mode="admin"):
         .filterbar input[name="q"] {{
             min-width:260px;
         }}
+
+        /* STATUS BADGE SYMBOL FIX */
+        .status-badge {{
+            display:inline-flex !important;
+            align-items:center !important;
+            background:#d1e7dd !important;
+            color:#0f5132 !important;
+            border:1px solid #9fd0b4 !important;
+            border-radius:999px !important;
+            padding:6px 12px !important;
+            font-weight:900 !important;
+            line-height:1.1 !important;
+        }}
 </style>
     </head>
     <body class="{mode}-body">
@@ -4880,7 +4893,7 @@ def portal_orders():
         <div class="card">
             <h3>{customer_name}</h3>
             <p><b>PSA Submission:</b> {sub}</p>
-            <p><b>Current Status:</b> <span class="status status-badge">â {display_status_label}</span></p>
+            <p><b>Current Status:</b> <span class="status status-badge">{display_status_label}</span></p>
             <p><b>Received by PSA:</b> {arrived_completed}</p>
             <p><b>Estimated Completion:</b> {estimated_completion}</p>
             <p><b>Cards:</b> {cards}</p>
