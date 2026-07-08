@@ -232,9 +232,9 @@ def normalize_phone(v):
 
 def normalize_key_text(value):
     text = str(value or "").strip().lower()
-    text = text.replace("ƒ", "f")
-    text = text.replace("æ", "f")
-    text = text.replace("â\x80\x99", "'")
+    text = text.replace("Æ", "f")
+    text = text.replace("Ã¦Â", "f")
+    text = text.replace("Ã¢\x80\x99", "'")
     text = text.replace(".", "")
     text = re.sub(r"\s+", " ", text)
     return text
@@ -246,10 +246,10 @@ def is_dropoff_date_key(key):
     direct_names = [
         "fand",
         "f and",
-        "ƒand",
-        "ƒ and",
-        "æand",
-        "æ and",
+        "Æand",
+        "Æ and",
+        "Ã¦Âand",
+        "Ã¦Â and",
         "submission date",
         "customer drop-off date",
         "customer drop off date",
@@ -307,8 +307,8 @@ def clean_service_display(service):
     value = str(service or "").strip()
     if " - " in value:
         return value.split(" - ", 1)[0].strip()
-    if " – " in value:
-        return value.split(" – ", 1)[0].strip()
+    if " â " in value:
+        return value.split(" â ", 1)[0].strip()
     return value
 
 def date_only_display(value):
@@ -353,10 +353,10 @@ def get_dropoff_date(data):
         "Customer Drop-Off Date",
         "Customer Drop Off Date",
         "Submission Date",
-        "ƒand",
-        "ƒand.",
         "Æand",
         "Æand.",
+        "ÃÂand",
+        "ÃÂand.",
         "fand",
         "Fand",
         "F and",
@@ -446,8 +446,8 @@ def parse_arrived_completed_value(value):
 
     month = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
     date_single = month + r"\s+\d{1,2},\s+\d{4}"
-    date_range_same_year = month + r"\s+\d{1,2}\s*[-–]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
-    date_range_full = date_single + r"\s*[-–]\s*" + date_single
+    date_range_same_year = month + r"\s+\d{1,2}\s*[-â]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
+    date_range_full = date_single + r"\s*[-â]\s*" + date_single
 
     completed_match = re.search(r"Completed\s+(" + date_single + r")", text, re.IGNORECASE)
     if completed_match:
@@ -1172,7 +1172,7 @@ def page(content, mode="admin"):
             color:#198754;
         }}
         .buyback-collapsible[open] summary:after {{
-            content:"–";
+            content:"â";
         }}
         .buyback-collapsible .buyback-inner {{
             padding:14px;
@@ -1841,7 +1841,7 @@ def build_table(rows):
                 details_parts.append(f"<b>{html_escape(key_text)}:</b> {html_escape(val)}")
 
         if not details_parts:
-            details_html = "<span style='color:#6b7280;'>—</span>"
+            details_html = "<span style='color:#6b7280;'>â</span>"
         else:
             details_html = "<details class='row-details'><summary>Details</summary><div>" + "<br>".join(details_parts[:12]) + "</div></details>"
 
@@ -2800,23 +2800,183 @@ def admin_upload_psa():
             pdf_text_parts = []
             pages_read = 0
 
-            status_regex = re.compile(
-                r"(Order\s+Arrived|Research\s*&\s*ID|Grading|QA\s+Checks|Assembly|Shipping\s+Soon|Complete|Completed|Track\s+Package)",
-                re.IGNORECASE
-            )
+            month_pattern = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
+            date_pattern = month_pattern + r"\s+\d{1,2},\s+\d{4}"
 
-            def find_status(text_value):
-                text_value = text_value or ""
+            def normalize_pdf_text(value):
+                return re.sub(r"\s+", " ", str(value or "")).strip()
 
-                # Do not treat estimated-completion wording as an actual Complete status.
-                if re.search(r"Est\.\s*Complete\s*by|Estimated\s+Complete\s*by|Estimated\s+Completion", text_value, re.IGNORECASE):
-                    return None
+            def normalize_table_status(value):
+                text = normalize_pdf_text(value).lower()
 
-                match = status_regex.search(text_value)
-                if not match:
-                    return None
-                return normalize_psa_status(match.group(1))
+                if re.search(r"\border\s+arrived\b", text):
+                    return "Order Arrived"
+                if re.search(r"\bresearch\s*&\s*id\b", text):
+                    return "Research & ID"
+                if re.search(r"\bgrading\b", text):
+                    return "Grading"
+                if re.search(r"\bassembly\b", text):
+                    return "Assembly"
+                if re.search(r"\bqa\s+checks\b", text):
+                    return "QA Checks"
+                if re.search(r"\bshipping\s+soon\b", text):
+                    return "Shipping Soon"
 
+                # PSA completed/grades-ready rows may show Complete, Track Package, or Completing.
+                if re.search(r"\bcomplete\b|\bcompleted\b|\btrack\s+package\b|\bcompleting\b", text):
+                    return "Complete"
+
+                return None
+
+            def parse_row_dates(row_text):
+                row_text = normalize_pdf_text(row_text)
+                dates = re.findall(date_pattern, row_text, re.IGNORECASE)
+
+                est_pattern = (
+                    r"Est\.\s*by\s+("
+                    + month_pattern +
+                    r"\s+\d{1,2}(?:\s*[-â]\s*(?:"
+                    + month_pattern +
+                    r")?\s*\d{1,2})?,\s+\d{4})"
+                )
+                est_match = re.search(est_pattern, row_text, re.IGNORECASE)
+                comp_match = re.search(r"Completed\s+(" + date_pattern + r")", row_text, re.IGNORECASE)
+
+                parts = []
+
+                if dates:
+                    parts.append(normalize_pdf_text(dates[0]))
+
+                if est_match:
+                    parts.append("Est. by " + normalize_pdf_text(est_match.group(1)))
+
+                if comp_match:
+                    parts.append("Completed " + normalize_pdf_text(comp_match.group(1)))
+
+                clean_parts = []
+                seen = set()
+                for part in parts:
+                    key = part.lower()
+                    if key not in seen:
+                        seen.add(key)
+                        clean_parts.append(part)
+
+                return " | ".join(clean_parts)
+
+            def extract_table_blocks(pdf_page):
+                blocks = []
+                try:
+                    page_dict = pdf_page.get_text("dict")
+                    for block in page_dict.get("blocks", []):
+                        if block.get("type") != 0:
+                            continue
+
+                        parts = []
+                        for line in block.get("lines", []):
+                            for span in line.get("spans", []):
+                                if span.get("text"):
+                                    parts.append(span.get("text"))
+
+                        text = normalize_pdf_text(" ".join(parts))
+                        if not text:
+                            continue
+
+                        x0, y0, x1, y1 = block.get("bbox") or (0, 0, 0, 0)
+                        blocks.append({
+                            "text": text,
+                            "x0": x0,
+                            "y0": y0,
+                            "x1": x1,
+                            "y1": y1,
+                            "ym": (y0 + y1) / 2,
+                        })
+                except Exception:
+                    pass
+
+                return blocks
+
+            def parse_status_pdf_by_rows(pdf_path):
+                found_status = {}
+                found_dates = {}
+                pages = 0
+                text_parts = []
+
+                try:
+                    import fitz
+                except Exception as e:
+                    raise RuntimeError("PyMuPDF / fitz is required for PSA status PDF import.") from e
+
+                doc = fitz.open(pdf_path)
+                pages = len(doc)
+
+                for pdf_page in doc:
+                    try:
+                        page_text = pdf_page.get_text("text") or ""
+                    except Exception:
+                        page_text = ""
+
+                    if page_text:
+                        text_parts.append(page_text)
+
+                    blocks = extract_table_blocks(pdf_page)
+
+                    for service_block in blocks:
+                        if service_block["x0"] > 230:
+                            continue
+
+                        sub_match = re.search(r"Sub\s*#\s*(\d+)", service_block["text"], re.IGNORECASE)
+                        if not sub_match:
+                            continue
+
+                        sub = normalize_submission(sub_match.group(1))
+                        if not sub:
+                            continue
+
+                        row_y0 = service_block["y0"]
+                        row_y1 = service_block["y1"]
+                        row_mid = service_block["ym"]
+
+                        row_blocks = []
+                        for block in blocks:
+                            overlap = min(row_y1, block["y1"]) - max(row_y0, block["y0"])
+                            close_mid = abs(block["ym"] - row_mid) <= 45
+
+                            if overlap > 0 or close_mid:
+                                row_blocks.append(block)
+
+                        row_text = " ".join(
+                            block["text"] for block in sorted(row_blocks, key=lambda b: (b["x0"], b["y0"]))
+                        )
+
+                        # Only read status from the real Status column.
+                        # This prevents a later row's Track Package / Complete from being assigned to this row.
+                        status_column_text = " ".join(
+                            block["text"] for block in row_blocks
+                            if 185 <= block["x0"] < 310
+                        )
+
+                        status = normalize_table_status(status_column_text)
+
+                        # In PSA's orders table, some rows have a blank status column but still show
+                        # card count + arrived date + estimated date. Treat those as Order Arrived,
+                        # not Complete. This fixes the false "Grading Complete / PDF needed" rows.
+                        if not status:
+                            has_cards = bool(re.search(r"\b\d+\s+Cards?\b", row_text, re.IGNORECASE))
+                            has_date = bool(re.search(date_pattern, row_text, re.IGNORECASE))
+                            has_completed = bool(re.search(r"\bCompleted\b|\bTrack\s+Package\b", status_column_text, re.IGNORECASE))
+
+                            if has_cards and has_date and not has_completed:
+                                status = "Order Arrived"
+
+                        if status:
+                            found_status[sub] = status
+
+                        dates_value = parse_row_dates(row_text)
+                        if dates_value:
+                            found_dates[sub] = dates_value
+
+                doc.close()
+                return found_status, found_dates, text_parts, pages
 
             def extract_arrived_completed_from_full_text(text_value):
                 found = {}
@@ -2824,10 +2984,8 @@ def admin_upload_psa():
                 normalized = re.sub(r"\s+", " ", text_value or "").strip()
                 normalized = re.sub(r",\s+(\d{4})", r", \1", normalized)
 
-                month_pattern = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
-                date_pattern = month_pattern + r"\s+\d{1,2},\s+\d{4}"
-                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-–]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
-                date_range_full = date_pattern + r"\s*[-–]\s*" + date_pattern
+                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-â]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
+                date_range_full = date_pattern + r"\s*[-â]\s*" + date_pattern
 
                 value_pattern = re.compile(
                     rf"(Completed\s+{date_pattern}|Est\.\s*Complete\s*by\s+{date_range_full}|Est\.\s*Complete\s*by\s+{date_range_same_year}|Est\.\s*Complete\s*by\s+{date_pattern}|Estimated\s*Complete\s*by\s+{date_range_full}|Estimated\s*Complete\s*by\s+{date_range_same_year}|Estimated\s*Complete\s*by\s+{date_pattern}|Est\.\s*by\s+{date_range_full}|Est\.\s*by\s+{date_range_same_year}|Est\.\s*by\s+{date_pattern}|{date_pattern})",
@@ -2844,7 +3002,6 @@ def admin_upload_psa():
                     start = sub_match.end()
                     end = sub_matches[idx + 1].start() if idx + 1 < len(sub_matches) else len(normalized)
                     block = normalized[start:end]
-
                     matches = value_pattern.findall(block)
 
                     if matches:
@@ -2852,7 +3009,7 @@ def admin_upload_psa():
                         seen_matches = set()
 
                         for m in matches:
-                            m = re.sub(r"\s+", " ", m).strip()
+                            m = normalize_pdf_text(m)
                             key = m.lower()
 
                             if key not in seen_matches:
@@ -2863,129 +3020,8 @@ def admin_upload_psa():
 
                 return found
 
-            def parse_text(text):
-                nonlocal best
-
-                lines = [line.strip() for line in (text or "").splitlines()]
-                i = 0
-
-                while i < len(lines):
-                    line = lines[i]
-                    sub = None
-                    search_parts = []
-
-                    # Normal case:
-                    # Sub #14577350
-                    # Research & ID
-                    sub_match = re.search(r"Sub\s*#\s*(\d+)", line, re.IGNORECASE)
-
-                    if sub_match:
-                        sub = normalize_submission(sub_match.group(1))
-
-                        after_sub_text = line[sub_match.end():].strip()
-                        if after_sub_text:
-                            search_parts.append(after_sub_text)
-
-                        j = i + 1
-                        while j < len(lines):
-                            next_line = lines[j].strip()
-
-                            # Stop if the next submission starts before a status is found.
-                            if re.search(r"Sub\s*#\s*\d+", next_line, re.IGNORECASE):
-                                break
-
-                            if next_line:
-                                search_parts.append(next_line)
-
-                            j += 1
-
-                    # Split case:
-                    # • Sub
-                    # #14550482
-                    # Research & ID
-                    elif re.search(r"\bSub\b\s*$", line, re.IGNORECASE) and i + 1 < len(lines):
-                        number_match = re.search(r"#\s*(\d+)", lines[i + 1], re.IGNORECASE)
-
-                        if number_match:
-                            sub = normalize_submission(number_match.group(1))
-
-                            j = i + 2
-                            while j < len(lines):
-                                next_line = lines[j].strip()
-
-                                if re.search(r"Sub\s*#\s*\d+", next_line, re.IGNORECASE):
-                                    break
-
-                                if next_line:
-                                    search_parts.append(next_line)
-
-                                j += 1
-
-                    if sub:
-                        status = None
-
-                        # The actual PSA row status is the first valid status after the submission number.
-                        for part in search_parts:
-                            status = find_status(part)
-                            if status:
-                                break
-
-                        if status:
-                            best[sub] = status
-                            # Extract Arrived / Completed
-                            block_text = " ".join(search_parts)
-
-                            # Fix broken PDF line breaks (Apr 22, \n 2026)
-                            block_text = re.sub(r",\s+(\d{4})", r", \1", block_text)
-
-                            matches = re.findall(
-                                r"(Completed\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*Complete\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\s*[-–]\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)?\s*\d{1,2},\s+\d{4}|Est\.\s*by\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4})",
-                                block_text,
-                                re.IGNORECASE
-                            )
-
-                            if matches:
-                                ac_map[sub] = " | ".join(matches)
-
-                    i += 1
-
             try:
-                # Fast path: PyMuPDF reads this PSA PDF much more reliably than pdfplumber.
-                # Fallback keeps the route working if PyMuPDF is not installed on the host.
-                try:
-                    import fitz
-
-                    doc = fitz.open(temp.name)
-                    pages_read = len(doc)
-
-                    for pdf_page in doc:
-                        try:
-                            text = pdf_page.get_text("text") or ""
-                        except Exception:
-                            continue
-
-                        if text:
-                            pdf_text_parts.append(text)
-                            parse_text(text)
-
-                    doc.close()
-
-                except Exception:
-                    import pdfplumber
-
-                    with pdfplumber.open(temp.name) as pdf:
-                        for pdf_page in pdf.pages:
-                            pages_read += 1
-
-                            try:
-                                text = pdf_page.extract_text() or ""
-                            except Exception:
-                                continue
-
-                            if text:
-                                pdf_text_parts.append(text)
-                                parse_text(text)
-
+                best, ac_map, pdf_text_parts, pages_read = parse_status_pdf_by_rows(temp.name)
             finally:
                 try:
                     os.unlink(temp.name)
@@ -3002,10 +3038,6 @@ def admin_upload_psa():
                 or re.search(r"Your grades are ready|View Grades|PSA DNA Certified|Download CSV", combined_pdf_text, re.IGNORECASE)
             )
             if looks_like_card_detail_pdf:
-                try:
-                    os.unlink(temp.name)
-                except Exception:
-                    pass
                 return page("""
                 <div class="card">
                     <h2>Wrong PDF Uploader</h2>
@@ -3016,17 +3048,17 @@ def admin_upload_psa():
                 </div>
                 """)
 
-            # Full-text pass for Arrived / Completed.
-            # This is independent from status updates so protected/skipped statuses do not block the date field.
+            # Full-text pass for dates only. Status is intentionally NOT read from loose full text.
             full_text_ac_map = extract_arrived_completed_from_full_text(combined_pdf_text)
             for ac_sub, ac_value in full_text_ac_map.items():
-                if ac_value:
+                if ac_value and not ac_map.get(ac_sub):
                     ac_map[ac_sub] = ac_value
 
             conn = get_conn()
             cur = conn.cursor()
 
             updated = 0
+            corrected = 0
             skipped = 0
 
             for sub, status in best.items():
@@ -3051,26 +3083,36 @@ def admin_upload_psa():
                 if sms_phone and not sms_phone.startswith("+1") and len(sms_phone) == 10:
                     sms_phone = "+1" + sms_phone
 
+                parsed_ac = parse_arrived_completed_value(ac_map.get(sub, ""))
+
                 cur.execute("""
                 UPDATE submissions
                 SET status=%s,
                     raw_data = jsonb_set(
-                        COALESCE(raw_data, '{}'::jsonb),
-                        '{Arrived / Completed}',
+                        jsonb_set(
+                            COALESCE(raw_data, '{}'::jsonb),
+                            '{Arrived / Completed}',
+                            to_jsonb(%s::text),
+                            true
+                        ),
+                        '{Estimated Completion Date}',
                         to_jsonb(%s::text),
                         true
                     ),
                     last_updated=NOW()
                 WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
                   AND COALESCE(status, '') NOT IN ('Picked Up', 'Delivered to Us')
-                """, (status, parse_arrived_completed_value(ac_map.get(sub, ""))["display"], sub))
+                """, (status, parsed_ac["display"], parsed_ac["estimated"], sub))
 
                 if cur.rowcount:
                     updated += 1
+                    if old_status and old_status != status:
+                        corrected += 1
                     maybe_queue_status_sms(cur, sub, sms_phone, old_status, status, sms_opt_in, sms_mode, last_sms_status)
                 else:
                     skipped += 1
 
+            # Date-only update for any parsed date rows not already status-updated.
             for sub, arrived_completed_value in ac_map.items():
                 if arrived_completed_value:
                     parsed_ac = parse_arrived_completed_value(arrived_completed_value)
@@ -3092,13 +3134,13 @@ def admin_upload_psa():
                         last_updated=NOW()
                     WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
                     """, (parsed_ac["display"], parsed_ac["estimated"], sub))
+
             conn.commit()
 
             verification_rows = []
             mismatch_count = 0
             checked_count = 0
 
-            # Show the first 150 parsed submissions so verification is clearly visible after upload.
             for sub, parsed_status in list(best.items())[:150]:
                 cur.execute("""
                 SELECT status, COALESCE(raw_data->>'Arrived / Completed', ''), COALESCE(raw_data->>'Estimated Completion Date', '') FROM submissions
@@ -3143,7 +3185,7 @@ def admin_upload_psa():
             else:
                 verification_html = """
                 <tr>
-                    <td colspan="4">No verification rows were created because no matching parsed submissions were found.</td>
+                    <td colspan="6">No verification rows were created because no matching parsed submissions were found.</td>
                 </tr>
                 """
 
@@ -3154,6 +3196,7 @@ def admin_upload_psa():
                 <p><b>Pages read:</b> {pages_read}</p>
                 <p><b>Statuses found:</b> {len(best)}</p>
                 <p><b>Updated:</b> {updated}</p>
+                <p><b>Status corrections:</b> {corrected}</p>
                 <p><b>Skipped:</b> {skipped}</p>
 
                 <hr>
@@ -3193,9 +3236,10 @@ def admin_upload_psa():
     return page("""
     <div class="card">
         <h2>Upload PSA PDF</h2>
+        <p>This uploader reads the PSA Orders / Status PDF and updates submission statuses row-by-row.</p>
         <form method="post" enctype="multipart/form-data">
-            <input type="file" name="file" accept=".pdf,.csv,application/pdf,text/csv">
-            <button>Upload PDF</button>
+            <input type="file" name="file" accept=".pdf,application/pdf">
+            <button>Upload PSA Status PDF</button>
         </form>
     </div>
     """)
@@ -4720,179 +4764,4 @@ def portal_orders():
         sms_opted = grouped_values[2] if len(grouped_values) > 2 else False
         sms_pickup_only = grouped_values[3] if len(grouped_values) > 3 else True
         sms_mode = grouped_values[4] if len(grouped_values) > 4 else ("pickup" if sms_opted and sms_pickup_only else ("all" if sms_opted else "none"))
-        customer_name = get_field(data, ["Customer Name", "Customer", "Name", "Full Name", "Billing Name", "Client"])
-        cards = get_field(data, ["# Of Cards", "# of Cards", "Cards"])
-        service = clean_service_display(get_field(data, ["Service Type", "Service"]))
-        date = get_dropoff_date(data)
-        arrived_completed_raw = get_psa_received_date(data)
-        arrived_completed_data = parse_arrived_completed_value(arrived_completed_raw)
-        arrived_completed = arrived_completed_data["display"]
-        arrived_completed = strip_arrived_at_psa_prefix(arrived_completed)
-        estimated_completion = get_expected_completion_date(data)
-        display_status = status or "Submitted"
-        display_status_label = customer_status_label(display_status)
-
-        buyback_rows = get_buyback_items_for_submission(sub)
-        buyback_html = ""
-
-        if buyback_rows:
-            buyback_count = len(buyback_rows)
-            buyback_html += f"""
-            <hr>
-            <details class="buyback-collapsible">
-                <summary>View cards / select cards to sell ({buyback_count})</summary>
-                <div class="buyback-inner">
-                    <p>Select any cards you may be interested in selling to Giant Sports Cards.</p>
-                    <form method="post" action="/portal/sell_interest">
-                        <input type="hidden" name="submission_number" value="{sub}">
-                        <div class="card-grid">
-            """
-
-            for row in buyback_rows:
-                cert_number, item_details, grade, image_data, interested = row[0], row[1], row[2], row[3], row[4]
-                card_type = row[5] if len(row) > 5 else ""
-                after_service = row[6] if len(row) > 6 else ""
-                images_url = row[7] if len(row) > 7 else ""
-                psa_estimate = display_blank_loading(row[8] if len(row) > 8 else "")
-                card_ladder_value = display_blank_loading(row[9] if len(row) > 9 else "")
-                pop = display_blank_loading(row[10] if len(row) > 10 else "")
-                pop_higher = display_blank_loading(row[11] if len(row) > 11 else "")
-                offer_amount = row[12] if len(row) > 12 else ""
-                offer_notes = row[13] if len(row) > 13 else ""
-                buyback_status = row[14] if len(row) > 14 else ""
-
-                checked = "checked" if interested else ""
-                img_html = f"<img src='{image_data}' alt='Card image'>" if image_data else ""
-
-                offer_display = ""
-                if offer_amount:
-                    response_buttons = ""
-                    if buyback_status == "Offer Sent":
-                        response_buttons = f"""
-                        <form method="post" action="/portal/buyback_offer_response" style="margin-top:8px;">
-                            <input type="hidden" name="submission_number" value="{sub}">
-                            <input type="hidden" name="cert_number" value="{cert_number}">
-                            <button name="response" value="Accepted">Accept Offer</button>
-                            <button name="response" value="Declined">Decline</button>
-                        </form>
-                        """
-                    offer_display = f"""
-                    <div style="margin-top:10px;padding:10px;border:1px solid #d1e7dd;border-radius:8px;background:#f3f7f5;">
-                        <b>Giant Sports Cards Buyback Offer:</b> {html_escape(offer_amount)}<br>
-                        <small>{html_escape(offer_notes)}</small><br>
-                        <b>Current Status:</b> {html_escape('Interest' if buyback_status == 'New' else buyback_status)}
-                        {response_buttons}
-                    </div>
-                    """
-
-                buyback_html += f"""
-                <div class="buy-card">
-                    {img_html}
-                    <div class="cert">Certification #: {cert_number}</div>
-                    <div><b>Type:</b> {card_type}</div>
-                    <div>{item_details}</div>
-                    <div><b>Grade:</b> {grade}</div>
-                    {offer_display}
-                    <label class="sell-check"><input type="checkbox" name="cert" value="{cert_number}" {checked}> Request an offer</label>
-                </div>
-                """
-
-            buyback_html += """
-                        </div>
-                        <br>
-                        <button type="submit">Request Offer</button>
-                    </form>
-                </div>
-            </details>
-            """
-
-        sms_html = ""
-
-        html += f"""
-        <div class="card">
-            <h3>{customer_name}</h3>
-            <p><b>PSA Submission:</b> {sub}</p>
-            <p><b>Current Status:</b> <span class="status status-badge">● {display_status_label}</span></p>
-            <p><b>Received by PSA:</b> {arrived_completed}</p>
-            <p><b>Estimated Completion:</b> {estimated_completion}</p>
-            <p><b>Cards:</b> {cards}</p>
-            <p><b>Service Level:</b> {service}</p>
-            <p><b>Customer Drop-Off:</b> {date}</p>
-            {status_bar(display_status)}
-            {sms_html}
-            {buyback_html}
-        </div>
-        """
-
-    return page(html, mode="portal")
-
-
-@app.route("/portal/buyback_offer_response", methods=["POST"])
-def portal_buyback_offer_response():
-    phone = normalize_phone(session.get("phone"))
-    last = clean(session.get("last")).lower()
-
-    if not phone or not last:
-        return redirect("/portal")
-
-    submission_number = normalize_submission(request.form.get("submission_number"))
-    cert_number = normalize_submission(request.form.get("cert_number"))
-    response = clean(request.form.get("response"))
-
-    if response not in ["Accepted", "Declined"]:
-        return redirect("/portal/orders")
-
-    if not submission_number or not cert_number:
-        return redirect("/portal/orders")
-
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-    SELECT raw_data
-    FROM submissions
-    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-    """, (submission_number,))
-    row = cur.fetchone()
-
-    if not row:
-        cur.close()
-        conn.close()
-        return redirect("/portal/orders")
-
-    data = row[0] or {}
-    name = str(get_field(data, ["Customer Name", "Name"])).lower()
-    contact = normalize_phone(get_field(data, ["Contact Info", "Phone", "Phone Number"]))
-
-    phone_match = bool(contact) and (phone in contact or contact in phone)
-    name_match = bool(last) and last in name
-
-    if not (phone_match and name_match):
-        cur.close()
-        conn.close()
-        return redirect("/portal/orders")
-
-    cur.execute("""
-    UPDATE card_buyback_items
-    SET buyback_status=%s,
-        updated_at=NOW()
-    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-      AND REGEXP_REPLACE(cert_number, '\\D', '', 'g')=%s
-      AND COALESCE(offer_amount, '') <> ''
-    """, (response, submission_number, cert_number))
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return redirect("/portal/orders")
-
-
-@app.route("/portal/logout")
-def portal_logout():
-    session.pop("phone", None)
-    session.pop("last", None)
-    return redirect("/portal")
-
-if __name__ == "__main__":
-    app.run()
+        customer_name = get
