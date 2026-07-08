@@ -641,7 +641,7 @@ def send_buyback_interest_email(customer_name, contact_info, submission_number, 
 
 Name: {customer_name}
 Contact Info: {contact_info}
-Submission #: {submission_number}
+PSA Submission: {submission_number}
 
 Card(s) with Cert #:
 {chr(10).join(card_lines)}
@@ -1613,6 +1613,43 @@ def page(content, mode="admin"):
             body.portal-body .portal-results-logo {{
                 width:160px !important;
             }}
+        }}
+
+        /* CUSTOMER PORTAL POLISH FINAL */
+        .status-badge {{
+            display:inline-flex !important;
+            align-items:center !important;
+            gap:6px !important;
+            background:#d1e7dd !important;
+            color:#0f5132 !important;
+            border:1px solid #9fd0b4 !important;
+            border-radius:999px !important;
+            padding:6px 10px !important;
+            font-weight:900 !important;
+            line-height:1 !important;
+        }}
+        body.portal-body .card h3 {{
+            color:#0f5132 !important;
+            font-weight:950 !important;
+            letter-spacing:.1px !important;
+        }}
+        body.portal-body .card p {{
+            line-height:1.45 !important;
+        }}
+        body.portal-body .card b {{
+            color:#111827 !important;
+        }}
+        body.portal-body .sell-check {{
+            font-weight:800 !important;
+            color:#1f2937 !important;
+        }}
+        body.portal-body button[type="submit"] {{
+            background:#198754 !important;
+            color:#ffffff !important;
+            border:0 !important;
+            border-radius:10px !important;
+            font-weight:900 !important;
+            cursor:pointer !important;
         }}
 </style>
     </head>
@@ -3182,7 +3219,7 @@ def admin_upload_cards():
             return page(f"""
             <div class="card">
                 <h2>Card PDF Imported</h2>
-                <p><b>Submission #:</b> {submission_number}</p>
+                <p><b>PSA Submission:</b> {submission_number}</p>
                 <p><b>Order #:</b> {order_number}</p>
                 <p><b>Cards found:</b> {len(items)}</p>
                 <p><b>Cards saved:</b> {saved}</p>
@@ -4286,9 +4323,9 @@ def portal():
 
             <div class="gsc-track-card">
                 <div class="gsc-track-icon"><span class="gsc-track-check"></span></div>
-                <h2 class="gsc-track-title">Track Your Submission</h2>
+                <h2 class="gsc-track-title">Check Your Submission Status</h2>
                 <div class="gsc-green-line"></div>
-                <p class="gsc-subtitle">Enter your information below to view the real-time status of your PSA submission.</p>
+                <p class="gsc-subtitle">Enter your last name and phone number to view your PSA submissions.</p>
 
                 <form class="gsc-portal-form" method="post">
                     <div class="gsc-input-row">
@@ -4301,7 +4338,7 @@ def portal():
                         <input name="last" placeholder="Last name">
                     </div>
 
-                    <button class="gsc-submit" type="submit">Track Submission</button>
+                    <button class="gsc-submit" type="submit">Find My Submission</button>
                 </form>
             </div>
 
@@ -4310,7 +4347,7 @@ def portal():
                     <div class="gsc-benefit-graphic updates"></div>
                     <div>
                         <div class="gsc-benefit-title">Real-Time Updates</div>
-                        <div class="gsc-benefit-text">View current PSA progress and pickup status.</div>
+                        <div class="gsc-benefit-text">Check current PSA progress, grading status, and pickup readiness.</div>
                     </div>
                 </div>
 
@@ -4318,7 +4355,7 @@ def portal():
                     <div class="gsc-benefit-graphic care"></div>
                     <div>
                         <div class="gsc-benefit-title">Expert Care</div>
-                        <div class="gsc-benefit-text">Handled carefully from drop-off to pickup.</div>
+                        <div class="gsc-benefit-text">Tracked carefully from customer drop-off through pickup.</div>
                     </div>
                 </div>
             </div>
@@ -4485,7 +4522,7 @@ def portal_orders():
             grouped[sub] = (data, r[1] or "Submitted", sms_opted, sms_pickup_only, sms_mode)
 
     if not grouped:
-        html += "<div class='card'>No matching orders found. Check phone number and last name.</div>"
+        html += "<div class='card'>We couldn't find any PSA submissions matching the information entered. Please verify your last name and phone number or contact Giant Sports Cards for assistance.</div>"
         return page(html, mode="portal")
 
 
@@ -4505,26 +4542,26 @@ def portal_orders():
 
     html += f"""
     <div class="card">
-        <h3>Text Notifications</h3>
+        <h3>PSA Text Updates</h3>
         <p>Choose one text preference for all PSA submissions tied to this phone/name. Message and data rates may apply. You can change this anytime.</p>
         <form method="post" action="/portal/sms_preferences">
             <label class="sell-check">
                 <input type="radio" name="sms_mode" value="none" {none_checked}>
-                No text messages
+                Don't send text updates
             </label>
             <label class="sell-check">
                 <input type="radio" name="sms_mode" value="pickup" {pickup_checked}>
-                Text me when an order is ready for pickup
+                Notify me when my order is ready for pickup
             </label>
             <label class="sell-check">
                 <input type="radio" name="sms_mode" value="all" {all_checked}>
-                Text me for every PSA status change
+                Notify me of every PSA status update
             </label>
             <label class="sell-check">
                 <input type="checkbox" name="sms_consent" value="yes" {consent_checked}>
                 I agree to receive text updates from Giant Sports Cards regarding my PSA submissions. Message and data rates may apply. Reply STOP to opt out.
             </label>
-            <button type="submit">Save Text Settings</button>
+            <button type="submit">Save Text Updates</button>
         </form>
     </div>
     """
@@ -4653,7 +4690,7 @@ def portal_orders():
                     <div style="margin-top:10px;padding:10px;border:1px solid #d1e7dd;border-radius:8px;background:#f3f7f5;">
                         <b>Giant Sports Cards Buyback Offer:</b> {html_escape(offer_amount)}<br>
                         <small>{html_escape(offer_notes)}</small><br>
-                        <b>Status:</b> {html_escape('Interest' if buyback_status == 'New' else buyback_status)}
+                        <b>Current Status:</b> {html_escape('Interest' if buyback_status == 'New' else buyback_status)}
                         {response_buttons}
                     </div>
                     """
@@ -4666,14 +4703,14 @@ def portal_orders():
                     <div>{item_details}</div>
                     <div><b>Grade:</b> {grade}</div>
                     {offer_display}
-                    <label class="sell-check"><input type="checkbox" name="cert" value="{cert_number}" {checked}> Interested in selling</label>
+                    <label class="sell-check"><input type="checkbox" name="cert" value="{cert_number}" {checked}> Request an offer</label>
                 </div>
                 """
 
             buyback_html += """
                         </div>
                         <br>
-                        <button type="submit">Save</button>
+                        <button type="submit">Request Offer</button>
                     </form>
                 </div>
             </details>
@@ -4684,13 +4721,13 @@ def portal_orders():
         html += f"""
         <div class="card">
             <h3>{customer_name}</h3>
-            <p><b>Submission #:</b> {sub}</p>
-            <p><b>Status:</b> <span class="status">{display_status_label}</span></p>
-            <p><b>Date PSA Received:</b> {arrived_completed}</p>
-            <p><b>Expected Completion Date:</b> {estimated_completion}</p>
+            <p><b>PSA Submission:</b> {sub}</p>
+            <p><b>Current Status:</b> <span class="status status-badge">● {display_status_label}</span></p>
+            <p><b>Received by PSA:</b> {arrived_completed}</p>
+            <p><b>Estimated Completion:</b> {estimated_completion}</p>
             <p><b>Cards:</b> {cards}</p>
-            <p><b>Service:</b> {service}</p>
-            <p><b>Customer Drop-Off Date:</b> {date}</p>
+            <p><b>Service Level:</b> {service}</p>
+            <p><b>Customer Drop-Off:</b> {date}</p>
             {status_bar(display_status)}
             {sms_html}
             {buyback_html}
