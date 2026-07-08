@@ -1703,6 +1703,16 @@ def page(content, mode="admin"):
             font-weight:900 !important;
             line-height:1.1 !important;
         }}
+
+        /* BUYBACK HEADER SYMBOL FIX */
+        body.portal-body .buyback-collapsible summary {{
+            position:relative !important;
+            padding-right:18px !important;
+        }}
+        body.portal-body .buyback-collapsible summary::after {{
+            content:"" !important;
+            display:none !important;
+        }}
 </style>
     </head>
     <body class="{mode}-body">
@@ -4821,9 +4831,9 @@ def portal_orders():
             buyback_html += f"""
             <hr>
             <details class="buyback-collapsible">
-                <summary>View cards / select cards to sell ({buyback_count})</summary>
+                <summary>Interested in Selling Your Cards? ({buyback_count})</summary>
                 <div class="buyback-inner">
-                    <p>Select any cards you may be interested in selling to Giant Sports Cards.</p>
+                    <p>Select any graded cards below and our team will contact you with an offer.</p>
                     <form method="post" action="/portal/sell_interest">
                         <input type="hidden" name="submission_number" value="{sub}">
                         <div class="card-grid">
