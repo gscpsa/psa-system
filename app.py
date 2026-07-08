@@ -1651,6 +1651,21 @@ def page(content, mode="admin"):
             font-weight:900 !important;
             cursor:pointer !important;
         }}
+
+        /* DASHBOARD ADVANCED FILTERS */
+        .filterbar input[type="month"],
+        .filterbar input[name="q"],
+        .filterbar input[name="card_count"] {{
+            padding:9px 10px;
+            border:1px solid #cbd5e1;
+            border-radius:8px;
+            background:white;
+            font-size:14px;
+            box-sizing:border-box;
+        }}
+        .filterbar input[name="q"] {{
+            min-width:260px;
+        }}
 </style>
     </head>
     <body class="{mode}-body">
@@ -2411,6 +2426,11 @@ def admin_dashboard():
     view = request.args.get("view", "all")
     status_filter = request.args.get("status", "all").replace("+", " ")
     q = clean(request.args.get("q", "")).lower()
+    dropoff_month = clean(request.args.get("dropoff_month", ""))
+    card_count_filter = clean(request.args.get("card_count", ""))
+    card_count_op = clean(request.args.get("card_count_op", "eq"))
+    if card_count_op not in ["eq", "gte", "lte"]:
+        card_count_op = "eq"
 
     conn = get_conn()
     cur = conn.cursor()
@@ -2459,6 +2479,61 @@ def admin_dashboard():
             return q in haystack
 
         rows = [r for r in rows if row_matches_query(r)]
+
+    if dropoff_month:
+        def row_matches_dropoff_month(row):
+            data = row[0] or {}
+            dropoff = get_dropoff_date(data)
+            if not dropoff:
+                return False
+            try:
+                parsed = pd.to_datetime(dropoff, errors="coerce")
+                if pd.isna(parsed):
+                    return str(dropoff).startswith(dropoff_month)
+                return parsed.strftime("%Y-%m") == dropoff_month
+            except Exception:
+                return str(dropoff).startswith(dropoff_month)
+
+        rows = [r for r in rows if row_matches_dropoff_month(r)]
+
+    if card_count_filter:
+        try:
+            wanted_cards = int(float(card_count_filter))
+        except Exception:
+            wanted_cards = None
+
+        if wanted_cards is not None:
+            def row_card_count(row):
+                data = row[0] or {}
+                value = get_field(data, [
+                    "Cards",
+                    "Card Count",
+                    "Qty",
+                    "Quantity",
+                    "# Cards",
+                    "Number of Cards",
+                    "Items",
+                    "Item Count"
+                ])
+                try:
+                    return int(float(str(value).strip()))
+                except Exception:
+                    found = re.search(r"\d+", str(value or ""))
+                    if found:
+                        return int(found.group(0))
+                    return None
+
+            def row_matches_card_count(row):
+                count = row_card_count(row)
+                if count is None:
+                    return False
+                if card_count_op == "gte":
+                    return count >= wanted_cards
+                if card_count_op == "lte":
+                    return count <= wanted_cards
+                return count == wanted_cards
+
+            rows = [r for r in rows if row_matches_card_count(r)]
 
     total_count = len(all_rows)
     active_count = sum(1 for r in all_rows if (row_status(r) or "Submitted") not in ["Complete", "Delivered to Us", "Picked Up"])
@@ -2522,6 +2597,21 @@ def admin_dashboard():
             <div>
                 <label>Search</label>
                 <input name="q" value="{html_escape(q)}" placeholder="Name, phone, submission #, order #">
+            </div>
+            <div>
+                <label>Drop-Off Month</label>
+                <input type="month" name="dropoff_month" value="{html_escape(dropoff_month)}">
+            </div>
+            <div>
+                <label>Card Count</label>
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <select name="card_count_op" style="min-width:86px;">
+                        <option value="eq" {'selected' if card_count_op == 'eq' else ''}>Equals</option>
+                        <option value="gte" {'selected' if card_count_op == 'gte' else ''}>At least</option>
+                        <option value="lte" {'selected' if card_count_op == 'lte' else ''}>At most</option>
+                    </select>
+                    <input name="card_count" value="{html_escape(card_count_filter)}" placeholder="# cards" style="width:95px;">
+                </div>
             </div>
             <div>
                 <label>Sort</label>
