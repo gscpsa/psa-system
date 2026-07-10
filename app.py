@@ -442,14 +442,36 @@ def get_expected_completion_date(data):
     ])
 
     parsed = parse_arrived_completed_value(value)
+
     if parsed.get("estimated"):
         return parsed["estimated"]
+
+    if parsed.get("completed"):
+        return parsed["completed"]
+
+    completed_value = get_field(data, [
+        "Completed Date",
+        "Completion Date",
+        "Date Completed",
+        "Completed",
+        "PSA Completed Date"
+    ])
+
+    if completed_value:
+        completed_parsed = parse_arrived_completed_value(completed_value)
+        if completed_parsed.get("completed"):
+            return completed_parsed["completed"]
+
+        cleaned_completed = date_only_display(completed_value)
+        if cleaned_completed:
+            return cleaned_completed
 
     cleaned = date_only_display(value)
     if cleaned:
         return cleaned
 
     return ""
+
 
 def strip_arrived_at_psa_prefix(value):
     text = str(value or "").strip()
@@ -1713,6 +1735,16 @@ def page(content, mode="admin"):
             content:"" !important;
             display:none !important;
         }}
+
+        /* GRADED CARDS BUYBACK POLISH */
+        .buyback-success {{
+            border:1px solid #9fd0b4 !important;
+            background:#eef8f2 !important;
+        }}
+        .buyback-success h3 {{
+            color:#0f5132 !important;
+            margin-top:0 !important;
+        }}
 </style>
     </head>
     <body class="{mode}-body">
@@ -2475,9 +2507,7 @@ def admin_dashboard():
     q = clean(request.args.get("q", "")).lower()
     dropoff_month = clean(request.args.get("dropoff_month", ""))
     card_count_filter = clean(request.args.get("card_count", ""))
-    card_count_op = clean(request.args.get("card_count_op", "eq"))
-    if card_count_op not in ["eq", "gte", "lte"]:
-        card_count_op = "eq"
+    card_count_op = "eq"
 
     conn = get_conn()
     cur = conn.cursor()
@@ -2552,33 +2582,46 @@ def admin_dashboard():
         if wanted_cards is not None:
             def row_card_count(row):
                 data = row[0] or {}
-                value = get_field(data, [
+
+                candidate_fields = [
+                    "# Of Cards",
+                    "# of Cards",
                     "Cards",
                     "Card Count",
+                    "Number of Cards",
+                    "# Cards",
                     "Qty",
                     "Quantity",
-                    "# Cards",
-                    "Number of Cards",
                     "Items",
-                    "Item Count"
-                ])
-                try:
-                    return int(float(str(value).strip()))
-                except Exception:
-                    found = re.search(r"\d+", str(value or ""))
-                    if found:
-                        return int(found.group(0))
-                    return None
+                    "Item Count",
+                    "Cards Submitted"
+                ]
+
+                for field_name in candidate_fields:
+                    value = get_field(data, [field_name])
+                    if value not in ["", None]:
+                        try:
+                            return int(float(str(value).replace(",", "").strip()))
+                        except Exception:
+                            match = re.search(r"\d+", str(value or ""))
+                            if match:
+                                return int(match.group(0))
+
+                for key, value in data.items():
+                    key_norm = normalize_key_text(key)
+                    if "card" in key_norm and any(token in key_norm for token in ["count", "number", "qty", "quantity", "of cards"]):
+                        try:
+                            return int(float(str(value).replace(",", "").strip()))
+                        except Exception:
+                            match = re.search(r"\d+", str(value or ""))
+                            if match:
+                                return int(match.group(0))
+
+                return None
 
             def row_matches_card_count(row):
                 count = row_card_count(row)
-                if count is None:
-                    return False
-                if card_count_op == "gte":
-                    return count >= wanted_cards
-                if card_count_op == "lte":
-                    return count <= wanted_cards
-                return count == wanted_cards
+                return count is not None and count == wanted_cards
 
             rows = [r for r in rows if row_matches_card_count(r)]
 
@@ -2650,15 +2693,8 @@ def admin_dashboard():
                 <input type="month" name="dropoff_month" value="{html_escape(dropoff_month)}">
             </div>
             <div>
-                <label>Card Count</label>
-                <div style="display:flex;gap:6px;align-items:center;">
-                    <select name="card_count_op" style="min-width:86px;">
-                        <option value="eq" {'selected' if card_count_op == 'eq' else ''}>Equals</option>
-                        <option value="gte" {'selected' if card_count_op == 'gte' else ''}>At least</option>
-                        <option value="lte" {'selected' if card_count_op == 'lte' else ''}>At most</option>
-                    </select>
-                    <input name="card_count" value="{html_escape(card_count_filter)}" placeholder="# cards" style="width:95px;">
-                </div>
+                <label>Exact Card Count</label>
+                <input name="card_count" value="{html_escape(card_count_filter)}" placeholder="Exact number">
             </div>
             <div>
                 <label>Sort</label>
@@ -3891,6 +3927,7 @@ def portal_sell_interest():
 
     if selected_cards:
         send_buyback_interest_email(customer_name or "", contact_info or phone, submission_number, selected_cards)
+        session["buyback_request_sent"] = True
 
     return redirect("/portal/orders")
 
@@ -4567,6 +4604,8 @@ def portal_orders():
     cur.close()
     conn.close()
 
+    buyback_request_sent = bool(session.pop("buyback_request_sent", False))
+
     selected_view = request.args.get("view", "all")
     selected_status = request.args.get("status", "all").replace("+", " ")
 
@@ -4747,6 +4786,14 @@ def portal_orders():
     </div>
     """
 
+    if buyback_request_sent:
+        html += """
+        <div class="card buyback-success">
+            <h3>Buyback Request Sent</h3>
+            <p>Your selected cards were sent to Giant Sports Cards for review. Our team will contact you if we are interested in making an offer.</p>
+        </div>
+        """
+
     statuses_available = customer_status_options()
 
     def selected(option_value, current_value):
@@ -4831,9 +4878,9 @@ def portal_orders():
             buyback_html += f"""
             <hr>
             <details class="buyback-collapsible">
-                <summary>Interested in Selling Your Cards? ({buyback_count})</summary>
+                <summary>View Your Graded Cards ({buyback_count})</summary>
                 <div class="buyback-inner">
-                    <p>Select any graded cards below and our team will contact you with an offer.</p>
+                    <p>Your PSA grades are available below. Review your graded cards and select any cards you would like Giant Sports Cards to consider for a buyback offer.</p>
                     <form method="post" action="/portal/sell_interest">
                         <input type="hidden" name="submission_number" value="{sub}">
                         <div class="card-grid">
@@ -4891,7 +4938,7 @@ def portal_orders():
             buyback_html += """
                         </div>
                         <br>
-                        <button type="submit">Request Offer</button>
+                        <button type="submit">Request Buyback Offer</button>
                     </form>
                 </div>
             </details>
