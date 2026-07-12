@@ -4955,7 +4955,7 @@ def portal_orders():
             <p><b>Estimated Completion:</b> {estimated_completion}</p>
             <p><b>Cards:</b> {cards}</p>
             <p><b>Service Level:</b> {service}</p>
-            <p><b>Customer Drop-Off:</b> {date}</p>
+            <p><b>Customer Drop-Off:</b> {date}</p>uh
             {status_bar(display_status)}
             {sms_html}
             {buyback_html}
