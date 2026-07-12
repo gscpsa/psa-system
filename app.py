@@ -20,6 +20,7 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "587") or "587")
 SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 SMTP_FROM = os.getenv("SMTP_FROM", SELL_BUYBACK_EMAIL)
+SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "").strip().lower() in ("1", "true", "yes", "on")
 
 # =========================
 # DATABASE
@@ -83,6 +84,22 @@ def init_db():
         new_status TEXT,
         message TEXT,
         send_status TEXT DEFAULT 'Queued',
+        provider_response TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        sent_at TIMESTAMP
+    )
+    """)
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS buyback_email_notifications (
+        id SERIAL PRIMARY KEY,
+        submission_number TEXT,
+        customer_name TEXT,
+        contact_info TEXT,
+        recipient TEXT,
+        subject TEXT,
+        selected_cards JSONB,
+        send_status TEXT DEFAULT 'Pending',
         provider_response TEXT,
         created_at TIMESTAMP DEFAULT NOW(),
         sent_at TIMESTAMP
@@ -163,6 +180,20 @@ def init_db():
     cur.execute("""
     ALTER TABLE card_buyback_items
     ADD COLUMN IF NOT EXISTS offer_updated_at TIMESTAMP
+    """)
+
+    cur.execute("""
+    UPDATE submissions
+    SET status='Grading Complete',
+        last_updated=NOW()
+    WHERE status='Shipping Soon'
+    """)
+
+    cur.execute("""
+    UPDATE submissions
+    SET status='Shipped to Giant Sports Cards',
+        last_updated=NOW()
+    WHERE status='Complete'
     """)
     conn.commit()
     cur.close()
@@ -303,10 +334,12 @@ def get(data, names, default=""):
 
 
 def customer_status_label(status):
+    if status == "Shipping Soon":
+        return "Grading Complete"
+    if status == "Complete":
+        return "Shipped to Giant Sports Cards"
     if status == "Delivered to Us":
         return "Ready For Pickup"
-    if status == "Complete":
-        return "Grading Complete"
     return status or "Submitted"
 
 
@@ -318,11 +351,12 @@ def psa_status_steps():
         "Grading",
         "Assembly",
         "QA Checks",
-        "Shipping Soon",
-        "Complete",
+        "Grading Complete",
+        "Shipped to Giant Sports Cards",
         "Delivered to Us",
         "Picked Up"
     ]
+
 
 def customer_status_options():
     return [customer_status_label(s) for s in psa_status_steps()]
@@ -600,6 +634,13 @@ def build_sms_message(submission_number, old_status, new_status):
             f"is ready for pickup. Track it here: {PUBLIC_PORTAL_URL}"
         )
 
+    if new_status in ["Complete", "Shipped to Giant Sports Cards"]:
+        return (
+            f"Giant Sports Cards: Your PSA submission #{submission_number} "
+            f"has shipped from PSA to Giant Sports Cards. "
+            f"Track it here: {PUBLIC_PORTAL_URL}"
+        )
+
     if display_old:
         return (
             f"Giant Sports Cards: Your PSA submission #{submission_number} "
@@ -611,6 +652,7 @@ def build_sms_message(submission_number, old_status, new_status):
         f"Giant Sports Cards: Your PSA submission #{submission_number} "
         f"status is now {display_new}. Track it here: {PUBLIC_PORTAL_URL}"
     )
+
 
 def send_sms_or_queue(submission_number, phone, old_status, new_status, message):
     send_status = "Queued"
@@ -687,19 +729,23 @@ def send_buyback_interest_email(customer_name, contact_info, submission_number, 
 
 Name: {customer_name}
 Contact Info: {contact_info}
-PSA Submission: {submission_number}
+Submission #: {submission_number}
 
 Card(s) with Cert #:
 {chr(10).join(card_lines)}
 
 Manage this request and add an offer in the Buyback admin dashboard:
 {manage_link}
-
-Note: Staff should manage the offer and status inside the Buyback admin screen. Email replies do not automatically update the app.
 """
 
     if not SMTP_HOST:
-        return False, "SMTP not configured"
+        return False, (
+            "Email is not configured. Add SMTP_HOST, SMTP_PORT, SMTP_USER, "
+            "SMTP_PASSWORD, and SMTP_FROM in Railway Variables."
+        )
+
+    if not SMTP_FROM:
+        return False, "SMTP_FROM is not configured."
 
     msg = EmailMessage()
     msg["Subject"] = subject
@@ -708,14 +754,69 @@ Note: Staff should manage the offer and status inside the Buyback admin screen. 
     msg.set_content(body)
 
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as server:
-            server.starttls()
-            if SMTP_USER and SMTP_PASSWORD:
-                server.login(SMTP_USER, SMTP_PASSWORD)
-            server.send_message(msg)
-        return True, "Sent"
+        use_ssl = SMTP_USE_SSL or SMTP_PORT == 465
+
+        if use_ssl:
+            with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=25) as server:
+                if SMTP_USER and SMTP_PASSWORD:
+                    server.login(SMTP_USER, SMTP_PASSWORD)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=25) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                if SMTP_USER and SMTP_PASSWORD:
+                    server.login(SMTP_USER, SMTP_PASSWORD)
+                server.send_message(msg)
+
+        return True, f"Email sent to {SELL_BUYBACK_EMAIL}"
+
+    except Exception as exc:
+        return False, f"{type(exc).__name__}: {exc}"
+
+
+def record_buyback_email_attempt(
+    submission_number,
+    customer_name,
+    contact_info,
+    selected_cards,
+    sent,
+    response
+):
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+        INSERT INTO buyback_email_notifications (
+            submission_number,
+            customer_name,
+            contact_info,
+            recipient,
+            subject,
+            selected_cards,
+            send_status,
+            provider_response,
+            sent_at
+        )
+        VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s,
+                CASE WHEN %s THEN NOW() ELSE NULL END)
+        """, (
+            submission_number,
+            customer_name,
+            contact_info,
+            SELL_BUYBACK_EMAIL,
+            "PSA Customer Interested In Selling Cards",
+            json.dumps(selected_cards),
+            "Sent" if sent else "Failed",
+            response,
+            sent
+        ))
+        conn.commit()
+        cur.close()
+        conn.close()
     except Exception:
-        return False, traceback.format_exc()
+        pass
 
 
 
@@ -843,11 +944,11 @@ def normalize_psa_status(status):
     if s == "assembly":
         return "Assembly"
     if s == "shipping soon":
-        return "Shipping Soon"
+        return "Grading Complete"
 
     # PSA status-list PDFs sometimes show shipped completed rows as Track Package.
     if s in ["complete", "completed", "track package"]:
-        return "Complete"
+        return "Shipped to Giant Sports Cards"
 
     return None
 
@@ -860,11 +961,14 @@ def status_rank(status):
         "Assembly": 4,
         "QA Checks": 5,
         "Shipping Soon": 6,
+        "Grading Complete": 6,
         "Complete": 7,
+        "Shipped to Giant Sports Cards": 7,
         "Delivered to Us": 8,
         "Picked Up": 9,
     }
     return ranks.get(status or "Submitted", 0)
+
 
 def detect_internal_status(raw):
     full_text = " ".join([f"{k} {v}" for k, v in raw.items()]).lower()
@@ -943,6 +1047,7 @@ def page(content, mode="admin"):
         <a href="/admin/upload_psa">PSA PDF</a>
         <a href="/admin/upload_cards">Cards PDF</a>
         <a href="/admin/buyback_requests">Buyback</a>
+        <a href="/admin/test_buyback_email">Email Test</a>
         <a href="/admin/sms_notifications">SMS Queue</a>
         <a href="/portal">Portal</a>
         <a href="/admin/logout">Logout</a>
@@ -1745,6 +1850,16 @@ def page(content, mode="admin"):
             color:#0f5132 !important;
             margin-top:0 !important;
         }}
+
+        /* BUYBACK EMAIL DELIVERY STATUS */
+        .buyback-email-error {{
+            border:1px solid #f1aeb5 !important;
+            background:#fff1f2 !important;
+        }}
+        .buyback-email-error h3 {{
+            color:#b42318 !important;
+            margin-top:0 !important;
+        }}
 </style>
     </head>
     <body class="{mode}-body">
@@ -1787,7 +1902,13 @@ def should_hide_column(column_name):
 
 
 def status_needs_card_pdf(status):
-    return (status or "") in ["Shipping Soon", "Complete"]
+    return (status or "") in [
+        "Shipping Soon",
+        "Grading Complete",
+        "Complete",
+        "Shipped to Giant Sports Cards"
+    ]
+
 
 def card_pdf_needs_attention(row):
     """
@@ -1825,9 +1946,9 @@ def card_pdf_alert_text(row):
     try:
         status = row[1] or "Submitted"
         if status == "Shipping Soon":
-            return "Grades ready / card PDF needed"
+            return "Grading complete / card PDF needed"
         if status == "Complete":
-            return "Completed / card PDF needed"
+            return "Shipped / card PDF needed"
         return "Card PDF needed"
     except Exception:
         return "Card PDF needed"
@@ -2461,6 +2582,108 @@ def admin_login():
     """)
 
 
+
+@app.route("/admin/test_buyback_email", methods=["GET", "POST"])
+@admin_required
+def admin_test_buyback_email():
+    if request.method == "POST":
+        test_cards = [{
+            "cert_number": "TEST-12345678",
+            "description": "Test PSA Card",
+            "grade": "PSA 10"
+        }]
+
+        sent, response = send_buyback_interest_email(
+            "Giant Sports Cards Test",
+            "Test from Admin Dashboard",
+            "TEST",
+            test_cards
+        )
+
+        record_buyback_email_attempt(
+            "TEST",
+            "Giant Sports Cards Test",
+            "Test from Admin Dashboard",
+            test_cards,
+            sent,
+            response
+        )
+
+        color = "#198754" if sent else "#dc3545"
+        heading = "Test Email Sent" if sent else "Test Email Failed"
+
+        return page(f"""
+        <div class="card" style="border:3px solid {color};">
+            <h2 style="color:{color};">{heading}</h2>
+            <p><b>Recipient:</b> {html_escape(SELL_BUYBACK_EMAIL)}</p>
+            <p><b>Result:</b> {html_escape(response)}</p>
+            <a class="btn" href="/admin/test_buyback_email">Test Again</a>
+            <a class="btn" href="/admin/buyback_requests">Buyback Dashboard</a>
+        </div>
+        """)
+
+    configured = bool(SMTP_HOST and SMTP_FROM)
+    config_status = "Configured" if configured else "Not Configured"
+    config_color = "#198754" if configured else "#dc3545"
+
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+    SELECT created_at, submission_number, recipient, send_status, provider_response
+    FROM buyback_email_notifications
+    ORDER BY created_at DESC
+    LIMIT 20
+    """)
+    attempts = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    rows = ""
+    for created_at, submission_number, recipient, send_status, provider_response in attempts:
+        rows += f"""
+        <tr>
+            <td>{html_escape(created_at)}</td>
+            <td>{html_escape(submission_number)}</td>
+            <td>{html_escape(recipient)}</td>
+            <td>{html_escape(send_status)}</td>
+            <td>{html_escape(provider_response)}</td>
+        </tr>
+        """
+
+    if not rows:
+        rows = "<tr><td colspan='5'>No email attempts recorded yet.</td></tr>"
+
+    return page(f"""
+    <div class="card">
+        <h2>Buyback Email Test</h2>
+        <p><b>Configuration:</b> <span style="color:{config_color};font-weight:bold;">{config_status}</span></p>
+        <p><b>SMTP Host:</b> {html_escape(SMTP_HOST or "Missing")}</p>
+        <p><b>SMTP Port:</b> {SMTP_PORT}</p>
+        <p><b>SMTP User:</b> {html_escape(SMTP_USER or "Missing")}</p>
+        <p><b>SMTP From:</b> {html_escape(SMTP_FROM or "Missing")}</p>
+        <p><b>Recipient:</b> {html_escape(SELL_BUYBACK_EMAIL)}</p>
+
+        <form method="post">
+            <button type="submit">Send Test Buyback Email</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3>Recent Email Attempts</h3>
+        <table>
+            <tr>
+                <th>Time</th>
+                <th>Submission</th>
+                <th>Recipient</th>
+                <th>Status</th>
+                <th>Response</th>
+            </tr>
+            {rows}
+        </table>
+    </div>
+    """)
+
+
 @app.route("/admin/logout")
 def admin_logout():
     session.pop("admin", None)
@@ -2531,9 +2754,9 @@ def admin_dashboard():
     if view == "active":
         rows = [r for r in rows if (row_status(r) or "Submitted") not in ["Complete", "Delivered to Us", "Picked Up"]]
     elif view == "complete":
-        rows = [r for r in rows if (row_status(r) or "") == "Complete"]
+        rows = [r for r in rows if (row_status(r) or "") in ["Complete", "Shipped to Giant Sports Cards"]]
     elif view == "shipping":
-        rows = [r for r in rows if (row_status(r) or "") == "Shipping Soon"]
+        rows = [r for r in rows if (row_status(r) or "") in ["Shipping Soon", "Grading Complete"]]
     elif view == "pickup":
         rows = [r for r in rows if (row_status(r) or "") == "Delivered to Us"]
     elif view == "pdf_needed":
@@ -2627,8 +2850,8 @@ def admin_dashboard():
 
     total_count = len(all_rows)
     active_count = sum(1 for r in all_rows if (row_status(r) or "Submitted") not in ["Complete", "Delivered to Us", "Picked Up"])
-    complete_count = sum(1 for r in all_rows if (row_status(r) or "") == "Complete")
-    shipping_count = sum(1 for r in all_rows if (row_status(r) or "") == "Shipping Soon")
+    complete_count = sum(1 for r in all_rows if (row_status(r) or "") in ["Complete", "Shipped to Giant Sports Cards"])
+    shipping_count = sum(1 for r in all_rows if (row_status(r) or "") in ["Shipping Soon", "Grading Complete"])
     pickup_count = sum(1 for r in all_rows if (row_status(r) or "") == "Delivered to Us")
     pdf_needed_count = sum(1 for r in all_rows if card_pdf_needs_attention(r))
 
@@ -2656,7 +2879,7 @@ def admin_dashboard():
         </a>
         <a href="/admin?view=shipping&sort={sort}" style="text-decoration:none;color:inherit;">
             <div style="background:white;border-radius:12px;padding:15px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-left:5px solid #198754;">
-                <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Shipping Soon</div>
+                <div style="font-size:12px;color:#6b7280;font-weight:bold;text-transform:uppercase;letter-spacing:.4px;">Grading Complete</div>
                 <div style="font-size:24px;font-weight:900;color:#111827;margin-top:3px;">{shipping_count}</div>
             </div>
         </a>
@@ -2708,7 +2931,7 @@ def admin_dashboard():
                 <select name="view">
                     <option value="all" {'selected' if view == 'all' else ''}>All Submissions</option>
                     <option value="active" {'selected' if view == 'active' else ''}>Active</option>
-                    <option value="complete" {'selected' if view == 'complete' else ''}>Grading Complete</option>
+                    <option value="complete" {'selected' if view == 'complete' else ''}>Shipped to Giant Sports Cards</option>
                     <option value="shipping" {'selected' if view == 'shipping' else ''}>Shipping Soon</option>
                     <option value="pickup" {'selected' if view == 'pickup' else ''}>Ready Pickup</option>
                     <option value="pdf_needed" {'selected' if view == 'pdf_needed' else ''}>Card PDF Needed</option>
@@ -2903,11 +3126,11 @@ def admin_upload_psa():
                 if re.search(r"\bqa\s+checks\b", text):
                     return "QA Checks"
                 if re.search(r"\bshipping\s+soon\b", text):
-                    return "Shipping Soon"
+                    return "Grading Complete"
 
                 # PSA completed/grades-ready rows may show Complete, Track Package, or Completing.
                 if re.search(r"\bcomplete\b|\bcompleted\b|\btrack\s+package\b|\bcompleting\b", text):
-                    return "Complete"
+                    return "Shipped to Giant Sports Cards"
 
                 return None
 
@@ -3926,8 +4149,26 @@ def portal_sell_interest():
     conn.close()
 
     if selected_cards:
-        send_buyback_interest_email(customer_name or "", contact_info or phone, submission_number, selected_cards)
-        session["buyback_request_sent"] = True
+        email_sent, email_response = send_buyback_interest_email(
+            customer_name or "",
+            contact_info or phone,
+            submission_number,
+            selected_cards
+        )
+
+        record_buyback_email_attempt(
+            submission_number,
+            customer_name or "",
+            contact_info or phone,
+            selected_cards,
+            email_sent,
+            email_response
+        )
+
+        if email_sent:
+            session["buyback_request_sent"] = True
+        else:
+            session["buyback_request_email_error"] = email_response
 
     return redirect("/portal/orders")
 
@@ -4605,6 +4846,7 @@ def portal_orders():
     conn.close()
 
     buyback_request_sent = bool(session.pop("buyback_request_sent", False))
+    buyback_request_email_error = session.pop("buyback_request_email_error", "")
 
     selected_view = request.args.get("view", "all")
     selected_status = request.args.get("status", "all").replace("+", " ")
@@ -4794,6 +5036,16 @@ def portal_orders():
         </div>
         """
 
+    if buyback_request_email_error:
+        html += f"""
+        <div class="card buyback-email-error">
+            <h3>Buyback Request Saved, Email Not Sent</h3>
+            <p>Your card selection was saved, but the notification email could not be delivered.</p>
+            <p><b>Technical reason:</b> {html_escape(buyback_request_email_error)}</p>
+            <p>Please contact Giant Sports Cards directly while the email settings are being corrected.</p>
+        </div>
+        """
+
     statuses_available = customer_status_options()
 
     def selected(option_value, current_value):
@@ -4808,7 +5060,7 @@ def portal_orders():
     """
     html += f"<option value='all' {selected('all', selected_view)}>All Orders</option>"
     html += f"<option value='active' {selected('active', selected_view)}>Active Orders</option>"
-    html += f"<option value='completed' {selected('completed', selected_view)}>Completed / Picked Up</option>"
+    html += f"<option value='completed' {selected('completed', selected_view)}>Shipped / Picked Up</option>"
     html += """
                 </select>
             </div>
@@ -4830,7 +5082,7 @@ def portal_orders():
     </div>
     """
 
-    completed_statuses = set(["Complete", "Delivered to Us", "Picked Up"])
+    completed_statuses = set(["Complete", "Shipped to Giant Sports Cards", "Delivered to Us", "Picked Up"])
     filtered_grouped = {}
 
     for sub, grouped_values in grouped.items():
@@ -4955,7 +5207,7 @@ def portal_orders():
             <p><b>Estimated Completion:</b> {estimated_completion}</p>
             <p><b>Cards:</b> {cards}</p>
             <p><b>Service Level:</b> {service}</p>
-            <p><b>Customer Drop-Off:</b> {date}</p>uh
+            <p><b>Customer Drop-Off:</b> {date}</p>
             {status_bar(display_status)}
             {sms_html}
             {buyback_html}
