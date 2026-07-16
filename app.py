@@ -263,9 +263,9 @@ def normalize_phone(v):
 
 def normalize_key_text(value):
     text = str(value or "").strip().lower()
-    text = text.replace("Æ", "f")
-    text = text.replace("Ã¦Â", "f")
-    text = text.replace("Ã¢\x80\x99", "'")
+    text = text.replace("ƒ", "f")
+    text = text.replace("æ", "f")
+    text = text.replace("â\x80\x99", "'")
     text = text.replace(".", "")
     text = re.sub(r"\s+", " ", text)
     return text
@@ -277,10 +277,10 @@ def is_dropoff_date_key(key):
     direct_names = [
         "fand",
         "f and",
-        "Æand",
-        "Æ and",
-        "Ã¦Âand",
-        "Ã¦Â and",
+        "ƒand",
+        "ƒ and",
+        "æand",
+        "æ and",
         "submission date",
         "customer drop-off date",
         "customer drop off date",
@@ -333,6 +333,45 @@ def get(data, names, default=""):
     return get_field(data, candidates) or ""
 
 
+
+def get_psa_order_url(data, submission_number=""):
+    """
+    Returns the exact PSA order-page URL stored from the PSA PDF.
+
+    If the URL was not stored yet but the source data contains both the
+    submission number and PSA order number, construct PSA's standard URL.
+    """
+    data = data or {}
+
+    stored_url = str(get_field(data, [
+        "PSA Order URL",
+        "PSA URL",
+        "PSA Link",
+        "Order URL"
+    ]) or "").strip()
+
+    if stored_url.startswith("https://www.psacard.com/"):
+        return stored_url
+
+    sub = normalize_submission(
+        submission_number
+        or get_field(data, ["Submission #", "Submission Number", "PSA Submission #"])
+    )
+
+    order_number = normalize_submission(get_field(data, [
+        "PSA Order #",
+        "PSA Order Number",
+        "Order #",
+        "Order Number"
+    ]))
+
+    if sub and order_number:
+        return f"https://www.psacard.com/myaccount/myorders/{sub}/{order_number}"
+
+    return ""
+
+
+
 def customer_status_label(status):
     if status == "Shipping Soon":
         return "Grading Complete"
@@ -365,8 +404,8 @@ def clean_service_display(service):
     value = str(service or "").strip()
     if " - " in value:
         return value.split(" - ", 1)[0].strip()
-    if " â " in value:
-        return value.split(" â ", 1)[0].strip()
+    if " – " in value:
+        return value.split(" – ", 1)[0].strip()
     return value
 
 def date_only_display(value):
@@ -411,10 +450,10 @@ def get_dropoff_date(data):
         "Customer Drop-Off Date",
         "Customer Drop Off Date",
         "Submission Date",
+        "ƒand",
+        "ƒand.",
         "Æand",
         "Æand.",
-        "ÃÂand",
-        "ÃÂand.",
         "fand",
         "Fand",
         "F and",
@@ -526,8 +565,8 @@ def parse_arrived_completed_value(value):
 
     month = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)"
     date_single = month + r"\s+\d{1,2},\s+\d{4}"
-    date_range_same_year = month + r"\s+\d{1,2}\s*[-â]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
-    date_range_full = date_single + r"\s*[-â]\s*" + date_single
+    date_range_same_year = month + r"\s+\d{1,2}\s*[-–]\s*" + month + r"?\s*\d{1,2},\s+\d{4}"
+    date_range_full = date_single + r"\s*[-–]\s*" + date_single
 
     completed_match = re.search(r"Completed\s+(" + date_single + r")", text, re.IGNORECASE)
     if completed_match:
@@ -1323,7 +1362,7 @@ def page(content, mode="admin"):
             color:#198754;
         }}
         .buyback-collapsible[open] summary:after {{
-            content:"â";
+            content:"–";
         }}
         .buyback-collapsible .buyback-inner {{
             padding:14px;
@@ -1860,6 +1899,18 @@ def page(content, mode="admin"):
             color:#b42318 !important;
             margin-top:0 !important;
         }}
+
+        /* PSA ORDER DASHBOARD LINK */
+        .psa-order-link {{
+            color:#0f6848 !important;
+            text-decoration:underline !important;
+            text-decoration-thickness:1.5px !important;
+            text-underline-offset:3px !important;
+            font-weight:950 !important;
+        }}
+        .psa-order-link:hover {{
+            color:#198754 !important;
+        }}
 </style>
     </head>
     <body class="{mode}-body">
@@ -2002,6 +2053,15 @@ def build_table(rows):
         data = raw_data or {}
 
         sub = normalize_submission(get_field(data, ["Submission #", "Submission Number"])) or ""
+        psa_order_url = get_psa_order_url(data, sub)
+        if psa_order_url:
+            submission_html = (
+                f"<a href='{html_escape(psa_order_url)}' target='_blank' rel='noopener noreferrer' "
+                f"class='psa-order-link' title='Open this order on PSA'>{html_escape(sub)}</a>"
+            )
+        else:
+            submission_html = html_escape(sub)
+
         customer = get_field(data, ["Customer Name", "Name"])
         phone = get_field(data, ["Contact Info", "Phone", "Phone Number"])
         cards = get_field(data, ["# Of Cards", "# of Cards", "Cards"])
@@ -2041,13 +2101,13 @@ def build_table(rows):
                 details_parts.append(f"<b>{html_escape(key_text)}:</b> {html_escape(val)}")
 
         if not details_parts:
-            details_html = "<span style='color:#6b7280;'>â</span>"
+            details_html = "<span style='color:#6b7280;'>—</span>"
         else:
             details_html = "<details class='row-details'><summary>Details</summary><div>" + "<br>".join(details_parts[:12]) + "</div></details>"
 
         html += f"""
         <tr>
-            <td><b>{html_escape(sub)}</b></td>
+            <td><b>{submission_html}</b></td>
             <td>{html_escape(customer)}</td>
             <td>{html_escape(phone)}</td>
             <td>{html_escape(cards)}</td>
@@ -3103,6 +3163,7 @@ def admin_upload_psa():
 
             best = {}
             ac_map = {}
+            psa_order_links = {}
             pdf_text_parts = []
             pages_read = 0
 
@@ -3141,7 +3202,7 @@ def admin_upload_psa():
                 est_pattern = (
                     r"Est\.\s*by\s+("
                     + month_pattern +
-                    r"\s+\d{1,2}(?:\s*[-â]\s*(?:"
+                    r"\s+\d{1,2}(?:\s*[-–]\s*(?:"
                     + month_pattern +
                     r")?\s*\d{1,2})?,\s+\d{4})"
                 )
@@ -3204,6 +3265,7 @@ def admin_upload_psa():
             def parse_status_pdf_by_rows(pdf_path):
                 found_status = {}
                 found_dates = {}
+                found_order_links = {}
                 pages = 0
                 text_parts = []
 
@@ -3216,6 +3278,27 @@ def admin_upload_psa():
                 pages = len(doc)
 
                 for pdf_page in doc:
+                    # PSA embeds the exact order-page URL behind each order/submission number.
+                    # Capture it rather than guessing the URL.
+                    try:
+                        for link in pdf_page.get_links():
+                            uri = str(link.get("uri") or "").strip()
+                            order_link_match = re.search(
+                                r"https://www\.psacard\.com/myaccount/myorders/(\d+)/(\d+)",
+                                uri,
+                                re.IGNORECASE
+                            )
+                            if order_link_match:
+                                linked_sub = normalize_submission(order_link_match.group(1))
+                                linked_order = normalize_submission(order_link_match.group(2))
+                                if linked_sub and linked_order:
+                                    found_order_links[linked_sub] = {
+                                        "order_number": linked_order,
+                                        "url": uri
+                                    }
+                    except Exception:
+                        pass
+
                     try:
                         page_text = pdf_page.get_text("text") or ""
                     except Exception:
@@ -3282,7 +3365,7 @@ def admin_upload_psa():
                             found_dates[sub] = dates_value
 
                 doc.close()
-                return found_status, found_dates, text_parts, pages
+                return found_status, found_dates, found_order_links, text_parts, pages
 
             def extract_arrived_completed_from_full_text(text_value):
                 found = {}
@@ -3290,8 +3373,8 @@ def admin_upload_psa():
                 normalized = re.sub(r"\s+", " ", text_value or "").strip()
                 normalized = re.sub(r",\s+(\d{4})", r", \1", normalized)
 
-                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-â]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
-                date_range_full = date_pattern + r"\s*[-â]\s*" + date_pattern
+                date_range_same_year = month_pattern + r"\s+\d{1,2}\s*[-–]\s*" + month_pattern + r"?\s*\d{1,2},\s+\d{4}"
+                date_range_full = date_pattern + r"\s*[-–]\s*" + date_pattern
 
                 value_pattern = re.compile(
                     rf"(Completed\s+{date_pattern}|Est\.\s*Complete\s*by\s+{date_range_full}|Est\.\s*Complete\s*by\s+{date_range_same_year}|Est\.\s*Complete\s*by\s+{date_pattern}|Estimated\s*Complete\s*by\s+{date_range_full}|Estimated\s*Complete\s*by\s+{date_range_same_year}|Estimated\s*Complete\s*by\s+{date_pattern}|Est\.\s*by\s+{date_range_full}|Est\.\s*by\s+{date_range_same_year}|Est\.\s*by\s+{date_pattern}|{date_pattern})",
@@ -3327,7 +3410,7 @@ def admin_upload_psa():
                 return found
 
             try:
-                best, ac_map, pdf_text_parts, pages_read = parse_status_pdf_by_rows(temp.name)
+                best, ac_map, psa_order_links, pdf_text_parts, pages_read = parse_status_pdf_by_rows(temp.name)
             finally:
                 try:
                     os.unlink(temp.name)
@@ -3441,6 +3524,32 @@ def admin_upload_psa():
                     WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
                     """, (parsed_ac["display"], parsed_ac["estimated"], sub))
 
+            # Save the exact embedded PSA order link for dashboard one-click access.
+            for linked_sub, link_info in psa_order_links.items():
+                psa_order_number = normalize_submission(link_info.get("order_number"))
+                psa_order_url = str(link_info.get("url") or "").strip()
+
+                if not psa_order_number or not psa_order_url:
+                    continue
+
+                cur.execute("""
+                UPDATE submissions
+                SET raw_data =
+                    jsonb_set(
+                        jsonb_set(
+                            COALESCE(raw_data, '{}'::jsonb),
+                            '{PSA Order #}',
+                            to_jsonb(%s::text),
+                            true
+                        ),
+                        '{PSA Order URL}',
+                        to_jsonb(%s::text),
+                        true
+                    ),
+                    last_updated=NOW()
+                WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+                """, (psa_order_number, psa_order_url, linked_sub))
+
             conn.commit()
 
             verification_rows = []
@@ -3501,6 +3610,7 @@ def admin_upload_psa():
                 {warning}
                 <p><b>Pages read:</b> {pages_read}</p>
                 <p><b>Statuses found:</b> {len(best)}</p>
+                <p><b>PSA order links saved:</b> {len(psa_order_links)}</p>
                 <p><b>Updated:</b> {updated}</p>
                 <p><b>Status corrections:</b> {corrected}</p>
                 <p><b>Skipped:</b> {skipped}</p>
