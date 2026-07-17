@@ -368,11 +368,6 @@ def get_psa_order_url(data, submission_number=""):
     if sub and order_number:
         return f"https://www.psacard.com/myaccount/myorders/{sub}/{order_number}"
 
-    # Some PSA order rows only expose a submission number. PSA still provides
-    # a valid order-page route for those rows, so keep the dashboard link.
-    if sub:
-        return f"https://www.psacard.com/myaccount/myorders/{sub}"
-
     return ""
 
 
@@ -3302,7 +3297,7 @@ def admin_upload_psa():
                                 continue
 
                             match = re.search(
-                                r"https://www\.psacard\.com/myaccount/myorders/(\d+)(?:/(\d+))?",
+                                r"https://www\.psacard\.com/myaccount/myorders/(\d+)/(\d+)",
                                 uri,
                                 re.IGNORECASE
                             )
@@ -3311,7 +3306,7 @@ def admin_upload_psa():
 
                             links.append({
                                 "submission_number": normalize_submission(match.group(1)),
-                                "order_number": normalize_submission(match.group(2)) if match.group(2) else "",
+                                "order_number": normalize_submission(match.group(2)),
                                 "url": uri,
                                 "ym": (float(rect.y0) + float(rect.y1)) / 2.0,
                             })
@@ -3403,13 +3398,6 @@ def admin_upload_psa():
                             found_order_links[sub] = {
                                 "order_number": order_number,
                                 "url": f"https://www.psacard.com/myaccount/myorders/{sub}/{order_number}"
-                            }
-                        else:
-                            # PSA sometimes supplies only the submission number.
-                            # Preserve a usable dashboard link instead of dropping the row.
-                            found_order_links[sub] = {
-                                "order_number": "",
-                                "url": f"https://www.psacard.com/myaccount/myorders/{sub}"
                             }
 
                 doc.close()
@@ -3579,8 +3567,7 @@ def admin_upload_psa():
                 psa_order_number = normalize_submission(link_info.get("order_number"))
                 psa_order_url = str(link_info.get("url") or "").strip()
 
-                # A PSA link is valid even when the PDF row has no separate order number.
-                if not psa_order_url:
+                if not psa_order_number or not psa_order_url:
                     continue
 
                 cur.execute("""
@@ -3592,37 +3579,23 @@ def admin_upload_psa():
                 existing_link_row = cur.fetchone()
                 existing_link = existing_link_row[0] if existing_link_row else ""
 
-                if psa_order_number:
-                    cur.execute("""
-                    UPDATE submissions
-                    SET raw_data =
-                        jsonb_set(
-                            jsonb_set(
-                                COALESCE(raw_data, '{}'::jsonb),
-                                '{PSA Order #}',
-                                to_jsonb(%s::text),
-                                true
-                            ),
-                            '{PSA Order URL}',
-                            to_jsonb(%s::text),
-                            true
-                        ),
-                        last_updated=NOW()
-                    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-                    """, (psa_order_number, psa_order_url, linked_sub))
-                else:
-                    cur.execute("""
-                    UPDATE submissions
-                    SET raw_data =
+                cur.execute("""
+                UPDATE submissions
+                SET raw_data =
+                    jsonb_set(
                         jsonb_set(
                             COALESCE(raw_data, '{}'::jsonb),
-                            '{PSA Order URL}',
+                            '{PSA Order #}',
                             to_jsonb(%s::text),
                             true
                         ),
-                        last_updated=NOW()
-                    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-                    """, (psa_order_url, linked_sub))
+                        '{PSA Order URL}',
+                        to_jsonb(%s::text),
+                        true
+                    ),
+                    last_updated=NOW()
+                WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+                """, (psa_order_number, psa_order_url, linked_sub))
 
                 if cur.rowcount:
                     psa_links_saved += 1
@@ -5323,56 +5296,4 @@ def portal_orders():
             <details class="buyback-collapsible">
                 <summary>View Your Graded Cards ({buyback_count})</summary>
                 <div class="buyback-inner">
-                    <p>Your PSA grades are available below. Review your graded cards and select any cards you would like Giant Sports Cards to consider for a buyback offer.</p>
-                    <form method="post" action="/portal/sell_interest">
-                        <input type="hidden" name="submission_number" value="{sub}">
-                        <div class="card-grid">
-            """
-
-            for row in buyback_rows:
-                cert_number, item_details, grade, image_data, interested = row[0], row[1], row[2], row[3], row[4]
-                card_type = row[5] if len(row) > 5 else ""
-                after_service = row[6] if len(row) > 6 else ""
-                images_url = row[7] if len(row) > 7 else ""
-                psa_estimate = display_blank_loading(row[8] if len(row) > 8 else "")
-                card_ladder_value = display_blank_loading(row[9] if len(row) > 9 else "")
-                pop = display_blank_loading(row[10] if len(row) > 10 else "")
-                pop_higher = display_blank_loading(row[11] if len(row) > 11 else "")
-                offer_amount = row[12] if len(row) > 12 else ""
-                offer_notes = row[13] if len(row) > 13 else ""
-                buyback_status = row[14] if len(row) > 14 else ""
-
-                checked = "checked" if interested else ""
-                img_html = f"<img src='{image_data}' alt='Card image'>" if image_data else ""
-
-                offer_display = ""
-                if offer_amount:
-                    response_buttons = ""
-                    if buyback_status == "Offer Sent":
-                        response_buttons = f"""
-                        <form method="post" action="/portal/buyback_offer_response" style="margin-top:8px;">
-                            <input type="hidden" name="submission_number" value="{sub}">
-                            <input type="hidden" name="cert_number" value="{cert_number}">
-                            <button name="response" value="Accepted">Accept Offer</button>
-                            <button name="response" value="Declined">Decline</button>
-                        </form>
-                        """
-                    offer_display = f"""
-                    <div style="margin-top:10px;padding:10px;border:1px solid #d1e7dd;border-radius:8px;background:#f3f7f5;">
-                        <b>Giant Sports Cards Buyback Offer:</b> {html_escape(offer_amount)}<br>
-                        <small>{html_escape(offer_notes)}</small><br>
-                        <b>Current Status:</b> {html_escape('Interest' if buyback_status == 'New' else buyback_status)}
-                        {response_buttons}
-                    </div>
-                    """
-
-                buyback_html += f"""
-                <div class="buy-card">
-                    {img_html}
-                    <div class="cert">Certification #: {cert_number}</div>
-                    <div><b>Type:</b> {card_type}</div>
-                    <div>{item_details}</div>
-                    <div><b>Grade:</b> {grade}</div>
-                    {offer_display}
-                    <label class="sell-check"><input type="checkbox" name="cert" value="{cert_number}" {checked}> Request an offer</label>
-                </div>
+                    <p>Your PSA grades are available below. Review your graded cards and select any cards you would like Giant Sports Cards to consider f
