@@ -335,12 +335,7 @@ def get(data, names, default=""):
 
 
 def get_psa_order_url(data, submission_number=""):
-    """
-    Returns the exact PSA order-page URL stored from the PSA PDF.
-
-    If the URL was not stored yet but the source data contains both the
-    submission number and PSA order number, construct PSA's standard URL.
-    """
+    """Return only a PSA URL that was actually stored from an uploaded PDF."""
     data = data or {}
 
     stored_url = str(get_field(data, [
@@ -350,23 +345,12 @@ def get_psa_order_url(data, submission_number=""):
         "Order URL"
     ]) or "").strip()
 
-    if stored_url.startswith("https://www.psacard.com/"):
+    if re.match(
+        r"^https://www\.psacard\.com/myaccount/myorders/\d+(?:/\d+)?/?(?:[?#].*)?$",
+        stored_url,
+        re.IGNORECASE
+    ):
         return stored_url
-
-    sub = normalize_submission(
-        submission_number
-        or get_field(data, ["Submission #", "Submission Number", "PSA Submission #"])
-    )
-
-    order_number = normalize_submission(get_field(data, [
-        "PSA Order #",
-        "PSA Order Number",
-        "Order #",
-        "Order Number"
-    ]))
-
-    if sub and order_number:
-        return f"https://www.psacard.com/myaccount/myorders/{sub}/{order_number}"
 
     return ""
 
@@ -3297,7 +3281,7 @@ def admin_upload_psa():
                                 continue
 
                             match = re.search(
-                                r"https://www\.psacard\.com/myaccount/myorders/(\d+)/(\d+)",
+                                r"https://www\.psacard\.com/myaccount/myorders/(\d+)(?:/(\d+))?",
                                 uri,
                                 re.IGNORECASE
                             )
@@ -3306,7 +3290,7 @@ def admin_upload_psa():
 
                             links.append({
                                 "submission_number": normalize_submission(match.group(1)),
-                                "order_number": normalize_submission(match.group(2)),
+                                "order_number": normalize_submission(match.group(2)) if match.group(2) else "",
                                 "url": uri,
                                 "ym": (float(rect.y0) + float(rect.y1)) / 2.0,
                             })
@@ -3372,32 +3356,10 @@ def admin_upload_psa():
                             None
                         )
 
-                        selected_link = exact_link
-                        if selected_link is None and row_links:
-                            selected_link = min(row_links, key=lambda link: abs(link["ym"] - row_mid))
-
-                        if selected_link:
+                        if exact_link:
                             found_order_links[sub] = {
-                                "order_number": selected_link["order_number"],
-                                "url": selected_link["url"]
-                            }
-                            continue
-
-                        order_match = re.search(r"(?<!Sub\s)#\s*(\d{6,})", row_text, re.IGNORECASE)
-                        order_number = normalize_submission(order_match.group(1)) if order_match else ""
-
-                        if not order_number:
-                            nearby_text = " ".join(
-                                b["text"] for b in blocks if abs(b["ym"] - row_mid) <= 60
-                            )
-                            nearby_match = re.search(r"(?<!Sub\s)#\s*(\d{6,})", nearby_text, re.IGNORECASE)
-                            if nearby_match:
-                                order_number = normalize_submission(nearby_match.group(1))
-
-                        if order_number:
-                            found_order_links[sub] = {
-                                "order_number": order_number,
-                                "url": f"https://www.psacard.com/myaccount/myorders/{sub}/{order_number}"
+                                "order_number": exact_link["order_number"],
+                                "url": exact_link["url"]
                             }
 
                 doc.close()
@@ -3560,14 +3522,25 @@ def admin_upload_psa():
                     WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
                     """, (parsed_ac["display"], parsed_ac["estimated"], sub))
 
-            # Save / repair PSA order links for dashboard one-click access.
+            # Clear prior generated/stale PSA URLs for rows in this uploaded report.
+            # Exact embedded PDF links are written back immediately below.
+            parsed_report_submissions = set(best.keys()) | set(ac_map.keys())
+            for parsed_sub in parsed_report_submissions:
+                cur.execute("""
+                UPDATE submissions
+                SET raw_data = COALESCE(raw_data, '{}'::jsonb) - 'PSA Order URL',
+                    last_updated=NOW()
+                WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+                """, (parsed_sub,))
+
+            # Save only exact embedded PSA order links for dashboard one-click access.
             psa_links_saved = 0
             psa_links_repaired = 0
             for linked_sub, link_info in psa_order_links.items():
                 psa_order_number = normalize_submission(link_info.get("order_number"))
                 psa_order_url = str(link_info.get("url") or "").strip()
 
-                if not psa_order_number or not psa_order_url:
+                if not psa_order_url:
                     continue
 
                 cur.execute("""
@@ -3579,23 +3552,36 @@ def admin_upload_psa():
                 existing_link_row = cur.fetchone()
                 existing_link = existing_link_row[0] if existing_link_row else ""
 
-                cur.execute("""
-                UPDATE submissions
-                SET raw_data =
-                    jsonb_set(
+                if psa_order_number:
+                    cur.execute("""
+                    UPDATE submissions
+                    SET raw_data =
                         jsonb_set(
-                            COALESCE(raw_data, '{}'::jsonb),
-                            '{PSA Order #}',
+                            jsonb_set(
+                                COALESCE(raw_data, '{}'::jsonb),
+                                '{PSA Order #}',
+                                to_jsonb(%s::text),
+                                true
+                            ),
+                            '{PSA Order URL}',
                             to_jsonb(%s::text),
                             true
                         ),
-                        '{PSA Order URL}',
-                        to_jsonb(%s::text),
-                        true
-                    ),
-                    last_updated=NOW()
-                WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-                """, (psa_order_number, psa_order_url, linked_sub))
+                        last_updated=NOW()
+                    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+                    """, (psa_order_number, psa_order_url, linked_sub))
+                else:
+                    cur.execute("""
+                    UPDATE submissions
+                    SET raw_data = jsonb_set(
+                            COALESCE(raw_data, '{}'::jsonb),
+                            '{PSA Order URL}',
+                            to_jsonb(%s::text),
+                            true
+                        ),
+                        last_updated=NOW()
+                    WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
+                    """, (psa_order_url, linked_sub))
 
                 if cur.rowcount:
                     psa_links_saved += 1
@@ -5384,4 +5370,4 @@ def portal_orders():
 @app.route("/portal/buyback_offer_response", methods=["POST"])
 def portal_buyback_offer_response():
     phone = normalize_phone(session.get("phone"))
-    last = clean(session.get("last")).lower()
+    last = clean(session.get("last")).l
