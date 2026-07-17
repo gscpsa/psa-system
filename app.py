@@ -335,10 +335,11 @@ def get(data, names, default=""):
 
 
 def get_psa_order_url(data, submission_number=""):
-    """Return only an exact PSA URL previously extracted from an uploaded PDF.
+    """
+    Returns the exact PSA order-page URL stored from the PSA PDF.
 
-    Never construct a URL from submission or order numbers. This prevents the
-    dashboard from displaying links that were not actually present in a PSA PDF.
+    If the URL was not stored yet but the source data contains both the
+    submission number and PSA order number, construct PSA's standard URL.
     """
     data = data or {}
 
@@ -348,17 +349,29 @@ def get_psa_order_url(data, submission_number=""):
         "PSA Link",
         "Order URL"
     ]) or "").strip()
-    stored_source = str(get_field(data, ["PSA Order URL Source"]) or "").strip().lower()
 
-    if stored_source != "pdf_embedded":
-        return ""
-
-    if re.match(
-        r"^https://www\.psacard\.com/myaccount/myorders/\d+(?:/\d+)?(?:[/?#].*)?$",
-        stored_url,
-        re.IGNORECASE
-    ):
+    if stored_url.startswith("https://www.psacard.com/"):
         return stored_url
+
+    sub = normalize_submission(
+        submission_number
+        or get_field(data, ["Submission #", "Submission Number", "PSA Submission #"])
+    )
+
+    order_number = normalize_submission(get_field(data, [
+        "PSA Order #",
+        "PSA Order Number",
+        "Order #",
+        "Order Number"
+    ]))
+
+    if sub and order_number:
+        return f"https://www.psacard.com/myaccount/myorders/{sub}/{order_number}"
+
+    # Some PSA order rows only expose a submission number. PSA still provides
+    # a valid order-page route for those rows, so keep the dashboard link.
+    if sub:
+        return f"https://www.psacard.com/myaccount/myorders/{sub}"
 
     return ""
 
@@ -3364,13 +3377,39 @@ def admin_upload_psa():
                             None
                         )
 
-                        # Save a link only when the PDF contains an embedded PSA
-                        # hyperlink whose submission number exactly matches this row.
-                        # Never borrow a nearby link or construct one from visible text.
-                        if exact_link:
+                        selected_link = exact_link
+                        if selected_link is None and row_links:
+                            selected_link = min(row_links, key=lambda link: abs(link["ym"] - row_mid))
+
+                        if selected_link:
                             found_order_links[sub] = {
-                                "order_number": exact_link["order_number"],
-                                "url": exact_link["url"]
+                                "order_number": selected_link["order_number"],
+                                "url": selected_link["url"]
+                            }
+                            continue
+
+                        order_match = re.search(r"(?<!Sub\s)#\s*(\d{6,})", row_text, re.IGNORECASE)
+                        order_number = normalize_submission(order_match.group(1)) if order_match else ""
+
+                        if not order_number:
+                            nearby_text = " ".join(
+                                b["text"] for b in blocks if abs(b["ym"] - row_mid) <= 60
+                            )
+                            nearby_match = re.search(r"(?<!Sub\s)#\s*(\d{6,})", nearby_text, re.IGNORECASE)
+                            if nearby_match:
+                                order_number = normalize_submission(nearby_match.group(1))
+
+                        if order_number:
+                            found_order_links[sub] = {
+                                "order_number": order_number,
+                                "url": f"https://www.psacard.com/myaccount/myorders/{sub}/{order_number}"
+                            }
+                        else:
+                            # PSA sometimes supplies only the submission number.
+                            # Preserve a usable dashboard link instead of dropping the row.
+                            found_order_links[sub] = {
+                                "order_number": "",
+                                "url": f"https://www.psacard.com/myaccount/myorders/{sub}"
                             }
 
                 doc.close()
@@ -3559,18 +3598,13 @@ def admin_upload_psa():
                     SET raw_data =
                         jsonb_set(
                             jsonb_set(
-                                jsonb_set(
-                                    COALESCE(raw_data, '{}'::jsonb),
-                                    '{PSA Order #}',
-                                    to_jsonb(%s::text),
-                                    true
-                                ),
-                                '{PSA Order URL}',
+                                COALESCE(raw_data, '{}'::jsonb),
+                                '{PSA Order #}',
                                 to_jsonb(%s::text),
                                 true
                             ),
-                            '{PSA Order URL Source}',
-                            to_jsonb('pdf_embedded'::text),
+                            '{PSA Order URL}',
+                            to_jsonb(%s::text),
                             true
                         ),
                         last_updated=NOW()
@@ -3581,14 +3615,9 @@ def admin_upload_psa():
                     UPDATE submissions
                     SET raw_data =
                         jsonb_set(
-                            jsonb_set(
-                                COALESCE(raw_data, '{}'::jsonb),
-                                '{PSA Order URL}',
-                                to_jsonb(%s::text),
-                                true
-                            ),
-                            '{PSA Order URL Source}',
-                            to_jsonb('pdf_embedded'::text),
+                            COALESCE(raw_data, '{}'::jsonb),
+                            '{PSA Order URL}',
+                            to_jsonb(%s::text),
                             true
                         ),
                         last_updated=NOW()
@@ -5294,95 +5323,4 @@ def portal_orders():
             <details class="buyback-collapsible">
                 <summary>View Your Graded Cards ({buyback_count})</summary>
                 <div class="buyback-inner">
-                    <p>Your PSA grades are available below. Review your graded cards and select any cards you would like Giant Sports Cards to consider for a buyback offer.</p>
-                    <form method="post" action="/portal/sell_interest">
-                        <input type="hidden" name="submission_number" value="{sub}">
-                        <div class="card-grid">
-            """
-
-            for row in buyback_rows:
-                cert_number, item_details, grade, image_data, interested = row[0], row[1], row[2], row[3], row[4]
-                card_type = row[5] if len(row) > 5 else ""
-                after_service = row[6] if len(row) > 6 else ""
-                images_url = row[7] if len(row) > 7 else ""
-                psa_estimate = display_blank_loading(row[8] if len(row) > 8 else "")
-                card_ladder_value = display_blank_loading(row[9] if len(row) > 9 else "")
-                pop = display_blank_loading(row[10] if len(row) > 10 else "")
-                pop_higher = display_blank_loading(row[11] if len(row) > 11 else "")
-                offer_amount = row[12] if len(row) > 12 else ""
-                offer_notes = row[13] if len(row) > 13 else ""
-                buyback_status = row[14] if len(row) > 14 else ""
-
-                checked = "checked" if interested else ""
-                img_html = f"<img src='{image_data}' alt='Card image'>" if image_data else ""
-
-                offer_display = ""
-                if offer_amount:
-                    response_buttons = ""
-                    if buyback_status == "Offer Sent":
-                        response_buttons = f"""
-                        <form method="post" action="/portal/buyback_offer_response" style="margin-top:8px;">
-                            <input type="hidden" name="submission_number" value="{sub}">
-                            <input type="hidden" name="cert_number" value="{cert_number}">
-                            <button name="response" value="Accepted">Accept Offer</button>
-                            <button name="response" value="Declined">Decline</button>
-                        </form>
-                        """
-                    offer_display = f"""
-                    <div style="margin-top:10px;padding:10px;border:1px solid #d1e7dd;border-radius:8px;background:#f3f7f5;">
-                        <b>Giant Sports Cards Buyback Offer:</b> {html_escape(offer_amount)}<br>
-                        <small>{html_escape(offer_notes)}</small><br>
-                        <b>Current Status:</b> {html_escape('Interest' if buyback_status == 'New' else buyback_status)}
-                        {response_buttons}
-                    </div>
-                    """
-
-                buyback_html += f"""
-                <div class="buy-card">
-                    {img_html}
-                    <div class="cert">Certification #: {cert_number}</div>
-                    <div><b>Type:</b> {card_type}</div>
-                    <div>{item_details}</div>
-                    <div><b>Grade:</b> {grade}</div>
-                    {offer_display}
-                    <label class="sell-check"><input type="checkbox" name="cert" value="{cert_number}" {checked}> Request an offer</label>
-                </div>
-                """
-
-            buyback_html += """
-                        </div>
-                        <br>
-                        <button type="submit">Request Buyback Offer</button>
-                    </form>
-                </div>
-            </details>
-            """
-
-        sms_html = ""
-
-        html += f"""
-        <div class="card">
-            <h3>{customer_name}</h3>
-            <p><b>PSA Submission:</b> {sub}</p>
-            <p><b>Current Status:</b> <span class="status status-badge">{display_status_label}</span></p>
-            <p><b>Received by PSA:</b> {arrived_completed}</p>
-            <p><b>Estimated Completion:</b> {estimated_completion}</p>
-            <p><b>Cards:</b> {cards}</p>
-            <p><b>Service Level:</b> {service}</p>
-            <p><b>Customer Drop-Off:</b> {date}</p>
-            {status_bar(display_status)}
-            {sms_html}
-            {buyback_html}
-        </div>
-        """
-
-    return page(html, mode="portal")
-
-
-@app.route("/portal/buyback_offer_response", methods=["POST"])
-def portal_buyback_offer_response():
-    phone = normalize_phone(session.get("phone"))
-    last = clean(session.get("last")).lower()
-
-    if not phone or not last:
-        return redirect("/p
+                    <p>Your PSA grades are available below. Review yo
