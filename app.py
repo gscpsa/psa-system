@@ -1019,18 +1019,41 @@ def save_row(sub, raw):
     internal_status = detect_internal_status(raw)
 
     cur.execute("""
-    SELECT status FROM submissions
+    SELECT status, raw_data FROM submissions
     WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
     """, (sub,))
     existing = cur.fetchone()
     existing_status = existing[0] if existing else None
+    existing_raw_data = existing[1] if existing and existing[1] else {}
+
+    # Excel/CSV uploads are customer-data updates. They must not erase
+    # PSA hyperlinks or order metadata previously extracted from a PSA PDF.
+    merged_raw = dict(existing_raw_data)
+    merged_raw.update(raw)
+
+    protected_psa_fields = [
+        "PSA Order URL",
+        "PSA URL",
+        "PSA Link",
+        "Order URL",
+        "PSA Order #",
+        "PSA Order Number",
+        "PSA Order URL Source"
+    ]
+
+    for field in protected_psa_fields:
+        existing_value = str(existing_raw_data.get(field, "") or "").strip()
+        incoming_value = str(raw.get(field, "") or "").strip()
+
+        if existing_value and not incoming_value:
+            merged_raw[field] = existing_raw_data[field]
 
     if existing_status == "Picked Up":
         cur.execute("""
         UPDATE submissions
         SET raw_data=%s, last_updated=NOW()
         WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-        """, (json.dumps(raw), sub))
+        """, (json.dumps(merged_raw), sub))
 
     elif internal_status:
         cur.execute("""
@@ -1041,7 +1064,7 @@ def save_row(sub, raw):
             status=%s,
             raw_data=EXCLUDED.raw_data,
             last_updated=NOW()
-        """, (sub, internal_status, json.dumps(raw), internal_status))
+        """, (sub, internal_status, json.dumps(merged_raw), internal_status))
 
     else:
         cur.execute("""
@@ -1052,7 +1075,7 @@ def save_row(sub, raw):
             raw_data=EXCLUDED.raw_data,
             status=COALESCE(submissions.status, 'Submitted'),
             last_updated=NOW()
-        """, (sub, json.dumps(raw)))
+        """, (sub, json.dumps(merged_raw)))
 
     conn.commit()
     cur.close()
@@ -5281,93 +5304,4 @@ def portal_orders():
             <hr>
             <details class="buyback-collapsible">
                 <summary>View Your Graded Cards ({buyback_count})</summary>
-                <div class="buyback-inner">
-                    <p>Your PSA grades are available below. Review your graded cards and select any cards you would like Giant Sports Cards to consider for a buyback offer.</p>
-                    <form method="post" action="/portal/sell_interest">
-                        <input type="hidden" name="submission_number" value="{sub}">
-                        <div class="card-grid">
-            """
-
-            for row in buyback_rows:
-                cert_number, item_details, grade, image_data, interested = row[0], row[1], row[2], row[3], row[4]
-                card_type = row[5] if len(row) > 5 else ""
-                after_service = row[6] if len(row) > 6 else ""
-                images_url = row[7] if len(row) > 7 else ""
-                psa_estimate = display_blank_loading(row[8] if len(row) > 8 else "")
-                card_ladder_value = display_blank_loading(row[9] if len(row) > 9 else "")
-                pop = display_blank_loading(row[10] if len(row) > 10 else "")
-                pop_higher = display_blank_loading(row[11] if len(row) > 11 else "")
-                offer_amount = row[12] if len(row) > 12 else ""
-                offer_notes = row[13] if len(row) > 13 else ""
-                buyback_status = row[14] if len(row) > 14 else ""
-
-                checked = "checked" if interested else ""
-                img_html = f"<img src='{image_data}' alt='Card image'>" if image_data else ""
-
-                offer_display = ""
-                if offer_amount:
-                    response_buttons = ""
-                    if buyback_status == "Offer Sent":
-                        response_buttons = f"""
-                        <form method="post" action="/portal/buyback_offer_response" style="margin-top:8px;">
-                            <input type="hidden" name="submission_number" value="{sub}">
-                            <input type="hidden" name="cert_number" value="{cert_number}">
-                            <button name="response" value="Accepted">Accept Offer</button>
-                            <button name="response" value="Declined">Decline</button>
-                        </form>
-                        """
-                    offer_display = f"""
-                    <div style="margin-top:10px;padding:10px;border:1px solid #d1e7dd;border-radius:8px;background:#f3f7f5;">
-                        <b>Giant Sports Cards Buyback Offer:</b> {html_escape(offer_amount)}<br>
-                        <small>{html_escape(offer_notes)}</small><br>
-                        <b>Current Status:</b> {html_escape('Interest' if buyback_status == 'New' else buyback_status)}
-                        {response_buttons}
-                    </div>
-                    """
-
-                buyback_html += f"""
-                <div class="buy-card">
-                    {img_html}
-                    <div class="cert">Certification #: {cert_number}</div>
-                    <div><b>Type:</b> {card_type}</div>
-                    <div>{item_details}</div>
-                    <div><b>Grade:</b> {grade}</div>
-                    {offer_display}
-                    <label class="sell-check"><input type="checkbox" name="cert" value="{cert_number}" {checked}> Request an offer</label>
-                </div>
-                """
-
-            buyback_html += """
-                        </div>
-                        <br>
-                        <button type="submit">Request Buyback Offer</button>
-                    </form>
-                </div>
-            </details>
-            """
-
-        sms_html = ""
-
-        html += f"""
-        <div class="card">
-            <h3>{customer_name}</h3>
-            <p><b>PSA Submission:</b> {sub}</p>
-            <p><b>Current Status:</b> <span class="status status-badge">{display_status_label}</span></p>
-            <p><b>Received by PSA:</b> {arrived_completed}</p>
-            <p><b>Estimated Completion:</b> {estimated_completion}</p>
-            <p><b>Cards:</b> {cards}</p>
-            <p><b>Service Level:</b> {service}</p>
-            <p><b>Customer Drop-Off:</b> {date}</p>
-            {status_bar(display_status)}
-            {sms_html}
-            {buyback_html}
-        </div>
-        """
-
-    return page(html, mode="portal")
-
-
-@app.route("/portal/buyback_offer_response", methods=["POST"])
-def portal_buyback_offer_response():
-    phone = normalize_phone(session.get("phone"))
-    last = clean(session.get("last")).l
+                <div class
