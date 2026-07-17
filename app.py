@@ -1019,41 +1019,18 @@ def save_row(sub, raw):
     internal_status = detect_internal_status(raw)
 
     cur.execute("""
-    SELECT status, raw_data FROM submissions
+    SELECT status FROM submissions
     WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
     """, (sub,))
     existing = cur.fetchone()
     existing_status = existing[0] if existing else None
-    existing_raw_data = existing[1] if existing and existing[1] else {}
-
-    # Excel/CSV uploads are customer-data updates. They must not erase
-    # PSA hyperlinks or order metadata previously extracted from a PSA PDF.
-    merged_raw = dict(existing_raw_data)
-    merged_raw.update(raw)
-
-    protected_psa_fields = [
-        "PSA Order URL",
-        "PSA URL",
-        "PSA Link",
-        "Order URL",
-        "PSA Order #",
-        "PSA Order Number",
-        "PSA Order URL Source"
-    ]
-
-    for field in protected_psa_fields:
-        existing_value = str(existing_raw_data.get(field, "") or "").strip()
-        incoming_value = str(raw.get(field, "") or "").strip()
-
-        if existing_value and not incoming_value:
-            merged_raw[field] = existing_raw_data[field]
 
     if existing_status == "Picked Up":
         cur.execute("""
         UPDATE submissions
         SET raw_data=%s, last_updated=NOW()
         WHERE REGEXP_REPLACE(submission_number, '\\D', '', 'g')=%s
-        """, (json.dumps(merged_raw), sub))
+        """, (json.dumps(raw), sub))
 
     elif internal_status:
         cur.execute("""
@@ -1064,7 +1041,7 @@ def save_row(sub, raw):
             status=%s,
             raw_data=EXCLUDED.raw_data,
             last_updated=NOW()
-        """, (sub, internal_status, json.dumps(merged_raw), internal_status))
+        """, (sub, internal_status, json.dumps(raw), internal_status))
 
     else:
         cur.execute("""
@@ -1075,7 +1052,7 @@ def save_row(sub, raw):
             raw_data=EXCLUDED.raw_data,
             status=COALESCE(submissions.status, 'Submitted'),
             last_updated=NOW()
-        """, (sub, json.dumps(merged_raw)))
+        """, (sub, json.dumps(raw)))
 
     conn.commit()
     cur.close()
@@ -5296,12 +5273,4 @@ def portal_orders():
         display_status_label = customer_status_label(display_status)
 
         buyback_rows = get_buyback_items_for_submission(sub)
-        buyback_html = ""
-
-        if buyback_rows:
-            buyback_count = len(buyback_rows)
-            buyback_html += f"""
-            <hr>
-            <details class="buyback-collapsible">
-                <summary>View Your Graded Cards ({buyback_count})</summary>
-                <div class
+        buyback_html 
