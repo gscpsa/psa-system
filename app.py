@@ -5296,4 +5296,92 @@ def portal_orders():
             <details class="buyback-collapsible">
                 <summary>View Your Graded Cards ({buyback_count})</summary>
                 <div class="buyback-inner">
-                    <p>Your PSA grades are available below. Review your graded cards and select any cards you would like Giant Sports Cards to consider f
+                    <p>Your PSA grades are available below. Review your graded cards and select any cards you would like Giant Sports Cards to consider for a buyback offer.</p>
+                    <form method="post" action="/portal/sell_interest">
+                        <input type="hidden" name="submission_number" value="{sub}">
+                        <div class="card-grid">
+            """
+
+            for row in buyback_rows:
+                cert_number, item_details, grade, image_data, interested = row[0], row[1], row[2], row[3], row[4]
+                card_type = row[5] if len(row) > 5 else ""
+                after_service = row[6] if len(row) > 6 else ""
+                images_url = row[7] if len(row) > 7 else ""
+                psa_estimate = display_blank_loading(row[8] if len(row) > 8 else "")
+                card_ladder_value = display_blank_loading(row[9] if len(row) > 9 else "")
+                pop = display_blank_loading(row[10] if len(row) > 10 else "")
+                pop_higher = display_blank_loading(row[11] if len(row) > 11 else "")
+                offer_amount = row[12] if len(row) > 12 else ""
+                offer_notes = row[13] if len(row) > 13 else ""
+                buyback_status = row[14] if len(row) > 14 else ""
+
+                checked = "checked" if interested else ""
+                img_html = f"<img src='{image_data}' alt='Card image'>" if image_data else ""
+
+                offer_display = ""
+                if offer_amount:
+                    response_buttons = ""
+                    if buyback_status == "Offer Sent":
+                        response_buttons = f"""
+                        <form method="post" action="/portal/buyback_offer_response" style="margin-top:8px;">
+                            <input type="hidden" name="submission_number" value="{sub}">
+                            <input type="hidden" name="cert_number" value="{cert_number}">
+                            <button name="response" value="Accepted">Accept Offer</button>
+                            <button name="response" value="Declined">Decline</button>
+                        </form>
+                        """
+                    offer_display = f"""
+                    <div style="margin-top:10px;padding:10px;border:1px solid #d1e7dd;border-radius:8px;background:#f3f7f5;">
+                        <b>Giant Sports Cards Buyback Offer:</b> {html_escape(offer_amount)}<br>
+                        <small>{html_escape(offer_notes)}</small><br>
+                        <b>Current Status:</b> {html_escape('Interest' if buyback_status == 'New' else buyback_status)}
+                        {response_buttons}
+                    </div>
+                    """
+
+                buyback_html += f"""
+                <div class="buy-card">
+                    {img_html}
+                    <div class="cert">Certification #: {cert_number}</div>
+                    <div><b>Type:</b> {card_type}</div>
+                    <div>{item_details}</div>
+                    <div><b>Grade:</b> {grade}</div>
+                    {offer_display}
+                    <label class="sell-check"><input type="checkbox" name="cert" value="{cert_number}" {checked}> Request an offer</label>
+                </div>
+                """
+
+            buyback_html += """
+                        </div>
+                        <br>
+                        <button type="submit">Request Buyback Offer</button>
+                    </form>
+                </div>
+            </details>
+            """
+
+        sms_html = ""
+
+        html += f"""
+        <div class="card">
+            <h3>{customer_name}</h3>
+            <p><b>PSA Submission:</b> {sub}</p>
+            <p><b>Current Status:</b> <span class="status status-badge">{display_status_label}</span></p>
+            <p><b>Received by PSA:</b> {arrived_completed}</p>
+            <p><b>Estimated Completion:</b> {estimated_completion}</p>
+            <p><b>Cards:</b> {cards}</p>
+            <p><b>Service Level:</b> {service}</p>
+            <p><b>Customer Drop-Off:</b> {date}</p>
+            {status_bar(display_status)}
+            {sms_html}
+            {buyback_html}
+        </div>
+        """
+
+    return page(html, mode="portal")
+
+
+@app.route("/portal/buyback_offer_response", methods=["POST"])
+def portal_buyback_offer_response():
+    phone = normalize_phone(session.get("phone"))
+    last = clean(session.get("last")).lower()
