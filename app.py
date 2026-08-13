@@ -1,7 +1,7 @@
 from flask import Flask, request, session, redirect
 import pandas as pd
 import psycopg2
-import os, io, json, re, traceback, smtplib
+import os, io, json, re, traceback, base64, smtplib
 from email.message import EmailMessage
 from functools import wraps
 
