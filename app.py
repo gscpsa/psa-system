@@ -3661,7 +3661,26 @@ def admin_upload_psa():
                             re.IGNORECASE
                         ))
 
-                        if not guard_has_track_package and not guard_has_tracking_number:
+                        # Show / Walk-Through orders can be completed by in-person pickup,
+                        # so they legitimately have no carrier tracking number.
+                        guard_is_show_or_walkthrough = bool(re.search(
+                            r"\b(?:show|walk\s*-?\s*through|walkthrough)\b",
+                            guard_row_text,
+                            re.IGNORECASE
+                        ))
+
+                        guard_says_picked_up = bool(re.search(
+                            r"\bpicked\s+up\b",
+                            guard_row_text,
+                            re.IGNORECASE
+                        ))
+
+                        if (
+                            not guard_has_track_package
+                            and not guard_has_tracking_number
+                            and not guard_is_show_or_walkthrough
+                            and not guard_says_picked_up
+                        ):
                             suspicious_complete_rows.append({
                                 "submission_number": guard_sub,
                                 "page": guard_page_number,
