@@ -3575,6 +3575,128 @@ def admin_upload_psa():
 
             combined_pdf_text = "\n".join(pdf_text_parts)
 
+            # SAFETY GUARD: reject stale PSA Orders exports.
+            #
+            # PSA's Orders page can occasionally show a stale "Complete" row until
+            # the browser page is refreshed. We only allow a parsed completed/shipped
+            # row when that SAME row has concrete shipment evidence.
+            #
+            # "Track Package" counts as shipment evidence because PSA uses that UI
+            # action for shipped orders. A literal carrier tracking number also counts.
+            suspicious_complete_rows = []
+
+            try:
+                import fitz
+
+                guard_doc = fitz.open(temp.name)
+                for guard_page_number, guard_page in enumerate(guard_doc, start=1):
+                    guard_blocks = extract_table_blocks(guard_page)
+
+                    guard_anchors = []
+                    for guard_block in guard_blocks:
+                        guard_sub_match = re.search(r"Sub\s*#\s*(\d+)", guard_block["text"], re.IGNORECASE)
+                        if guard_sub_match:
+                            guard_sub = normalize_submission(guard_sub_match.group(1))
+                            if guard_sub:
+                                guard_anchors.append({
+                                    "submission_number": guard_sub,
+                                    "ym": guard_block["ym"],
+                                })
+
+                    guard_anchors.sort(key=lambda item: item["ym"])
+
+                    for guard_index, guard_anchor in enumerate(guard_anchors):
+                        guard_sub = guard_anchor["submission_number"]
+                        guard_mid = guard_anchor["ym"]
+                        guard_prev_mid = guard_anchors[guard_index - 1]["ym"] if guard_index > 0 else None
+                        guard_next_mid = guard_anchors[guard_index + 1]["ym"] if guard_index + 1 < len(guard_anchors) else None
+
+                        guard_top = 0 if guard_prev_mid is None else (guard_prev_mid + guard_mid) / 2
+                        guard_bottom = float(guard_page.rect.height) if guard_next_mid is None else (guard_mid + guard_next_mid) / 2
+
+                        guard_row_blocks = [
+                            b for b in guard_blocks
+                            if guard_top <= b["ym"] < guard_bottom
+                        ]
+                        if len(guard_row_blocks) < 2:
+                            guard_row_blocks = [
+                                b for b in guard_blocks
+                                if abs(b["ym"] - guard_mid) <= 50
+                            ]
+
+                        guard_row_text = " ".join(
+                            b["text"] for b in sorted(guard_row_blocks, key=lambda x: (x["x0"], x["y0"]))
+                        )
+
+                        guard_status_text = " ".join(
+                            b["text"] for b in guard_row_blocks
+                            if 185 <= b["x0"] < 315
+                        )
+
+                        # Only guard rows whose PSA status literally says Complete/Completed.
+                        # Track Package is already positive shipment evidence, not an error.
+                        guard_says_complete = bool(re.search(
+                            r"\bcomplete(?:d)?\b",
+                            guard_status_text,
+                            re.IGNORECASE
+                        ))
+
+                        if not guard_says_complete:
+                            continue
+
+                        guard_has_track_package = bool(re.search(
+                            r"\btrack\s+package\b",
+                            guard_row_text,
+                            re.IGNORECASE
+                        ))
+
+                        # Common UPS/FedEx/USPS-style tracking identifiers. We require
+                        # a reasonably long token so dates, submission numbers and order
+                        # numbers are not mistaken for tracking numbers.
+                        guard_has_tracking_number = bool(re.search(
+                            r"(?i)(?:tracking(?:\s+(?:number|#|no\.?))?\s*[:#]?\s*)"
+                            r"([A-Z0-9][A-Z0-9\-]{9,})",
+                            guard_row_text
+                        )) or bool(re.search(
+                            r"\b1Z[A-Z0-9]{16}\b",
+                            guard_row_text,
+                            re.IGNORECASE
+                        ))
+
+                        if not guard_has_track_package and not guard_has_tracking_number:
+                            suspicious_complete_rows.append({
+                                "submission_number": guard_sub,
+                                "page": guard_page_number,
+                            })
+
+                guard_doc.close()
+
+            except Exception:
+                # Validation itself must fail closed. If we cannot prove a Complete
+                # row has shipment evidence, do not risk notifying a customer.
+                if any(status == "Shipped to Giant Sports Cards" for status in best.values()):
+                    suspicious_complete_rows.append({
+                        "submission_number": "Validation error",
+                        "page": "?",
+                    })
+
+            if suspicious_complete_rows:
+                rejected_submissions = ", ".join(
+                    sorted(set(str(item["submission_number"]) for item in suspicious_complete_rows))
+                )
+
+                return page(f"""
+                <div class="card" style="border:3px solid #dc3545;">
+                    <h2 style="color:#b02a37;">PSA PDF REJECTED — REFRESH PSA FIRST</h2>
+                    <p><b>Nothing from this PDF was written to the database and no customer status texts were sent.</b></p>
+                    <p>The PDF contains at least one PSA row marked <b>Complete</b> without tracking/shipment evidence on that row.</p>
+                    <p><b>Affected submission(s):</b> {html_escape(rejected_submissions)}</p>
+                    <p>Refresh the PSA Orders page in your browser, create a new PDF, then upload the refreshed PDF.</p>
+                    <a class="btn" href="/admin/upload_psa">Upload Refreshed PSA PDF</a>
+                    <a class="btn" href="/admin">Back to Admin</a>
+                </div>
+                """)
+
             # Safety guard: card-detail / grades PDFs must NOT be processed by the PSA status uploader.
             # They contain Cert # lines and card descriptions and can otherwise move submissions to Complete.
             cert_count_for_guard = len(re.findall(r"Cert\s*#\s*\d+", combined_pdf_text, re.IGNORECASE))
