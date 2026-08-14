@@ -2742,7 +2742,7 @@ def get_buyback_items_for_submission(submission_number):
 # =========================
 @app.route("/")
 def root():
-    return redirect("/admin")
+    return redirect("/portal")
 
 @app.route("/admin/login", methods=["GET", "POST"])
 def admin_login():
