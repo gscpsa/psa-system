@@ -3331,8 +3331,12 @@ def admin_upload_psa():
                 if re.search(r"\bshipping\s+soon\b", text):
                     return "Grading Complete"
 
-                # PSA completed/grades-ready rows may show Complete, Track Package, or Completing.
-                if re.search(r"\bcomplete\b|\bcompleted\b|\btrack\s+package\b|\bcompleting\b", text):
+                # "Completing" is transitional and does NOT prove shipment.
+                if re.search(r"\bcompleting\b", text):
+                    return "Grading Complete"
+
+                # Only true completed/shipped rows advance to shipped status.
+                if re.search(r"\bcomplete\b|\bcompleted\b|\btrack\s+package\b", text):
                     return "Shipped to Giant Sports Cards"
 
                 return None
@@ -3565,13 +3569,7 @@ def admin_upload_psa():
 
                 return found
 
-            try:
-                best, ac_map, psa_order_links, pdf_text_parts, pages_read = parse_status_pdf_by_rows(temp.name)
-            finally:
-                try:
-                    os.unlink(temp.name)
-                except Exception:
-                    pass
+            best, ac_map, psa_order_links, pdf_text_parts, pages_read = parse_status_pdf_by_rows(temp.name)
 
             combined_pdf_text = "\n".join(pdf_text_parts)
 
@@ -3685,6 +3683,11 @@ def admin_upload_psa():
                     sorted(set(str(item["submission_number"]) for item in suspicious_complete_rows))
                 )
 
+                try:
+                    os.unlink(temp.name)
+                except Exception:
+                    pass
+
                 return page(f"""
                 <div class="card" style="border:3px solid #dc3545;">
                     <h2 style="color:#b02a37;">PSA PDF REJECTED — REFRESH PSA FIRST</h2>
@@ -3696,6 +3699,11 @@ def admin_upload_psa():
                     <a class="btn" href="/admin">Back to Admin</a>
                 </div>
                 """)
+
+            try:
+                os.unlink(temp.name)
+            except Exception:
+                pass
 
             # Safety guard: card-detail / grades PDFs must NOT be processed by the PSA status uploader.
             # They contain Cert # lines and card descriptions and can otherwise move submissions to Complete.
